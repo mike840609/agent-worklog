@@ -1,20 +1,27 @@
 # Agent Worklog
 
-Agent Worklog turns coding-agent sessions into repository-based engineering reports.
-The first release supports OpenCode and groups work by canonical Git repository, so
-sessions from separate folders and Git worktrees appear in one project section.
+Agent Worklog turns coding-agent sessions into weekly engineering reports. It saves
+engineers time and makes it easier to share progress with managers.
 
-## What it does
+![Agent Worklog overview](docs/assets/agent-worklog-overview.png)
 
-- queries OpenCode sessions across every project, independent of the current directory;
-- selects sessions with activity inside a rolling or calendar-week period;
-- exports each session with `opencode export --sanitize`;
-- resolves Git remotes and groups worktrees by repository identity;
-- preserves child-session repository ownership;
-- extracts evidence with source activity IDs and confidence;
-- redacts common secrets before rendering or optional LLM summarization;
-- continues after individual export failures and records warnings;
-- writes Markdown reports atomically with owner-only permissions.
+## Capabilities
+
+Agent Worklog currently works with OpenCode and can:
+
+- Find OpenCode sessions across all projects, no matter which folder you are in.
+- Select sessions from recent days, a calendar week, or a specific date range.
+- Export sessions with `opencode export --sanitize`.
+- Group Git worktrees that belong to the same repository.
+- Keep child sessions linked to the correct repository.
+- Leave out subagent sessions with `--root-only` when you only want root sessions.
+- List each repository's session titles and working folders in the report.
+- Summarize models, tokens, and tools from `opencode stats`.
+- Include source activity IDs and confidence levels as supporting information.
+- Remove common secrets before creating a report or sending data to an optional LLM.
+- Continue when one session cannot be exported and add a warning to the report.
+- Write Markdown reports safely with permissions that allow only the owner to read
+  them.
 
 ## Requirements
 
@@ -25,13 +32,13 @@ sessions from separate folders and Git worktrees appear in one project section.
 
 ## Installation
 
-The recommended installation method for the CLI is `pipx`:
+The recommended way to install the command-line tool is with `pipx`:
 
 ```bash
 pipx install agent-worklog
 ```
 
-A regular Python environment also works:
+You can also install it in a regular Python environment:
 
 ```bash
 pip install agent-worklog
@@ -45,21 +52,21 @@ cd agent-worklog
 uv sync --locked --extra dev
 ```
 
-## First run
+## Getting started
 
-Check that OpenCode and Git are accessible:
+Check that OpenCode and Git are available:
 
 ```bash
 agent-worklog doctor
 ```
 
-Preview how the previous complete Monday-to-Monday week is grouped:
+Preview how Agent Worklog groups repositories for the previous full week:
 
 ```bash
 agent-worklog scan --period last-week
 ```
 
-Generate the corresponding Markdown report without an external LLM:
+Create the Markdown report without using an external LLM:
 
 ```bash
 agent-worklog report --period last-week --no-llm
@@ -67,22 +74,22 @@ agent-worklog report --period last-week --no-llm
 
 The default output is written under `reports/`.
 
-## Report periods
+## Reporting periods
 
-`last-week` means the previous complete calendar week in the configured timezone. The
-range is half-open: Monday 00:00 is included and the following Monday 00:00 is excluded.
+The `last-week` period means the previous full calendar week in the configured time
+zone. It starts on Monday at 00:00 and ends just before the next Monday at 00:00.
 
 ```bash
 agent-worklog report --period last-week
 ```
 
-A rolling range ending now is available with `--days`:
+Use `--days` to report activity from a number of recent days:
 
 ```bash
 agent-worklog report --days 7
 ```
 
-An explicit range can be supplied with ISO timestamps:
+Use ISO timestamps to set exact start and end times:
 
 ```bash
 agent-worklog report \
@@ -90,14 +97,14 @@ agent-worklog report \
   --until 2026-07-27T00:00:00+08:00
 ```
 
-Exactly one of `--period`, `--days`, or `--since` is required. `--until` requires
-`--since`.
+You must provide one of `--period`, `--days`, or `--since`. If you use `--until`, you
+must also use `--since`.
 
 ## Subagent sessions
 
-Child/subagent sessions are included by default and are attributed to the repository they
-actually ran in, so a subagent that worked in another checkout appears under that
-repository. To report only root sessions:
+Subagent sessions are included by default. Each one is linked to the repository it actually
+ran in, so a subagent that worked in another checkout appears under that repository. To
+report only root sessions:
 
 ```bash
 agent-worklog report --period last-week --root-only
@@ -105,27 +112,27 @@ agent-worklog report --period last-week --root-only
 
 ## Repository grouping
 
-Agent Worklog resolves every loaded session independently before considering
-parent/child relationships. Identity selection follows this order:
+Agent Worklog checks each session separately to decide which repository it belongs to.
+It uses the following information in order:
 
-1. normalized Git `origin` remote;
-2. hashed Git common directory;
-3. OpenCode project ID;
-4. hashed working directory;
-5. per-session unknown identity.
+1. The Git `origin` remote.
+2. A protected ID based on the shared Git directory.
+3. The OpenCode project ID.
+4. A protected ID based on the working directory.
+5. A separate unknown ID for the session.
 
-SSH and HTTPS remotes for the same repository normalize to the same identity. Branches
-do not split a repository, and child sessions that run in another repository remain in
-the child repository.
+SSH and HTTPS addresses for the same repository are treated as the same repository.
+Different branches are also grouped together. If a child session works in another
+repository, it stays linked to that repository.
 
 ## LLM summaries
 
-LLM use is optional. Agent Worklog constructs an OpenAI-compatible client only when all
-of these conditions are true:
+LLM summaries are optional. Agent Worklog connects to an OpenAI-compatible service only
+when all of the following are true:
 
-- LLM support is enabled;
-- `--no-llm` is not supplied;
-- the configured API-key environment variable is present.
+- LLM support is turned on.
+- `--no-llm` is not used.
+- The API key is set in the selected environment variable.
 
 For the default OpenAI-compatible configuration:
 
@@ -134,21 +141,23 @@ export OPENAI_API_KEY="..."
 agent-worklog report --period last-week
 ```
 
-The request contains redacted structured evidence, not raw transcripts or raw metadata.
-Timeouts, HTTP 429/5xx responses, and invalid structured output are retried once and then
-fall back to the deterministic summary. Use `--no-llm` to guarantee a local-only report.
+The request contains organized information with secrets removed. It does not contain
+raw transcripts or raw session details. If the service times out, returns an HTTP 429
+or 5xx error, or returns invalid data, Agent Worklog tries once more. If the second
+request fails, it creates a summary without the LLM. Use `--no-llm` to keep report
+generation on your computer.
 
 ## Usage statistics
 
-Each report includes an OpenCode usage section built from `opencode stats`, covering
-models, tokens, and tools. OpenCode reports usage only for a window ending now, so the
-window shown starts at the report period's start and runs to generation time; it contains
-the report period but is wider than it. If `opencode stats` is unavailable, the section is
-omitted and a warning is recorded in the report.
+Each report includes a usage section built from `opencode stats`, covering models, tokens,
+and tools. OpenCode reports usage only for a period that ends now. The period shown in the
+report therefore starts when the report period starts and runs to the time the report is
+created. It covers the report period but is wider than it. If `opencode stats` is not
+available, Agent Worklog leaves the section out and adds a warning to the report.
 
-## Output and overwrite behavior
+## Output and file handling
 
-Choose an output path explicitly:
+Set the output file with `--output`:
 
 ```bash
 agent-worklog report \
@@ -157,25 +166,25 @@ agent-worklog report \
   --output weekly.md
 ```
 
-Existing files are not overwritten unless `--force` is supplied:
+Agent Worklog does not replace an existing file unless you use `--force`:
 
 ```bash
 agent-worklog report --period last-week --output weekly.md --force
 ```
 
-Preview the generated Markdown without writing a file:
+Use `--dry-run` to preview the Markdown without writing a file:
 
 ```bash
 agent-worklog report --period last-week --no-llm --dry-run
 ```
 
-Use `--verbose` to print partial-export and fallback warnings. Use `--quiet` to print only
-the output path after a successful report.
+Use `--verbose` to show export and LLM fallback warnings. Use `--quiet` to show only the
+output path after a successful report.
 
 ## Configuration
 
-The MVP uses environment-based configuration with the `AGENT_WORKLOG_` prefix and `__`
-for nested fields. Common examples:
+Agent Worklog uses environment variables for its settings. Variable names start with
+`AGENT_WORKLOG_`. Use `__` between parts of a setting name. For example:
 
 ```bash
 export AGENT_WORKLOG_REPORT__TIMEZONE="Asia/Taipei"
@@ -186,42 +195,48 @@ export AGENT_WORKLOG_LLM__BASE_URL="https://api.openai.com/v1/"
 export AGENT_WORKLOG_LLM__ENABLED="false"
 ```
 
-See [Configuration](docs/configuration.md) for all current settings.
+See [Configuration](docs/configuration.md) for a complete list of settings.
 
 ## Privacy
 
-OpenCode exports are requested with `--sanitize`, and Agent Worklog applies recursive
-redaction before report rendering and before optional LLM calls. Generated reports can
-still contain proprietary goals, filenames, commands, and work descriptions. Review a
-report before sharing it outside its intended audience.
+Agent Worklog requests OpenCode exports with `--sanitize`. It also removes common
+secrets from all parts of the data before creating a report or making an optional LLM
+request.
 
-See [Privacy and security](docs/privacy.md) for the exact trust boundary and limitations.
+Reports may still contain private goals, filenames, commands, and work descriptions.
+Always review a report before sharing it.
 
-## Partial failures and exit codes
+See [Privacy and security](docs/privacy.md) for more details about data safety and
+current limits.
 
-A failed individual session export is skipped and recorded as a report warning. If every
-candidate export fails, the harness command fails instead of producing a misleading empty
-report.
+## Failure handling and exit codes
+
+If one session cannot be exported, Agent Worklog skips it and adds a warning to the
+report. If no sessions can be exported, the command stops with an error instead of
+creating an empty report.
 
 | Code | Meaning |
 |---:|---|
 | 0 | Success |
-| 2 | Invalid CLI usage |
-| 3 | Configuration error |
+| 2 | Invalid command options |
+| 3 | Settings error |
 | 4 | No matching activity |
-| 5 | Harness/OpenCode failure |
-| 7 | Report output failure |
+| 5 | OpenCode error |
+| 7 | Report file error |
 
-## MVP limitations
+## Current support and limits
 
-- OpenCode is the only supported harness.
-- The source is the OpenCode CLI, not direct SQLite access.
+- OpenCode is the only supported coding-agent tool.
+- Agent Worklog gets session data through the OpenCode command-line tool. It does not
+  read the SQLite database directly.
 - Markdown is the only report format.
-- Usage statistics cover a window ending at generation time, not the report period exactly.
-- There is no persistent cache or `inspect` command.
-- Historical sessions whose working directories were deleted may use a fallback identity.
-- Repository resolution reflects the Git metadata currently available at the recorded path.
-- Codex and Claude Code adapters are explicitly deferred.
+- Usage statistics cover a period that ends when the report is created. They do not match
+  the report period exactly.
+- Agent Worklog does not keep a cache between runs and does not provide an `inspect`
+  command.
+- Older sessions may use a backup ID if their working folders have been deleted.
+- Repository grouping uses the Git information available when the report is created.
+- Codex and Claude Code are not currently supported.
 
 ## Development checks
 
@@ -233,7 +248,7 @@ uv run pyright
 uv build
 ```
 
-See [Releasing Agent Worklog](docs/releasing.md) for PyPI Trusted Publishing setup and the tag-based release process.
+See [Releasing Agent Worklog](docs/releasing.md) for release instructions.
 
 ## License
 
