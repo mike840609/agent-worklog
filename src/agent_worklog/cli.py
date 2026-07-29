@@ -70,13 +70,15 @@ def _resolve_period(
     since: str | None,
     until: str | None,
     timezone: str,
+    now: datetime,
 ) -> DateRange:
+    """Resolve the requested period against a single clock read for the command."""
+
     selectors = sum(value is not None for value in (days, period, since))
     if selectors != 1:
         raise typer.BadParameter("provide exactly one of --days, --period, or --since")
     if until is not None and since is None:
         raise typer.BadParameter("--until requires --since")
-    now = _now_in_timezone(timezone)
     if days is not None:
         if days < 1:
             raise typer.BadParameter("--days must be at least 1")
@@ -121,7 +123,11 @@ def _build_report_service(
     output_path: Path,
     no_llm: bool,
     root_only: bool = False,
+    *,
+    now: datetime,
 ) -> ReportService:
+    """Build the report service around the command's single clock read."""
+
     summarizer = RuleBasedSummarizer()
     api_key = os.environ.get(settings.llm.api_key_env)
     if settings.llm.enabled and not no_llm and api_key:
@@ -134,14 +140,14 @@ def _build_report_service(
         )
     cli_settings = settings.harnesses.opencode.cli
     stats_runner = CommandRunner(timeout_seconds=cli_settings.timeout_seconds)
-    days = usage_days(period, _now_in_timezone(settings.report.timezone))
+    days = usage_days(period, now)
     return ReportService(
         scan_service=_build_scan_service(settings, period, root_only),
         summarizer=summarizer,
         renderer=MarkdownRenderer(),
         period=period,
         output_path=output_path,
-        now_factory=lambda: _now_in_timezone(settings.report.timezone),
+        now_factory=lambda: now,
         usage_provider=lambda: collect_usage_stats(
             runner=stats_runner,
             executable=cli_settings.executable,
@@ -205,12 +211,14 @@ def scan(
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
             days=days,
             period=period,
             since=since,
             until=until,
             timezone=settings.report.timezone,
+            now=now,
         )
         result = _build_scan_service(settings, selected_period, root_only).scan()
         if result.loaded_session_count == 0:
@@ -251,12 +259,14 @@ def report(
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
             days=days,
             period=period,
             since=since,
             until=until,
             timezone=settings.report.timezone,
+            now=now,
         )
         output_path = output or _default_output_path(settings, selected_period)
         service = _build_report_service(
@@ -265,6 +275,7 @@ def report(
             output_path,
             no_llm,
             root_only,
+            now=now,
         )
         result = service.generate(force=force, dry_run=dry_run)
         if not result.report.repositories:
