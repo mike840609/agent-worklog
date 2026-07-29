@@ -12,11 +12,27 @@ class RepositorySummarizer(ABC):
         """Create a repository summary from structured evidence."""
 
 
+def _normalized_title(title: str | None) -> str | None:
+    """Collapse whitespace so free-text titles stay on one Markdown list item."""
+
+    if title is None:
+        return None
+    return " ".join(title.split()) or None
+
+
 def session_refs(evidence: RepositoryEvidence) -> list[SessionRef]:
-    """Return session identifiers exactly as recorded; never model-generated."""
+    """Return session identifiers exactly as recorded; never model-generated.
+
+    Unlike the summary lists, this one is deliberately uncapped: it is the report's
+    only index back to individual sessions, and a busy repository is exactly where
+    that index is needed. Operators bound it with `--root-only` or a shorter period.
+    """
 
     return [
-        SessionRef(session_id=session.session_id, title=session.title)
+        SessionRef(
+            session_id=session.session_id,
+            title=_normalized_title(session.title),
+        )
         for session in evidence.sessions
     ]
 

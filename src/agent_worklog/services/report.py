@@ -107,7 +107,7 @@ class ReportService:
         usage_text: str | None = None
         if self._usage_provider is not None:
             try:
-                usage_text = self._usage_provider()
+                usage_text = redact_text(self._usage_provider())
             except HarnessSourceError as exc:
                 warnings.append(f"OpenCode usage statistics unavailable: {exc}")
         report = WorklogReport(

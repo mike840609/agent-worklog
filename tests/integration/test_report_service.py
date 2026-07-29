@@ -107,6 +107,28 @@ def test_usage_statistics_are_written_into_the_report(tmp_path: Path) -> None:
     assert "gpt-5-mini  1234 tokens" in content
 
 
+def test_usage_text_is_redacted_on_the_report_model(tmp_path: Path) -> None:
+    source = FakeSource()
+    output = tmp_path / "report.md"
+    report_service = ReportService(
+        scan_service=ScanService(source=source, period=period(), resolver=StaticResolver()),
+        summarizer=RuleBasedSummarizer(),
+        renderer=MarkdownRenderer(),
+        period=period(),
+        output_path=output,
+        now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        usage_provider=lambda: "auth: Bearer super-secret-token\ngpt-5-mini  1234 tokens",
+        usage_days=10,
+    )
+
+    result = report_service.generate(force=False)
+
+    assert result.report.usage_text is not None
+    assert "super-secret-token" not in result.report.usage_text
+    assert "[REDACTED]" in result.report.usage_text
+    assert "gpt-5-mini  1234 tokens" in result.report.usage_text
+
+
 def test_usage_failure_becomes_a_warning(tmp_path: Path) -> None:
     def failing_provider() -> str:
         raise HarnessSourceError("stats unsupported")
