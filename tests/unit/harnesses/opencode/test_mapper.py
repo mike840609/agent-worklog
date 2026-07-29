@@ -1,0 +1,50 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from agent_worklog.errors import SessionParseError
+from agent_worklog.harnesses.opencode.cli_runner import CommandResult
+from agent_worklog.harnesses.opencode.mapper import OpenCodeExportMapper
+from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
+from agent_worklog.models.session import ActivityType, SessionDescriptor, UsageSemantics
+
+FIXTURES = Path(__file__).parents[3] / "fixtures" / "opencode"
+
+
+def test_load_uses_sanitize_flag(fake_runner) -> None:
+    fake_runner.stdout = '{"messages": []}'
+    source = OpenCodeCliSource(runner=fake_runner, executable="opencode")
+
+    source.load(SessionDescriptor(harness="opencode", session_id="s1"))
+
+    assert fake_runner.calls[0] == ["opencode", "export", "s1", "--sanitize"]
+
+
+def test_mapper_converts_text_and_tool_parts_to_stable_activities() -> None:
+    payload = json.loads((FIXTURES / "export-root.json").read_text())
+    descriptor = SessionDescriptor(harness="opencode", session_id="s1")
+
+    session = OpenCodeExportMapper().map(payload, descriptor)
+
+    assert session.title == "Build weekly report"
+    assert session.working_directory == "/tmp/repo"
+    assert [item.activity_id for item in session.activities] == ["m1:0", "m2:0", "m2:1"]
+    assert session.activities[0].activity_type == ActivityType.USER_MESSAGE
+    assert session.activities[1].activity_type == ActivityType.ASSISTANT_MESSAGE
+    assert session.activities[2].activity_type == ActivityType.TOOL_CALL
+    assert session.activities[2].tool_name == "bash"
+    assert session.activities[2].content == "pytest -q"
+    assert session.token_usage is not None
+    assert session.token_usage.semantics == UsageSemantics.UNKNOWN
+
+
+def test_load_raises_session_parse_error_on_export_failure(fake_runner) -> None:
+    fake_runner.set_result(
+        "export s1 --sanitize",
+        CommandResult(returncode=1, stdout="", stderr="session missing"),
+    )
+    source = OpenCodeCliSource(runner=fake_runner, executable="opencode")
+
+    with pytest.raises(SessionParseError, match="session missing"):
+        source.load(SessionDescriptor(harness="opencode", session_id="s1"))

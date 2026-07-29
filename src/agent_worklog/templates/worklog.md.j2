@@ -1,0 +1,59 @@
+# Engineering Worklog
+
+**Period:** {{ report.period.since.strftime("%Y-%m-%d %H:%M") }} – {{ report.period.until.strftime("%Y-%m-%d %H:%M") }}
+**Timezone:** {{ timezone }}
+**Generated:** {{ report.generated_at.strftime("%Y-%m-%d %H:%M") }}
+
+## Repositories
+{% for repository in report.repositories %}
+### {{ repository.display_name }}
+{% if repository.normalized_remote %}
+Repository: `{{ repository.normalized_remote }}`
+{% endif %}
+
+{{ repository.summary }}
+
+Sessions: {{ repository.session_count }}{% if repository.child_session_count %} · Child sessions: {{ repository.child_session_count }}{% endif %}
+{% if repository.completed %}
+
+#### Completed
+{% for item in repository.completed %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% if repository.problems_resolved %}
+
+#### Problems Resolved
+{% for item in repository.problems_resolved %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% if repository.in_progress %}
+
+#### In Progress
+{% for item in repository.in_progress %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% if repository.key_files %}
+
+#### Key Files
+{% for item in repository.key_files %}
+- `{{ item }}`
+{% endfor %}
+{% endif %}
+{% if repository.branches %}
+
+#### Branches
+{% for item in repository.branches %}
+- `{{ item }}`
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+{% if report.warnings %}
+## Warnings
+{% for warning in report.warnings %}
+- {{ warning }}
+{% endfor %}
+{% endif %}

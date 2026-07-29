@@ -1,0 +1,28 @@
+{
+  "info": {
+    "id": "api-a",
+    "title": "API A",
+    "directory": "/worktrees/team-a-api",
+    "time": {
+      "created": 1783612800000,
+      "updated": 1785168000000
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "id": "api-a-user",
+        "role": "user",
+        "time": {
+          "created": 1784822400000
+        }
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Update team A API"
+        }
+      ]
+    }
+  ]
+}

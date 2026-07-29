@@ -1,0 +1,36 @@
+{
+  "info": {
+    "id": "s1",
+    "title": "Build weekly report",
+    "directory": "/tmp/repo",
+    "time": {"created": 1785100800000, "updated": 1785187200000}
+  },
+  "messages": [
+    {
+      "info": {
+        "id": "m1",
+        "role": "user",
+        "time": {"created": 1785100800000}
+      },
+      "parts": [
+        {"type": "text", "text": "Implement the report"}
+      ]
+    },
+    {
+      "info": {
+        "id": "m2",
+        "role": "assistant",
+        "time": {"created": 1785100860000}
+      },
+      "parts": [
+        {"type": "text", "text": "I will update the code."},
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "call-1",
+          "state": {"input": {"command": "pytest -q"}}
+        }
+      ]
+    }
+  ]
+}

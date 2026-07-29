@@ -1,0 +1,82 @@
+{
+  "info": {
+    "id": "root-agent",
+    "title": "Agent root",
+    "directory": "/worktrees/agent-main",
+    "time": {
+      "created": 1783612800000,
+      "updated": 1785168000000
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "id": "root-old",
+        "role": "user",
+        "time": {
+          "created": 1783612800000
+        }
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Old request outside the weekly period"
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "root-in",
+        "role": "user",
+        "time": {
+          "created": 1784563200000
+        }
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Design cross-project Agent Worklog discovery"
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "root-pass",
+        "role": "assistant",
+        "time": {
+          "created": 1784566800000
+        }
+      },
+      "parts": [
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "root-call",
+          "state": {
+            "input": {
+              "command": "pytest -q"
+            },
+            "metadata": {
+              "exit": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "root-late",
+        "role": "assistant",
+        "time": {
+          "created": 1785168000000
+        }
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "This activity is after the requested period"
+        }
+      ]
+    }
+  ]
+}
