@@ -1,3 +1,5 @@
+import subprocess
+from dataclasses import dataclass, field
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -9,6 +11,17 @@ from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_da
 from agent_worklog.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
+
+
+@dataclass
+class TimingOutRunner:
+    """A runner double mirroring `CommandRunner.run`'s uncaught timeout behavior."""
+
+    calls: list[list[str]] = field(default_factory=list)
+
+    def run(self, args: list[str]) -> CommandResult:
+        self.calls.append(args)
+        raise subprocess.TimeoutExpired(cmd=args, timeout=5.0)
 
 
 def test_usage_days_covers_period_start_until_now() -> None:
@@ -62,3 +75,10 @@ def test_collect_usage_stats_raises_on_empty_output(fake_runner) -> None:
 
     with pytest.raises(HarnessSourceError, match="no output"):
         collect_usage_stats(runner=fake_runner, executable="opencode", days=7)
+
+
+def test_collect_usage_stats_raises_on_timeout() -> None:
+    runner = TimingOutRunner()
+
+    with pytest.raises(HarnessSourceError, match="timed out"):
+        collect_usage_stats(runner=runner, executable="opencode", days=7)

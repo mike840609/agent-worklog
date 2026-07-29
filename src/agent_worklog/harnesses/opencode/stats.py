@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import subprocess
 from datetime import datetime
 from typing import Protocol
 
@@ -43,8 +44,8 @@ def collect_usage_stats(*, runner: Runner, executable: str, days: int) -> str:
                 "20",
             ]
         )
-    except (FileNotFoundError, TimeoutError, OSError) as exc:
-        raise HarnessSourceError(type(exc).__name__) from exc
+    except (OSError, TimeoutError, subprocess.SubprocessError) as exc:
+        raise HarnessSourceError(str(exc) or type(exc).__name__) from exc
     if result.returncode != 0:
         raise HarnessSourceError(result.stderr.strip() or "opencode stats failed")
     text = result.stdout.strip()
