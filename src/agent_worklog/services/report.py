@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol, cast
 
+from agent_worklog.errors import HarnessSourceError
 from agent_worklog.extraction.pipeline import extract_evidence
 from agent_worklog.models.evidence import RepositoryEvidence, SessionEvidence
 from agent_worklog.models.report import RepositorySummary, WorklogReport
@@ -50,6 +51,8 @@ class ReportService:
         period: DateRange,
         output_path: Path,
         now_factory: Callable[[], datetime],
+        usage_provider: Callable[[], str] | None = None,
+        usage_days: int | None = None,
     ) -> None:
         self._scan_service = scan_service
         self._summarizer = summarizer
@@ -57,6 +60,8 @@ class ReportService:
         self._period = period
         self._output_path = output_path
         self._now_factory = now_factory
+        self._usage_provider = usage_provider
+        self._usage_days = usage_days
 
     def _repository_evidence(self, scan: ScanResult) -> list[RepositoryEvidence]:
         child_counts = count_child_sessions_by_repository(scan.resolved_sessions)
@@ -99,10 +104,18 @@ class ReportService:
             if callable(drain_warnings):
                 warnings.extend(cast(list[str], drain_warnings()))
         summaries.sort(key=lambda item: item.display_name.casefold())
+        usage_text: str | None = None
+        if self._usage_provider is not None:
+            try:
+                usage_text = self._usage_provider()
+            except HarnessSourceError as exc:
+                warnings.append(f"OpenCode usage statistics unavailable: {exc}")
         report = WorklogReport(
             generated_at=self._now_factory(),
             period=self._period,
             repositories=summaries,
+            usage_text=usage_text,
+            usage_days=self._usage_days if usage_text else None,
             warnings=[redact_text(warning) for warning in warnings],
         )
         content = redact_text(self._renderer.render(report))

@@ -19,6 +19,7 @@ from agent_worklog.errors import (
 )
 from agent_worklog.harnesses.opencode.cli_runner import CommandRunner
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
+from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
 from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.renderers.markdown import MarkdownRenderer
@@ -131,6 +132,9 @@ def _build_report_service(
             timeout_seconds=settings.llm.timeout_seconds,
             fallback=RuleBasedSummarizer(),
         )
+    cli_settings = settings.harnesses.opencode.cli
+    stats_runner = CommandRunner(timeout_seconds=cli_settings.timeout_seconds)
+    days = usage_days(period, _now_in_timezone(settings.report.timezone))
     return ReportService(
         scan_service=_build_scan_service(settings, period, root_only),
         summarizer=summarizer,
@@ -138,6 +142,12 @@ def _build_report_service(
         period=period,
         output_path=output_path,
         now_factory=lambda: _now_in_timezone(settings.report.timezone),
+        usage_provider=lambda: collect_usage_stats(
+            runner=stats_runner,
+            executable=cli_settings.executable,
+            days=days,
+        ),
+        usage_days=days,
     )
 
 

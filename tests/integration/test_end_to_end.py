@@ -53,3 +53,5 @@ def test_end_to_end_weekly_worklog(
     assert "Session failed-export export failed" in content
     assert mocked_opencode.export_calls
     assert all(call[-1] == "--sanitize" for call in mocked_opencode.export_calls)
+    assert "## Usage" in content
+    assert "gpt-5-mini 1234 tokens" in content

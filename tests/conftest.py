@@ -147,6 +147,12 @@ class AcceptanceCommandRunner:
     def run(self, args: list[str]) -> CommandResult:
         if args[:2] == ["opencode", "db"]:
             return CommandResult(0, json.dumps(self.rows), "")
+        if args[:2] == ["opencode", "stats"]:
+            return CommandResult(
+                0,
+                "models: gpt-5-mini 1234 tokens\ntools: bash 12 calls\n",
+                "",
+            )
         if args[:2] == ["opencode", "export"]:
             self.export_calls.append(args)
             session_id = args[2]

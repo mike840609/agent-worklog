@@ -138,6 +138,14 @@ The request contains redacted structured evidence, not raw transcripts or raw me
 Timeouts, HTTP 429/5xx responses, and invalid structured output are retried once and then
 fall back to the deterministic summary. Use `--no-llm` to guarantee a local-only report.
 
+## Usage statistics
+
+Each report includes an OpenCode usage section built from `opencode stats`, covering
+models, tokens, and tools. OpenCode reports usage only for a window ending now, so the
+window shown starts at the report period's start and runs to generation time; it contains
+the report period but is wider than it. If `opencode stats` is unavailable, the section is
+omitted and a warning is recorded in the report.
+
 ## Output and overwrite behavior
 
 Choose an output path explicitly:
@@ -209,6 +217,7 @@ report.
 - OpenCode is the only supported harness.
 - The source is the OpenCode CLI, not direct SQLite access.
 - Markdown is the only report format.
+- Usage statistics cover a window ending at generation time, not the report period exactly.
 - There is no persistent cache or `inspect` command.
 - Historical sessions whose working directories were deleted may use a fallback identity.
 - Repository resolution reflects the Git metadata currently available at the recorded path.
