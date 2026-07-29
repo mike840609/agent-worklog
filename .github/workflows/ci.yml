@@ -10,6 +10,26 @@ permissions:
   contents: read
 
 jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Generate lockfile
+        run: uv lock
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uv-lockfile
+          path: uv.lock
+
   test:
     runs-on: ubuntu-latest
     strategy:
