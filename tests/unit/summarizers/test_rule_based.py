@@ -58,7 +58,11 @@ def test_rule_summary_limits_each_section_to_twenty_items() -> None:
                 session_id="s1",
                 repository_id="repo",
                 outcomes=[
-                    item(f"Completed {index:02d}", EvidenceStatus.COMPLETED, EvidenceConfidence.HIGH)
+                    item(
+                        f"Completed {index:02d}",
+                        EvidenceStatus.COMPLETED,
+                        EvidenceConfidence.HIGH,
+                    )
                     for index in range(22)
                 ],
             )

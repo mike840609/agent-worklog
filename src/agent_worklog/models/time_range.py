@@ -14,7 +14,7 @@ class DateRange(BaseModel):
     until: datetime
 
     @model_validator(mode="after")
-    def validate_order(self) -> "DateRange":
+    def validate_order(self) -> DateRange:
         if self.since.tzinfo is None or self.until.tzinfo is None:
             raise ValueError("date range values must be timezone-aware")
         if self.since >= self.until:
@@ -22,7 +22,7 @@ class DateRange(BaseModel):
         return self
 
     @classmethod
-    def from_days(cls, *, days: int, now: datetime) -> "DateRange":
+    def from_days(cls, *, days: int, now: datetime) -> DateRange:
         if days < 1:
             raise ValueError("days must be at least 1")
         if now.tzinfo is None:
@@ -30,7 +30,7 @@ class DateRange(BaseModel):
         return cls(since=now - timedelta(days=days), until=now)
 
     @classmethod
-    def previous_week(cls, *, now: datetime) -> "DateRange":
+    def previous_week(cls, *, now: datetime) -> DateRange:
         if now.tzinfo is None:
             raise ValueError("now must be timezone-aware")
         current_monday = (now - timedelta(days=now.weekday())).replace(

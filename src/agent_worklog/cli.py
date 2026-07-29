@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
@@ -211,7 +212,7 @@ def report(
     period: str | None = typer.Option(None, "--period"),
     since: str | None = typer.Option(None, "--since"),
     until: str | None = typer.Option(None, "--until"),
-    output: Path | None = typer.Option(None, "--output"),
+    output: Annotated[Path | None, typer.Option("--output")] = None,
     dry_run: bool = typer.Option(False, "--dry-run"),
     no_llm: bool = typer.Option(False, "--no-llm"),
     force: bool = typer.Option(False, "--force"),

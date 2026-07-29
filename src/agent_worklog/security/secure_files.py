@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 import os
-from pathlib import Path
 import shutil
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 
 from agent_worklog.errors import ReportOutputError
 

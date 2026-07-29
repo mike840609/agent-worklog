@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import json
+from datetime import UTC, datetime
 from typing import Protocol, cast
 
 from agent_worklog.errors import HarnessSourceError, SessionParseError
-from agent_worklog.harnesses.opencode.mapper import OpenCodeExportMapper
 from agent_worklog.harnesses.base import HarnessSessionSource
 from agent_worklog.harnesses.opencode.cli_runner import CommandResult
+from agent_worklog.harnesses.opencode.mapper import OpenCodeExportMapper
 from agent_worklog.models.session import AgentSession, SessionDescriptor
 from agent_worklog.models.time_range import DateRange
 

@@ -1,8 +1,8 @@
 """Safe subprocess execution for OpenCode and Git commands."""
 
-from dataclasses import dataclass
 import os
 import subprocess
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

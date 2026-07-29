@@ -30,7 +30,10 @@ def test_discovery_uses_interval_overlap_and_no_project_filter(fake_runner) -> N
 
 
 def test_discovery_accepts_rows_wrapper(fake_runner) -> None:
-    fake_runner.stdout = '{"rows":[{"id":"s1","project_id":"p1","directory":"/repo","time_created":1000,"time_updated":2000}]}'
+    fake_runner.stdout = (
+        '{"rows":[{"id":"s1","project_id":"p1","directory":"/repo",'
+        '"time_created":1000,"time_updated":2000}]}'
+    )
     source = OpenCodeCliSource(runner=fake_runner, executable="opencode")
     period = DateRange(
         since=datetime(1970, 1, 1, tzinfo=TZ),
