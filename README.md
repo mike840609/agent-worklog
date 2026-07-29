@@ -42,7 +42,7 @@ For development:
 ```bash
 git clone https://github.com/mike840609/agent-worklog.git
 cd agent-worklog
-uv sync --extra dev
+uv sync --locked --extra dev
 ```
 
 ## First run
@@ -207,11 +207,14 @@ report.
 ## Development checks
 
 ```bash
+uv sync --locked --extra dev
 uv run pytest --cov=agent_worklog --cov-fail-under=80
 uv run ruff check .
 uv run pyright
 uv build
 ```
+
+See [Releasing Agent Worklog](docs/releasing.md) for PyPI Trusted Publishing setup and the tag-based release process.
 
 ## License
 
