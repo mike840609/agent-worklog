@@ -82,10 +82,12 @@ class OpenCodeCliSource(HarnessSessionSource):
             directory = row.get("directory")
             project_id = row.get("project_id")
             parent_id = row.get("parent_id")
+            title = row.get("title")
             descriptors.append(
                 SessionDescriptor(
                     harness="opencode",
                     session_id=session_id,
+                    title=(title if isinstance(title, str) else None),
                     created_at=_from_millis(row.get("time_created")),
                     updated_at=_from_millis(row.get("time_updated")),
                     working_directory_hint=(directory if isinstance(directory, str) else None),

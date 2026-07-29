@@ -46,6 +46,10 @@ def test_end_to_end_weekly_worklog(
     assert "github.com/team-b/api" in content
     assert "super-secret-token" not in content
     assert content.count("### Agent Worklog") == 1
+    assert "#### Sessions" in content
+    assert "root-agent" in content
+    assert "#### Directories" in content
+    assert "/worktrees/agent-main" in content
     assert "Session failed-export export failed" in content
     assert mocked_opencode.export_calls
     assert all(call[-1] == "--sanitize" for call in mocked_opencode.export_calls)

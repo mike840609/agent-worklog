@@ -95,6 +95,8 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
     evidence = SessionEvidence(
         session_id=resolved.session.session_id,
         repository_id=resolved.repository.repository_id,
+        title=resolved.session.title,
+        working_directory=resolved.session.working_directory,
     )
     repository_id = resolved.repository.repository_id
 

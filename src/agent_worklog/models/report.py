@@ -7,6 +7,11 @@ from pydantic import BaseModel, Field
 from agent_worklog.models.time_range import DateRange
 
 
+class SessionRef(BaseModel):
+    session_id: str
+    title: str | None = None
+
+
 class RepositorySummary(BaseModel):
     repository_id: str
     display_name: str
@@ -16,6 +21,8 @@ class RepositorySummary(BaseModel):
     problems_resolved: list[str] = Field(default_factory=list)
     in_progress: list[str] = Field(default_factory=list)
     key_files: list[str] = Field(default_factory=list)
+    directories: list[str] = Field(default_factory=list)
+    sessions: list[SessionRef] = Field(default_factory=list)
     session_count: int = 0
     child_session_count: int = 0
     branches: list[str] = Field(default_factory=list)

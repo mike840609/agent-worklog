@@ -7,7 +7,11 @@ from agent_worklog.models.evidence import (
     RepositoryEvidence,
 )
 from agent_worklog.models.report import RepositorySummary
-from agent_worklog.summarizers.base import RepositorySummarizer
+from agent_worklog.summarizers.base import (
+    RepositorySummarizer,
+    session_directories,
+    session_refs,
+)
 
 _MAX_ITEMS = 20
 
@@ -77,6 +81,8 @@ class RuleBasedSummarizer(RepositorySummarizer):
             problems_resolved=_limited(problems_resolved),
             in_progress=_limited(in_progress),
             key_files=_limited(key_files),
+            directories=session_directories(evidence),
+            sessions=session_refs(evidence),
             session_count=session_count,
             child_session_count=evidence.child_session_count,
             branches=_unique_sorted(evidence.branches),

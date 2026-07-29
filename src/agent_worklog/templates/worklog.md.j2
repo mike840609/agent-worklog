@@ -42,6 +42,20 @@ Sessions: {{ repository.session_count }}{% if repository.child_session_count %} 
 - `{{ item }}`
 {% endfor %}
 {% endif %}
+{% if repository.directories %}
+
+#### Directories
+{% for item in repository.directories %}
+- `{{ item }}`
+{% endfor %}
+{% endif %}
+{% if repository.sessions %}
+
+#### Sessions
+{% for item in repository.sessions %}
+- {{ item.title or item.session_id }} — `{{ item.session_id }}`
+{% endfor %}
+{% endif %}
 {% if repository.branches %}
 
 #### Branches

@@ -10,7 +10,11 @@ from pydantic import BaseModel, ValidationError
 
 from agent_worklog.models.evidence import RepositoryEvidence
 from agent_worklog.models.report import RepositorySummary
-from agent_worklog.summarizers.base import RepositorySummarizer
+from agent_worklog.summarizers.base import (
+    RepositorySummarizer,
+    session_directories,
+    session_refs,
+)
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 
 
@@ -170,6 +174,8 @@ class OpenAICompatibleSummarizer(RepositorySummarizer):
                     problems_resolved=result.problems_resolved,
                     in_progress=result.in_progress,
                     key_files=result.key_files,
+                    directories=session_directories(evidence),
+                    sessions=session_refs(evidence),
                     session_count=len(evidence.sessions),
                     child_session_count=evidence.child_session_count,
                     branches=evidence.branches,

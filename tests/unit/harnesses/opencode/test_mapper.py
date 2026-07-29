@@ -48,3 +48,30 @@ def test_load_raises_session_parse_error_on_export_failure(fake_runner) -> None:
 
     with pytest.raises(SessionParseError, match="session missing"):
         source.load(SessionDescriptor(harness="opencode", session_id="s1"))
+
+
+def test_mapper_falls_back_to_descriptor_title() -> None:
+    descriptor = SessionDescriptor(
+        harness="opencode",
+        session_id="s1",
+        title="Database title",
+    )
+
+    session = OpenCodeExportMapper().map({"info": {}, "messages": []}, descriptor)
+
+    assert session.title == "Database title"
+
+
+def test_mapper_prefers_export_title_over_descriptor_title() -> None:
+    descriptor = SessionDescriptor(
+        harness="opencode",
+        session_id="s1",
+        title="Database title",
+    )
+
+    session = OpenCodeExportMapper().map(
+        {"info": {"title": "Export title"}, "messages": []},
+        descriptor,
+    )
+
+    assert session.title == "Export title"

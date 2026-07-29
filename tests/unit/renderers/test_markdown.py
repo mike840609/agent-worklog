@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.models.report import RepositorySummary, WorklogReport
+from agent_worklog.models.report import RepositorySummary, SessionRef, WorklogReport
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.renderers.markdown import MarkdownRenderer
 
@@ -24,6 +24,11 @@ def sample_report() -> WorklogReport:
                 completed=["Tests passed"],
                 in_progress=["Add cache"],
                 key_files=["src/agent_worklog/cli.py"],
+                directories=["/repos/agent-worklog", "/worktrees/agent-feature"],
+                sessions=[
+                    SessionRef(session_id="ses_abc", title="Fix the exporter"),
+                    SessionRef(session_id="ses_def"),
+                ],
                 session_count=2,
                 child_session_count=1,
                 branches=["main"],
@@ -49,3 +54,13 @@ def test_markdown_omits_empty_problem_section() -> None:
 
     assert "#### Problems Resolved" not in output
     assert "#### Completed" in output
+
+
+def test_markdown_lists_sessions_and_directories() -> None:
+    output = MarkdownRenderer().render(sample_report())
+
+    assert "#### Directories" in output
+    assert "`/worktrees/agent-feature`" in output
+    assert "#### Sessions" in output
+    assert "Fix the exporter — `ses_abc`" in output
+    assert "ses_def — `ses_def`" in output

@@ -195,7 +195,7 @@ class OpenCodeExportMapper:
             parent_session_id=(
                 parent_id if isinstance(parent_id, str) else descriptor.parent_session_id
             ),
-            title=title if isinstance(title, str) else None,
+            title=title if isinstance(title, str) else descriptor.title,
             created_at=created_at,
             updated_at=updated_at,
             working_directory=(

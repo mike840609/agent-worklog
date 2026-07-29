@@ -89,3 +89,25 @@ def test_assistant_completion_claim_is_low_confidence_unknown() -> None:
 
     assert evidence.outcomes[0].status == "unknown"
     assert evidence.outcomes[0].confidence == "low"
+
+
+def test_extraction_carries_session_title_and_directory() -> None:
+    resolved = ResolvedSession(
+        session=AgentSession(
+            harness="opencode",
+            session_id="s1",
+            title="Fix the exporter",
+            working_directory="/repos/agent-worklog",
+        ),
+        repository=RepositoryIdentity(
+            repository_id="git:github.com/mike/agent-worklog",
+            display_name="Agent Worklog",
+            identity_type=RepositoryIdentityType.GIT_REMOTE,
+            resolution_method="git_origin_remote",
+        ),
+    )
+
+    evidence = extract_evidence(resolved)
+
+    assert evidence.title == "Fix the exporter"
+    assert evidence.working_directory == "/repos/agent-worklog"
