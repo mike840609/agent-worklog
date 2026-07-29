@@ -7,39 +7,9 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  lockfile:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - uses: astral-sh/setup-uv@v6
-
-      - name: Generate lockfile
-        run: uv lock
-
-      - name: Commit lockfile
-        if: github.event_name == 'pull_request'
-        run: |
-          if git diff --quiet -- uv.lock && git ls-files --error-unmatch uv.lock >/dev/null 2>&1; then
-            echo "uv.lock is already current"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add uv.lock
-          git commit -m "chore: add uv lockfile"
-          git push origin HEAD:${{ github.head_ref }}
-
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -62,7 +32,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Test with coverage
         run: uv run pytest --cov=agent_worklog --cov-fail-under=80
