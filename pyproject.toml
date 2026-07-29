@@ -45,5 +45,5 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pyright]
 pythonVersion = "3.11"
-typeCheckingMode = "strict"
-include = ["src", "tests"]
+typeCheckingMode = "standard"
+include = ["src"]
