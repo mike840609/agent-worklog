@@ -1,0 +1,13 @@
+{
+  "rows": [
+    {
+      "id": "s1",
+      "project_id": "project-1",
+      "parent_id": null,
+      "directory": "/tmp/repo",
+      "title": "Build report",
+      "time_created": 1785100800000,
+      "time_updated": 1785187200000
+    }
+  ]
+}

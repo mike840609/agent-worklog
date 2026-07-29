@@ -1,0 +1,29 @@
+"""Report output models."""
+
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+from agent_worklog.models.time_range import DateRange
+
+
+class RepositorySummary(BaseModel):
+    repository_id: str
+    display_name: str
+    normalized_remote: str | None = None
+    summary: str = ""
+    completed: list[str] = Field(default_factory=list)
+    problems_resolved: list[str] = Field(default_factory=list)
+    in_progress: list[str] = Field(default_factory=list)
+    key_files: list[str] = Field(default_factory=list)
+    session_count: int = 0
+    child_session_count: int = 0
+    branches: list[str] = Field(default_factory=list)
+
+
+class WorklogReport(BaseModel):
+    schema_version: str = "1"
+    generated_at: datetime
+    period: DateRange
+    repositories: list[RepositorySummary]
+    warnings: list[str] = Field(default_factory=list)
