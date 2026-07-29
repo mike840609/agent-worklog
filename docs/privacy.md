@@ -9,9 +9,13 @@ document defines what the MVP protects and what remains the operator's responsib
 2. It requests each transcript with `opencode export <session-id> --sanitize`.
 3. Transcript JSON is parsed in memory and filtered to the requested activity range.
 4. Structured evidence is recursively redacted.
-5. The redacted evidence is rendered locally or optionally sent to an OpenAI-compatible
+5. `report` additionally requests aggregate usage counters with `opencode stats`, for a
+   trailing window that contains the report period. That output holds model, token, and
+   tool totals rather than session content, and it is redacted before it reaches the
+   report.
+6. The redacted evidence is rendered locally or optionally sent to an OpenAI-compatible
    endpoint.
-6. Markdown is written with an atomic replacement and owner-only `0600` permissions on
+7. Markdown is written with an atomic replacement and owner-only `0600` permissions on
    POSIX systems.
 
 Agent Worklog does not persist raw OpenCode exports. The secure writer may create a
@@ -31,12 +35,13 @@ The redactor covers common patterns including:
 - JWT-like tokens;
 - private-key blocks.
 
-Redaction is applied recursively to evidence metadata, before rendering, before verbose
-warnings are written to reports, and before optional LLM requests.
+Redaction is applied recursively to evidence metadata, to OpenCode usage output, before
+rendering, before verbose warnings are written to reports, and before optional LLM
+requests.
 
 Pattern-based redaction is not a proof that every secret has been removed. New credential
-formats, arbitrary customer identifiers, source code, internal hostnames, filenames, and
-business-sensitive descriptions may remain.
+formats, arbitrary customer identifiers, source code, internal hostnames, filenames,
+working-directory paths, session titles, and business-sensitive descriptions may remain.
 
 ## OpenCode sanitization
 
@@ -50,6 +55,11 @@ An HTTP client is constructed only when LLM support is enabled, `--no-llm` is ab
 the configured API-key environment variable exists. The payload contains canonical,
 redacted evidence rather than raw transcripts or raw metadata.
 
+That evidence includes per-session titles and absolute working directories. They are
+redacted for secrets like every other field, but redaction does not remove what a path
+identifies. A directory such as `/Users/<operator>/work/<client>/service` leaves the
+machine with the request, usernames and client or employer names included.
+
 The endpoint operator may retain requests according to its own policies. Use
 `--no-llm` or set `AGENT_WORKLOG_LLM__ENABLED=false` when external processing is not
 permitted.
@@ -62,8 +72,16 @@ A generated report can still reveal proprietary information, including:
 - user goals and feature descriptions;
 - commands and test names;
 - filenames and branch names;
+- absolute working-directory paths, printed verbatim per repository;
+- session titles, which are free text written during the session;
+- aggregate model, token, and tool usage counters;
 - errors and unresolved work;
 - the fact that particular repositories were active.
+
+Working-directory paths deserve separate attention. Redaction targets credential patterns
+and deliberately leaves paths intact, so a report can state where work happened. On a
+typical machine those paths carry the operator's username and often a client or employer
+name, for example `/Users/<operator>/work/<client>/service`.
 
 Treat reports as internal engineering records. Review them before posting to chat systems,
 issue trackers, shared drives, or public repositories.
