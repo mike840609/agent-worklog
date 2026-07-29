@@ -2,6 +2,8 @@
 
 Agent Worklog publishes wheels and source distributions to PyPI through GitHub Actions and PyPI Trusted Publishing. No long-lived PyPI API token is stored in GitHub.
 
+The repository's default and release branch is `main`.
+
 ## One-time PyPI setup
 
 Create a Pending Trusted Publisher on PyPI with these exact values:
