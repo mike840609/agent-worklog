@@ -13,8 +13,7 @@ from agent_worklog.repositories.remote import normalize_git_remote, repository_d
 
 
 class Runner(Protocol):
-    def run(self, args: list[str]) -> CommandResult:
-        """Run one command."""
+    def run(self, args: list[str]) -> CommandResult: ...
 
 
 def _hash_identity(value: str) -> str:

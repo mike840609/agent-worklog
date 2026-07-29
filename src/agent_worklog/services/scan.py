@@ -19,8 +19,7 @@ from agent_worklog.sessions.hierarchy import group_resolved_sessions
 
 
 class Resolver(Protocol):
-    def resolve(self, session: AgentSession) -> RepositoryIdentity:
-        """Resolve one session to a canonical repository."""
+    def resolve(self, session: AgentSession) -> RepositoryIdentity: ...
 
 
 @dataclass(frozen=True)

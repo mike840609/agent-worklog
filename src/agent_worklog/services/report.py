@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from agent_worklog.extraction.pipeline import extract_evidence
 from agent_worklog.models.evidence import RepositoryEvidence, SessionEvidence
@@ -21,8 +21,7 @@ from agent_worklog.summarizers.base import RepositorySummarizer
 
 
 class Renderer(Protocol):
-    def render(self, report: WorklogReport) -> str:
-        """Render a worklog report."""
+    def render(self, report: WorklogReport) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -98,7 +97,7 @@ class ReportService:
             summaries.append(self._summarizer.summarize(evidence))
             drain_warnings = getattr(self._summarizer, "drain_warnings", None)
             if callable(drain_warnings):
-                warnings.extend(drain_warnings())
+                warnings.extend(cast(list[str], drain_warnings()))
         summaries.sort(key=lambda item: item.display_name.casefold())
         report = WorklogReport(
             generated_at=self._now_factory(),

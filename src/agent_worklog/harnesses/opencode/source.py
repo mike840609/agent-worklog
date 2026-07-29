@@ -15,8 +15,7 @@ from agent_worklog.models.time_range import DateRange
 
 
 class Runner(Protocol):
-    def run(self, args: list[str]) -> CommandResult:
-        """Run one command."""
+    def run(self, args: list[str]) -> CommandResult: ...
 
 
 def _from_millis(value: object) -> datetime | None:
@@ -71,25 +70,18 @@ class OpenCodeCliSource(HarnessSessionSource):
             session_id = row.get("id")
             if not isinstance(session_id, str) or not session_id:
                 continue
+            directory = row.get("directory")
+            project_id = row.get("project_id")
+            parent_id = row.get("parent_id")
             descriptors.append(
                 SessionDescriptor(
                     harness="opencode",
                     session_id=session_id,
                     created_at=_from_millis(row.get("time_created")),
                     updated_at=_from_millis(row.get("time_updated")),
-                    working_directory_hint=(
-                        row.get("directory") if isinstance(row.get("directory"), str) else None
-                    ),
-                    project_id_hint=(
-                        row.get("project_id")
-                        if isinstance(row.get("project_id"), str)
-                        else None
-                    ),
-                    parent_session_id=(
-                        row.get("parent_id")
-                        if isinstance(row.get("parent_id"), str)
-                        else None
-                    ),
+                    working_directory_hint=(directory if isinstance(directory, str) else None),
+                    project_id_hint=(project_id if isinstance(project_id, str) else None),
+                    parent_session_id=(parent_id if isinstance(parent_id, str) else None),
                 )
             )
         return descriptors

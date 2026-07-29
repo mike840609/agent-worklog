@@ -8,8 +8,7 @@ from agent_worklog.harnesses.opencode.cli_runner import CommandResult
 
 
 class Runner(Protocol):
-    def run(self, args: list[str]) -> CommandResult:
-        """Run one command."""
+    def run(self, args: list[str]) -> CommandResult: ...
 
 
 @dataclass(frozen=True)
