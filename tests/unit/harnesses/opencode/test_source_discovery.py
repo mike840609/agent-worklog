@@ -31,7 +31,7 @@ def test_discovery_uses_interval_overlap_and_no_project_filter(fake_runner) -> N
 
 def test_discovery_accepts_rows_wrapper(fake_runner) -> None:
     fake_runner.stdout = (
-        '{"rows":[{"id":"s1","project_id":"p1","directory":"/repo",'
+        '{"rows":[{"id":"s1","project_id":"p1","directory":"/repo","title":"Fix bug",'
         '"time_created":1000,"time_updated":2000}]}'
     )
     source = OpenCodeCliSource(runner=fake_runner, executable="opencode")
@@ -45,6 +45,7 @@ def test_discovery_accepts_rows_wrapper(fake_runner) -> None:
     assert descriptors[0].session_id == "s1"
     assert descriptors[0].working_directory_hint == "/repo"
     assert descriptors[0].project_id_hint == "p1"
+    assert descriptors[0].title == "Fix bug"
     assert descriptors[0].created_at is not None
 
 

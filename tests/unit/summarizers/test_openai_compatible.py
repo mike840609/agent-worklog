@@ -9,6 +9,7 @@ from agent_worklog.models.evidence import (
     RepositoryEvidence,
     SessionEvidence,
 )
+from agent_worklog.models.report import SessionRef
 from agent_worklog.summarizers.openai_compatible import OpenAICompatibleSummarizer
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 
@@ -23,6 +24,8 @@ def repository_evidence() -> RepositoryEvidence:
             SessionEvidence(
                 session_id="s1",
                 repository_id="git:github.com/mike/agent-worklog",
+                title="Fix the exporter",
+                working_directory="/repos/agent-worklog",
                 goals=[
                     EvidenceItem(
                         text="Add report",
@@ -95,6 +98,10 @@ def test_llm_payload_contains_evidence_not_raw_transcript() -> None:
     assert "source_activity_ids" in serialized
     assert "raw_metadata" not in serialized
     assert '"messages": []' not in serialized
+    # Session identifiers and directories must come from evidence, never the LLM response:
+    # the structured JSON above carries no "sessions"/"directories" keys at all.
+    assert summary.sessions == [SessionRef(session_id="s1", title="Fix the exporter")]
+    assert summary.directories == ["/repos/agent-worklog"]
 
 
 def test_invalid_llm_json_retries_once_then_falls_back() -> None:
