@@ -1,4 +1,5 @@
 from agent_worklog.config import AppSettings
+from agent_worklog.harnesses.opencode.cli_runner import CommandResult
 from agent_worklog.services.doctor import run_doctor
 
 
@@ -16,3 +17,25 @@ def test_doctor_checks_opencode_version_db_path_and_git(fake_runner) -> None:
         ["git", "--version"],
     ]
     assert all(check.ok for check in result.checks)
+
+
+def test_doctor_reports_a_timed_out_check_instead_of_crashing(fake_runner) -> None:
+    """`CommandRunner` reports timeouts as failed results rather than raising."""
+
+    fake_runner.set_result(
+        "opencode db path",
+        CommandResult(
+            returncode=124,
+            stdout="",
+            stderr="opencode timed out after 30.0 seconds",
+        ),
+    )
+
+    result = run_doctor(AppSettings(), runner=fake_runner)
+
+    assert result.ok is False
+    database_check = next(
+        check for check in result.checks if check.name == "opencode database"
+    )
+    assert database_check.ok is False
+    assert "timed out" in database_check.detail
