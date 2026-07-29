@@ -58,7 +58,9 @@ def test_report_refuses_overwrite_without_force(
     monkeypatch.setattr(
         cli,
         "_build_report_service",
-        lambda settings, period, output_path, no_llm: StubReportService(output_path, period),
+        lambda settings, period, output_path, no_llm, root_only=False: StubReportService(
+            output_path, period
+        ),
     )
 
     result = runner.invoke(
@@ -76,7 +78,7 @@ def test_report_supports_previous_calendar_week(
 ) -> None:
     captured: dict[str, DateRange] = {}
 
-    def build(settings, period, output_path, no_llm):
+    def build(settings, period, output_path, no_llm, root_only=False):
         captured["period"] = period
         return StubReportService(output_path, period)
 
@@ -117,7 +119,11 @@ def test_no_llm_never_constructs_http_summarizer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "secret-key")
-    monkeypatch.setattr(cli, "_build_scan_service", lambda settings, period: object())
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        lambda settings, period, root_only=False: object(),
+    )
 
     def fail_constructor(**kwargs):
         raise AssertionError("LLM summarizer must not be constructed")
@@ -132,3 +138,26 @@ def test_no_llm_never_constructs_http_summarizer(
     )
 
     assert service is not None
+
+
+def test_scan_passes_root_only_to_the_scan_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, bool] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={},
+                warnings=[],
+            )
+
+    def build(settings, period, root_only=False):
+        captured["root_only"] = root_only
+        return StubScanService()
+
+    monkeypatch.setattr(cli, "_build_scan_service", build)
+
+    result = runner.invoke(cli.app, ["scan", "--days", "7", "--root-only"])
+
+    assert result.exit_code == 0
+    assert captured["root_only"] is True

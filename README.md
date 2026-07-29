@@ -93,6 +93,16 @@ agent-worklog report \
 Exactly one of `--period`, `--days`, or `--since` is required. `--until` requires
 `--since`.
 
+## Subagent sessions
+
+Child/subagent sessions are included by default and are attributed to the repository they
+actually ran in, so a subagent that worked in another checkout appears under that
+repository. To report only root sessions:
+
+```bash
+agent-worklog report --period last-week --root-only
+```
+
 ## Repository grouping
 
 Agent Worklog resolves every loaded session independently before considering
