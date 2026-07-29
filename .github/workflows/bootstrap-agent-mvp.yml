@@ -23,7 +23,11 @@ jobs:
           cat .bootstrap/chunk* | base64 --decode > /tmp/agent-worklog.tar.xz
           echo "14c1b3da53b6f23e544b4762a07723cf209a53b0ffd62ce0392f5f57f9c3c307  /tmp/agent-worklog.tar.xz" | sha256sum --check --strict
           tar -xJf /tmp/agent-worklog.tar.xz -C .
-          rm -rf .bootstrap .github/workflows/bootstrap.yml
+          rm -rf \
+            .bootstrap \
+            .github/workflows/bootstrap.yml \
+            .github/workflows/ci.yml \
+            .github/workflows/release.yml
 
       - name: Commit implementation
         shell: bash
