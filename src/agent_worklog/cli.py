@@ -22,6 +22,7 @@ from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
 from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
 from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
+from agent_worklog.progress import ProgressReporter
 from agent_worklog.renderers.markdown import MarkdownRenderer
 from agent_worklog.repositories.resolver import RepositoryResolver
 from agent_worklog.services.doctor import run_doctor
@@ -102,6 +103,8 @@ def _build_scan_service(
     settings: AppSettings,
     period: DateRange,
     root_only: bool = False,
+    *,
+    progress: ProgressReporter | None = None,
 ) -> ScanService:
     cli_settings = settings.harnesses.opencode.cli
     source_runner = CommandRunner(timeout_seconds=cli_settings.timeout_seconds)
@@ -114,6 +117,7 @@ def _build_scan_service(
         ),
         period=period,
         resolver=RepositoryResolver(runner=git_runner),
+        progress=progress,
     )
 
 
@@ -125,6 +129,7 @@ def _build_report_service(
     root_only: bool = False,
     *,
     now: datetime,
+    progress: ProgressReporter | None = None,
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
@@ -142,7 +147,12 @@ def _build_report_service(
     stats_runner = CommandRunner(timeout_seconds=cli_settings.timeout_seconds)
     days = usage_days(period, now)
     return ReportService(
-        scan_service=_build_scan_service(settings, period, root_only),
+        scan_service=_build_scan_service(
+            settings,
+            period,
+            root_only,
+            progress=progress,
+        ),
         summarizer=summarizer,
         renderer=MarkdownRenderer(),
         period=period,
@@ -154,6 +164,7 @@ def _build_report_service(
             days=days,
         ),
         usage_days=days,
+        progress=progress,
     )
 
 
@@ -220,9 +231,15 @@ def scan(
             timezone=settings.report.timezone,
             now=now,
         )
-        result = _build_scan_service(settings, selected_period, root_only).scan()
-        if result.loaded_session_count == 0:
-            raise NoSessionsError("no OpenCode activity found in the requested period")
+        with reporter.progress() as progress:
+            result = _build_scan_service(
+                settings,
+                selected_period,
+                root_only,
+                progress=progress,
+            ).scan()
+            if result.loaded_session_count == 0:
+                raise NoSessionsError("no OpenCode activity found in the requested period")
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
         return
@@ -269,17 +286,19 @@ def report(
             now=now,
         )
         output_path = output or _default_output_path(settings, selected_period)
-        service = _build_report_service(
-            settings,
-            selected_period,
-            output_path,
-            no_llm,
-            root_only,
-            now=now,
-        )
-        result = service.generate(force=force, dry_run=dry_run)
-        if not result.report.repositories:
-            raise NoSessionsError("no OpenCode activity found in the requested period")
+        with reporter.progress() as progress:
+            service = _build_report_service(
+                settings,
+                selected_period,
+                output_path,
+                no_llm,
+                root_only,
+                now=now,
+                progress=progress,
+            )
+            result = service.generate(force=force, dry_run=dry_run)
+            if not result.report.repositories:
+                raise NoSessionsError("no OpenCode activity found in the requested period")
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
         return
