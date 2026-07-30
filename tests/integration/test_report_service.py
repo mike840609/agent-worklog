@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -6,11 +7,13 @@ import pytest
 
 from agent_worklog.errors import HarnessSourceError
 from agent_worklog.models.time_range import DateRange
+from agent_worklog.progress import ProgressReporter, ProgressStage
 from agent_worklog.renderers.markdown import MarkdownRenderer
 from agent_worklog.services.report import ReportService
 from agent_worklog.services.scan import ScanService
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 from tests.integration.test_scan_service import FakeSource, StaticResolver
+from tests.progress import RecordingProgressReporter
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -22,14 +25,28 @@ def period() -> DateRange:
     )
 
 
-def service(source: FakeSource, output: Path) -> ReportService:
+def service(
+    source: FakeSource,
+    output: Path,
+    *,
+    progress: ProgressReporter | None = None,
+    usage_provider: Callable[[], str] | None = None,
+) -> ReportService:
     return ReportService(
-        scan_service=ScanService(source=source, period=period(), resolver=StaticResolver()),
+        scan_service=ScanService(
+            source=source,
+            period=period(),
+            resolver=StaticResolver(),
+            progress=progress,
+        ),
         summarizer=RuleBasedSummarizer(),
         renderer=MarkdownRenderer(),
         period=period(),
         output_path=output,
         now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        usage_provider=usage_provider,
+        usage_days=10 if usage_provider is not None else None,
+        progress=progress,
     )
 
 
@@ -68,13 +85,20 @@ class WarningSummarizer:
 def test_llm_failure_warning_is_written_into_report(tmp_path: Path) -> None:
     source = FakeSource()
     output = tmp_path / "report.md"
+    progress = RecordingProgressReporter()
     report_service = ReportService(
-        scan_service=ScanService(source=source, period=period(), resolver=StaticResolver()),
+        scan_service=ScanService(
+            source=source,
+            period=period(),
+            resolver=StaticResolver(),
+            progress=progress,
+        ),
         summarizer=WarningSummarizer(),
         renderer=MarkdownRenderer(),
         period=period(),
         output_path=output,
         now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        progress=progress,
     )
 
     result = report_service.generate(force=False)
@@ -82,6 +106,10 @@ def test_llm_failure_warning_is_written_into_report(tmp_path: Path) -> None:
     assert output.exists()
     assert any("LLM" in warning for warning in result.warnings)
     assert "LLM summary unavailable" in output.read_text()
+    summary_start = progress.events.index(
+        ("start", ProgressStage.SUMMARIZING_REPOSITORIES, 1)
+    )
+    assert progress.events[summary_start + 1] == ("advance", 1)
 
 
 def test_usage_statistics_are_written_into_the_report(tmp_path: Path) -> None:
@@ -151,3 +179,52 @@ def test_usage_failure_becomes_a_warning(tmp_path: Path) -> None:
     assert result.report.usage_text is None
     assert any("usage statistics unavailable" in warning for warning in result.warnings)
     assert "## Usage" not in output.read_text()
+
+
+def test_report_emits_repository_and_output_stages(tmp_path: Path) -> None:
+    progress = RecordingProgressReporter()
+
+    service(
+        FakeSource(),
+        tmp_path / "report.md",
+        progress=progress,
+        usage_provider=lambda: "gpt-5-mini 1234 tokens",
+    ).generate()
+
+    assert progress.events == [
+        ("start", ProgressStage.DISCOVERING_SESSIONS, None),
+        ("start", ProgressStage.EXPORTING_SESSIONS, 3),
+        ("advance", 1),
+        ("advance", 2),
+        ("advance", 3),
+        ("start", ProgressStage.PREPARING_EVIDENCE, 1),
+        ("advance", 1),
+        ("start", ProgressStage.SUMMARIZING_REPOSITORIES, 1),
+        ("advance", 1),
+        ("start", ProgressStage.COLLECTING_USAGE, None),
+        ("start", ProgressStage.RENDERING_REPORT, None),
+        ("start", ProgressStage.WRITING_REPORT, None),
+    ]
+
+
+def test_report_dry_run_skips_write_after_usage_failure(tmp_path: Path) -> None:
+    def failing_provider() -> str:
+        raise HarnessSourceError("stats unsupported")
+
+    progress = RecordingProgressReporter()
+    result = service(
+        FakeSource(),
+        tmp_path / "report.md",
+        progress=progress,
+        usage_provider=failing_provider,
+    ).generate(dry_run=True)
+
+    started = [
+        event[1]
+        for event in progress.events
+        if event[0] == "start"
+    ]
+    assert ProgressStage.COLLECTING_USAGE in started
+    assert ProgressStage.RENDERING_REPORT in started
+    assert ProgressStage.WRITING_REPORT not in started
+    assert any("usage statistics unavailable" in warning for warning in result.warnings)
