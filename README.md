@@ -17,20 +17,16 @@ engineers time.
 
 ## Capabilities
 
-Agent Worklog works with OpenCode and Claude Code and can:
+Agent Worklog supports OpenCode and Claude Code. Across supported coding-agent
+harnesses, it can:
 
-- Find OpenCode sessions across all projects, no matter which folder you are in.
-- Read Claude Code sessions straight from `~/.claude/projects`, including subagent
-  transcripts.
+- Find coding-agent sessions across all projects, no matter which folder you are in.
 - Select sessions from recent days, a calendar week, or a specific date range.
-- For OpenCode: export sessions with `opencode export --sanitize`. Claude Code has no
-  export command, so this step has no equivalent there.
 - Group Git worktrees that belong to the same repository.
-- Keep child sessions linked to the correct repository.
-- Leave out subagent sessions with `--root-only` when you only want root sessions.
+- Keep child and subagent sessions linked to the correct repository, or leave them out
+  with `--root-only`.
 - List each repository's session titles and working folders in the report.
-- Summarize token usage per model: from `opencode stats` for OpenCode, and from the
-  counters recorded in the sessions themselves for Claude Code.
+- Summarize model and token usage when the selected harness provides it.
 - Include source activity IDs and confidence levels as supporting information.
 - Check session information for common secret patterns before creating a report or
   sending data to an optional LLM.
