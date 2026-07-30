@@ -29,11 +29,12 @@ Agent Worklog works with OpenCode and Claude Code and can:
 - Keep child sessions linked to the correct repository.
 - Leave out subagent sessions with `--root-only` when you only want root sessions.
 - List each repository's session titles and working folders in the report.
-- Summarize models, tokens, and tools from `opencode stats`.
+- Summarize token usage per model: from `opencode stats` for OpenCode, and from the
+  counters recorded in the sessions themselves for Claude Code.
 - Include source activity IDs and confidence levels as supporting information.
 - Check session information for common secret patterns before creating a report or
   sending data to an optional LLM.
-- Continue when one session cannot be exported and add a warning to the report.
+- Continue when one session cannot be read and add a warning to the report.
 - On POSIX systems, write reports with owner-only `0600` permissions.
 
 ## Requirements
@@ -100,6 +101,14 @@ agent-worklog report --period last-week --no-llm
 ```
 
 The default output is written under `reports/`.
+
+Those three commands default to `--harness opencode`. For Claude Code, add `--harness
+claude-code` to each — no OpenCode installation is needed:
+
+```bash
+agent-worklog doctor --harness claude-code
+agent-worklog report --harness claude-code --period last-week --no-llm
+```
 
 ## Command reference
 
@@ -192,7 +201,8 @@ It uses the following information in order:
 
 1. The Git `origin` remote.
 2. An ID created from a hash of the shared Git directory.
-3. The OpenCode project ID.
+3. The harness project ID — OpenCode's project ID, or the per-project directory name
+   Claude Code stores transcripts under.
 4. An ID created from a hash of the working directory.
 5. A separate unknown ID for the session.
 
@@ -318,8 +328,9 @@ for more details about data safety and current limits.
 
 ## Failure handling and exit codes
 
-If one session cannot be exported, Agent Worklog skips it and adds a warning to the
-report. If no sessions can be exported, the command stops with an error instead of
+If one session cannot be read, Agent Worklog skips it and adds a warning to the report.
+That means a failed `opencode export` for OpenCode, or an unreadable transcript file for
+Claude Code. If no sessions can be read, the command stops with an error instead of
 creating an empty report.
 
 | Code | Meaning |

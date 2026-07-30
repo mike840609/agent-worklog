@@ -26,10 +26,10 @@ Agent Worklog 支援 OpenCode 與 Claude Code，可以：
 - 讓子工作階段（child session）連結到正確的 repository。
 - 使用 `--root-only` 排除 subagent 工作階段，只保留根工作階段。
 - 在報告中列出每個 repository 的工作階段標題與工作資料夾。
-- 依 `opencode stats` 彙整模型、token 與工具的使用狀況。
+- 依模型彙整 token 使用量：OpenCode 取自 `opencode stats`，Claude Code 取自工作階段本身記錄的計數。
 - 附上來源活動 ID 與信心程度作為佐證資訊。
 - 在產生報告或送資料給選用的 LLM 之前，先檢查工作階段資訊中常見的機密字串樣式。
-- 某個工作階段匯出失敗時仍會繼續執行，並在報告中加上警告。
+- 某個工作階段讀取失敗時仍會繼續執行，並在報告中加上警告。
 - 在 POSIX 系統上，以僅擁有者可讀寫的 `0600` 權限寫出報告。
 
 ## 系統需求
@@ -95,6 +95,14 @@ agent-worklog report --period last-week --no-llm
 ```
 
 預設輸出會寫到 `reports/` 底下。
+
+上面三個指令預設都是 `--harness opencode`。要用 Claude Code 的話，各自加上 `--harness
+claude-code` 即可，不需要安裝 OpenCode：
+
+```bash
+agent-worklog doctor --harness claude-code
+agent-worklog report --harness claude-code --period last-week --no-llm
+```
 
 ## 指令參考
 
@@ -179,7 +187,7 @@ Agent Worklog 會逐一檢查每個工作階段，決定它屬於哪個 reposito
 
 1. Git `origin` remote。
 2. 由共用 Git 目錄雜湊產生的 ID。
-3. OpenCode 專案 ID。
+3. harness 的專案 ID——OpenCode 的專案 ID，或 Claude Code 用來存放逐字紀錄的各專案資料夾名稱。
 4. 由工作目錄雜湊產生的 ID。
 5. 該工作階段專用的 unknown ID。
 
@@ -266,7 +274,7 @@ Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒
 
 ## 失敗處理與結束代碼
 
-如果某個工作階段無法匯出，Agent Worklog 會略過它並在報告中加上警告。如果所有工作階段都無法匯出，指令會直接以錯誤結束，而不會產生空白報告。
+如果某個工作階段無法讀取，Agent Worklog 會略過它並在報告中加上警告——OpenCode 是 `opencode export` 失敗，Claude Code 則是逐字紀錄檔案無法讀取。如果所有工作階段都無法讀取，指令會直接以錯誤結束，而不會產生空白報告。
 
 | 代碼 | 意義 |
 |---:|---|
