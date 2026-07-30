@@ -137,6 +137,12 @@ def _redirects_stderr(command: str) -> bool:
     matter what happened, so `stderr_empty` carries no information about them.
     Measured against real transcripts, 96 of 113 inferences came from commands
     shaped like this.
+
+    ponytail: plain substring match, not shell-aware. A heredoc that *writes about*
+    redirection — `cat <<EOF > doc.md` containing the text `cmd &> file` — matches
+    too. That costs a suppressed annotation on a command whose outcome was already
+    unobserved, never a wrong claim, and never the `commands` list, so the trade is
+    worth it. Parse the shell only if a real verification result goes missing.
     """
 
     return any(marker in command for marker in _STDERR_REDIRECTION_MARKERS)

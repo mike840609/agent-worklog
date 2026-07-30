@@ -39,8 +39,11 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
-# importlib import mode keeps same-named test modules in sibling harness
-# directories (test_mapper.py under opencode/ and claude_code/) from colliding.
+# ponytail: importlib import mode is defensive, not a fix for a live bug. The two
+# test_mapper.py files under opencode/ and claude_code/ resolve to distinct module
+# names today only because claude_code/ has an __init__.py and opencode/ does not.
+# A third harness adding test_mapper.py without one would collide; this removes
+# the dependency on that asymmetry.
 addopts = "-ra --import-mode=importlib"
 testpaths = ["tests"]
 
