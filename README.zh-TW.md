@@ -21,7 +21,7 @@ Agent Worklog 支援 OpenCode 與 Claude Code，可以：
 - 找出所有專案的 OpenCode 工作階段，不論你現在位於哪個資料夾。
 - 直接從 `~/.claude/projects` 讀取 Claude Code 工作階段，包含 subagent 逐字紀錄。
 - 依照最近幾天、某一個日曆週，或指定的日期區間挑選工作階段。
-- 使用 `opencode export --sanitize` 匯出工作階段。
+- OpenCode 專屬：使用 `opencode export --sanitize` 匯出工作階段。Claude Code 沒有匯出指令，因此沒有對應的步驟。
 - 把屬於同一個 repository 的 Git worktree 歸為同一組。
 - 讓子工作階段（child session）連結到正確的 repository。
 - 使用 `--root-only` 排除 subagent 工作階段，只保留根工作階段。

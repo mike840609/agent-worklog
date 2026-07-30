@@ -23,7 +23,8 @@ Agent Worklog works with OpenCode and Claude Code and can:
 - Read Claude Code sessions straight from `~/.claude/projects`, including subagent
   transcripts.
 - Select sessions from recent days, a calendar week, or a specific date range.
-- Export sessions with `opencode export --sanitize`.
+- For OpenCode: export sessions with `opencode export --sanitize`. Claude Code has no
+  export command, so this step has no equivalent there.
 - Group Git worktrees that belong to the same repository.
 - Keep child sessions linked to the correct repository.
 - Leave out subagent sessions with `--root-only` when you only want root sessions.

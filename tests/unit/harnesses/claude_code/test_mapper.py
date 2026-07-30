@@ -6,7 +6,11 @@ import pytest
 from agent_worklog.harnesses.claude_code.mapper import ClaudeCodeJsonlMapper
 from agent_worklog.models.session import ActivityType, SessionDescriptor, UsageSemantics
 
-FIXTURE = Path("tests/fixtures/claude_code/session-basic.jsonl")
+# Derived from this file, not from the working directory, so the test passes when
+# pytest is invoked from a subdirectory.
+FIXTURE = (
+    Path(__file__).resolve().parents[3] / "fixtures" / "claude_code" / "session-basic.jsonl"
+)
 
 SECRET_MARKERS = (
     "HOOK_STDOUT_MARKER",
