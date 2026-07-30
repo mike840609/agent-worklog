@@ -105,6 +105,36 @@ def test_orders_models_by_output_tokens_descending() -> None:
     assert "small-model" in lines[2]
 
 
+def test_skips_a_model_whose_totals_are_all_zero() -> None:
+    """Claude Code writes `<synthetic>` for local and error placeholders."""
+
+    scan = _scan(
+        _activity("a-1", "claude-opus-5", {"input_tokens": 10, "output_tokens": 200}),
+        _activity(
+            "a-2",
+            "<synthetic>",
+            {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+            },
+        ),
+    )
+
+    text = render_claude_code_usage(scan)
+
+    assert "<synthetic>" not in text
+    assert len(text.splitlines()) == 3  # header, one model, total
+
+
+def test_raises_when_every_model_total_is_zero() -> None:
+    scan = _scan(_activity("a-1", "<synthetic>", {"input_tokens": 0}))
+
+    with pytest.raises(HarnessSourceError):
+        render_claude_code_usage(scan)
+
+
 def test_raises_when_no_activity_carries_usage() -> None:
     """ReportService turns HarnessSourceError into a report warning."""
 

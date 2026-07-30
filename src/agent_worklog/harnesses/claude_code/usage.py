@@ -26,7 +26,9 @@ def _totals_by_model(scan: ScanResult) -> dict[str, dict[str, int]]:
                 value = usage.get(key)
                 if isinstance(value, int) and not isinstance(value, bool):
                     row[key] = row.get(key, 0) + value
-    return totals
+    # Claude Code writes `model: "<synthetic>"` for local and error placeholders,
+    # which would otherwise add an all-zero row that reports nothing.
+    return {model: row for model, row in totals.items() if any(row.values())}
 
 
 def render_claude_code_usage(scan: ScanResult) -> str:
