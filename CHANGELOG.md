@@ -30,6 +30,16 @@ All notable changes to this project are documented in this file.
 - Group a Claude Code session that spans several working directories under the last
   one, and read subagent transcripts alongside root sessions, excluded by `--root-only`
   like OpenCode child sessions.
+- Warn when a root session records assistant work but no user messages. A Claude Code
+  transcript written before roughly version 2.1.187 does not mark human prompts, so such
+  a session contributes no goals; the warning replaces a silent loss. Subagent sessions
+  are exempt, because a subagent is spawned with its parent's prompt and holds no human
+  prompt by design.
+- Skip models whose usage totals are all zero in the Claude Code usage table, so the
+  `<synthetic>` placeholder Claude Code writes for local and error turns no longer adds
+  an all-zero row.
+- Honor `AGENT_WORKLOG_HARNESSES__*__ENABLED`. Selecting a disabled harness now fails
+  with a configuration error (exit code 3) instead of the setting being ignored.
 - Move the shared subprocess runner out of the OpenCode package into
   `agent_worklog.process.CommandRunner` so both harnesses depend on one implementation.
 
