@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Move report list truncation from the rule-based summarizer into the Markdown
+  renderer, so there is one truncation point and the `Additional items omitted`
+  count is always the real remainder. LLM-produced lists are now capped at 20
+  items like rule-based ones; they were previously unbounded.
+
 ## 0.4.0
 
 - Rewrite both README capability lists as outcome-oriented capability summaries while

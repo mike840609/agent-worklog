@@ -38,6 +38,57 @@ def sample_report() -> WorklogReport:
     )
 
 
+EXPECTED_FULL_OUTPUT = """# Engineering Worklog
+
+**Period:** 2026-07-20 00:00 – 2026-07-27 00:00
+**Timezone:** Asia/Taipei
+**Generated:** 2026-07-29 20:00
+
+## Repositories
+### Agent Worklog
+Repository: `github.com/mike/agent-worklog`
+
+Implemented the MVP.
+
+Sessions: 2 · Child sessions: 1
+#### Completed
+- Tests passed
+
+#### In Progress
+- Add cache
+
+#### Key Files
+- `src/agent_worklog/cli.py`
+
+#### Directories
+- `/repos/agent-worklog`
+- `/worktrees/agent-feature`
+
+#### Sessions
+- Fix the exporter — `ses_abc`
+- ses_def — `ses_def`
+
+#### Branches
+- `main`
+
+## Warnings
+- One session could not be exported.
+"""
+
+
+def test_full_output_is_unchanged_byte_for_byte() -> None:
+    """Characterization guard for the truncation refactor.
+
+    The macro rewrite in worklog.md.j2 is a pure whitespace hazard: Jinja's
+    trim_blocks and lstrip_blocks make blank lines easy to gain or lose. This
+    pins the exact bytes so any drift fails loudly.
+    """
+
+    output = MarkdownRenderer().render(sample_report())
+
+    assert output == EXPECTED_FULL_OUTPUT
+
+
 def test_markdown_contains_period_repository_and_warnings() -> None:
     output = MarkdownRenderer().render(sample_report())
 
@@ -64,3 +115,41 @@ def test_markdown_lists_sessions_and_directories() -> None:
     assert "#### Sessions" in output
     assert "Fix the exporter — `ses_abc`" in output
     assert "ses_def — `ses_def`" in output
+
+
+def report_with_completed(items: list[str]) -> WorklogReport:
+    return WorklogReport(
+        generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 27, tzinfo=TZ),
+        ),
+        repositories=[
+            RepositorySummary(
+                repository_id="repo",
+                display_name="Repo",
+                summary="Worked.",
+                completed=items,
+                session_count=1,
+            )
+        ],
+    )
+
+
+def test_full_caps_a_long_section_at_twenty_items() -> None:
+    items = [f"Completed {index:02d}" for index in range(25)]
+
+    output = MarkdownRenderer().render(report_with_completed(items))
+
+    assert "- Completed 19" in output
+    assert "- Completed 20" not in output
+    assert "- Additional items omitted: 5" in output
+
+
+def test_a_section_at_exactly_the_limit_has_no_overflow_line() -> None:
+    items = [f"Completed {index:02d}" for index in range(20)]
+
+    output = MarkdownRenderer().render(report_with_completed(items))
+
+    assert "- Completed 19" in output
+    assert "Additional items omitted" not in output

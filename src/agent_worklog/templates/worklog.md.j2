@@ -1,3 +1,15 @@
+{% macro section(heading, items, limit, code=false) %}
+{% if items %}
+
+#### {{ heading }}
+{% for item in items[:limit] %}
+- {{ ("`" ~ item ~ "`") if code else item }}
+{% endfor %}
+{% if limit and items|length > limit %}
+- Additional items omitted: {{ items|length - limit }}
+{% endif %}
+{% endif %}
+{% endmacro %}
 # Engineering Worklog
 
 **Period:** {{ report.period.since.strftime("%Y-%m-%d %H:%M") }} – {{ report.period.until.strftime("%Y-%m-%d %H:%M") }}
@@ -14,41 +26,11 @@ Repository: `{{ repository.normalized_remote }}`
 {{ repository.summary }}
 
 Sessions: {{ repository.session_count }}{% if repository.child_session_count %} · Child sessions: {{ repository.child_session_count }}{% endif %}
-{% if repository.completed %}
-
-#### Completed
-{% for item in repository.completed %}
-- {{ item }}
-{% endfor %}
-{% endif %}
-{% if repository.problems_resolved %}
-
-#### Problems Resolved
-{% for item in repository.problems_resolved %}
-- {{ item }}
-{% endfor %}
-{% endif %}
-{% if repository.in_progress %}
-
-#### In Progress
-{% for item in repository.in_progress %}
-- {{ item }}
-{% endfor %}
-{% endif %}
-{% if repository.key_files %}
-
-#### Key Files
-{% for item in repository.key_files %}
-- `{{ item }}`
-{% endfor %}
-{% endif %}
-{% if repository.directories %}
-
-#### Directories
-{% for item in repository.directories %}
-- `{{ item }}`
-{% endfor %}
-{% endif %}
+{{ section("Completed", repository.completed, section_limit) -}}
+{{ section("Problems Resolved", repository.problems_resolved, section_limit) -}}
+{{ section("In Progress", repository.in_progress, section_limit) -}}
+{{ section("Key Files", repository.key_files, section_limit, code=true) -}}
+{{ section("Directories", repository.directories, none, code=true) -}}
 {% if repository.sessions %}
 
 #### Sessions
@@ -56,14 +38,7 @@ Sessions: {{ repository.session_count }}{% if repository.child_session_count %} 
 - {{ item.title or item.session_id }} — `{{ item.session_id }}`
 {% endfor %}
 {% endif %}
-{% if repository.branches %}
-
-#### Branches
-{% for item in repository.branches %}
-- `{{ item }}`
-{% endfor %}
-{% endif %}
-
+{{ section("Branches", repository.branches, none, code=true) }}
 {% endfor %}
 {% if report.usage_text %}
 ## Usage
