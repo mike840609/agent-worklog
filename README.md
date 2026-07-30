@@ -1,8 +1,7 @@
 # Agent Worklog
 
-Agent Worklog turns coding-agent sessions into weekly engineering reports. It saves
-engineers time by reducing the manual work needed to prepare weekly progress reports
-for managers.
+Agent Worklog turns coding-agent sessions into weekly reports for managers, saving
+engineers time.
 
 ![Agent sessions are grouped into weekly engineering reports](https://github.com/mike840609/agent-worklog/raw/refs/heads/main/docs/assets/agent-worklog-overview.png)
 
