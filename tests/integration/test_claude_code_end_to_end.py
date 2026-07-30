@@ -58,7 +58,10 @@ def test_claude_code_report_groups_by_repository_and_reports_usage(
     assert "github.com/mike/assets-tracker" in content
     assert "Retry for the price fetcher" in content
     assert "## Usage" in content
-    assert "claude-opus-5" in content
+    # Pin the four aggregated usage numbers (input, output, cache read, cache write) to
+    # the fixture's message.usage block, not just the model name appearing somewhere.
+    assert "claude-opus-5     10     200       1,000           50" in content
+    assert "Total             10     200       1,000           50" in content
     assert "Window: the last" not in content  # exact period, no widened-window caveat
     assert "ACCEPTANCE_SECRET_MARKER" not in content
     assert "Verification passed: pytest -q (inferred)" in content
