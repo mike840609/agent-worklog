@@ -40,18 +40,27 @@ def _rows_from_payload(payload: object) -> list[dict[str, object]]:
 class OpenCodeCliSource(HarnessSessionSource):
     """Query all OpenCode projects through the OpenCode CLI."""
 
-    def __init__(self, *, runner: Runner, executable: str = "opencode") -> None:
+    def __init__(
+        self,
+        *,
+        runner: Runner,
+        executable: str = "opencode",
+        root_only: bool = False,
+    ) -> None:
         self._runner = runner
         self._executable = executable
+        self._root_only = root_only
 
     def discover(self, period: DateRange) -> list[SessionDescriptor]:
         since_ms = int(period.since.timestamp() * 1000)
         until_ms = int(period.until.timestamp() * 1000)
+        parent_filter = "AND parent_id IS NULL " if self._root_only else ""
         query = (
             "SELECT id, project_id, parent_id, directory, title, time_created, time_updated "
             "FROM session "
             f"WHERE time_created < {until_ms} "
             f"AND COALESCE(time_updated, time_created, 0) >= {since_ms} "
+            f"{parent_filter}"
             "ORDER BY COALESCE(time_updated, time_created, 0) DESC;"
         )
         result = self._runner.run(
@@ -73,10 +82,12 @@ class OpenCodeCliSource(HarnessSessionSource):
             directory = row.get("directory")
             project_id = row.get("project_id")
             parent_id = row.get("parent_id")
+            title = row.get("title")
             descriptors.append(
                 SessionDescriptor(
                     harness="opencode",
                     session_id=session_id,
+                    title=(title if isinstance(title, str) else None),
                     created_at=_from_millis(row.get("time_created")),
                     updated_at=_from_millis(row.get("time_updated")),
                     working_directory_hint=(directory if isinstance(directory, str) else None),

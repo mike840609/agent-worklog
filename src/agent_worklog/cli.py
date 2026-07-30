@@ -19,6 +19,7 @@ from agent_worklog.errors import (
 )
 from agent_worklog.harnesses.opencode.cli_runner import CommandRunner
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
+from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
 from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.renderers.markdown import MarkdownRenderer
@@ -69,13 +70,15 @@ def _resolve_period(
     since: str | None,
     until: str | None,
     timezone: str,
+    now: datetime,
 ) -> DateRange:
+    """Resolve the requested period against a single clock read for the command."""
+
     selectors = sum(value is not None for value in (days, period, since))
     if selectors != 1:
         raise typer.BadParameter("provide exactly one of --days, --period, or --since")
     if until is not None and since is None:
         raise typer.BadParameter("--until requires --since")
-    now = _now_in_timezone(timezone)
     if days is not None:
         if days < 1:
             raise typer.BadParameter("--days must be at least 1")
@@ -95,7 +98,11 @@ def _default_output_path(settings: AppSettings, period: DateRange) -> Path:
     return settings.report.output_directory / filename
 
 
-def _build_scan_service(settings: AppSettings, period: DateRange) -> ScanService:
+def _build_scan_service(
+    settings: AppSettings,
+    period: DateRange,
+    root_only: bool = False,
+) -> ScanService:
     cli_settings = settings.harnesses.opencode.cli
     source_runner = CommandRunner(timeout_seconds=cli_settings.timeout_seconds)
     git_runner = CommandRunner(timeout_seconds=5.0)
@@ -103,6 +110,7 @@ def _build_scan_service(settings: AppSettings, period: DateRange) -> ScanService
         source=OpenCodeCliSource(
             runner=source_runner,
             executable=cli_settings.executable,
+            root_only=root_only,
         ),
         period=period,
         resolver=RepositoryResolver(runner=git_runner),
@@ -114,7 +122,12 @@ def _build_report_service(
     period: DateRange,
     output_path: Path,
     no_llm: bool,
+    root_only: bool = False,
+    *,
+    now: datetime,
 ) -> ReportService:
+    """Build the report service around the command's single clock read."""
+
     summarizer = RuleBasedSummarizer()
     api_key = os.environ.get(settings.llm.api_key_env)
     if settings.llm.enabled and not no_llm and api_key:
@@ -125,13 +138,22 @@ def _build_report_service(
             timeout_seconds=settings.llm.timeout_seconds,
             fallback=RuleBasedSummarizer(),
         )
+    cli_settings = settings.harnesses.opencode.cli
+    stats_runner = CommandRunner(timeout_seconds=cli_settings.timeout_seconds)
+    days = usage_days(period, now)
     return ReportService(
-        scan_service=_build_scan_service(settings, period),
+        scan_service=_build_scan_service(settings, period, root_only),
         summarizer=summarizer,
         renderer=MarkdownRenderer(),
         period=period,
         output_path=output_path,
-        now_factory=lambda: _now_in_timezone(settings.report.timezone),
+        now_factory=lambda: now,
+        usage_provider=lambda: collect_usage_stats(
+            runner=stats_runner,
+            executable=cli_settings.executable,
+            days=days,
+        ),
+        usage_days=days,
     )
 
 
@@ -175,6 +197,11 @@ def scan(
     period: str | None = typer.Option(None, "--period"),
     since: str | None = typer.Option(None, "--since"),
     until: str | None = typer.Option(None, "--until"),
+    root_only: bool = typer.Option(
+        False,
+        "--root-only",
+        help="Exclude child/subagent sessions.",
+    ),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
 ) -> None:
@@ -184,14 +211,16 @@ def scan(
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
             days=days,
             period=period,
             since=since,
             until=until,
             timezone=settings.report.timezone,
+            now=now,
         )
-        result = _build_scan_service(settings, selected_period).scan()
+        result = _build_scan_service(settings, selected_period, root_only).scan()
         if result.loaded_session_count == 0:
             raise NoSessionsError("no OpenCode activity found in the requested period")
     except ConfigurationError as exc:
@@ -212,6 +241,11 @@ def report(
     period: str | None = typer.Option(None, "--period"),
     since: str | None = typer.Option(None, "--since"),
     until: str | None = typer.Option(None, "--until"),
+    root_only: bool = typer.Option(
+        False,
+        "--root-only",
+        help="Exclude child/subagent sessions.",
+    ),
     output: Annotated[Path | None, typer.Option("--output")] = None,
     dry_run: bool = typer.Option(False, "--dry-run"),
     no_llm: bool = typer.Option(False, "--no-llm"),
@@ -225,15 +259,24 @@ def report(
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
             days=days,
             period=period,
             since=since,
             until=until,
             timezone=settings.report.timezone,
+            now=now,
         )
         output_path = output or _default_output_path(settings, selected_period)
-        service = _build_report_service(settings, selected_period, output_path, no_llm)
+        service = _build_report_service(
+            settings,
+            selected_period,
+            output_path,
+            no_llm,
+            root_only,
+            now=now,
+        )
         result = service.generate(force=force, dry_run=dry_run)
         if not result.report.repositories:
             raise NoSessionsError("no OpenCode activity found in the requested period")

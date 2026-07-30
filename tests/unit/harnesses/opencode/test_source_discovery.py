@@ -31,7 +31,7 @@ def test_discovery_uses_interval_overlap_and_no_project_filter(fake_runner) -> N
 
 def test_discovery_accepts_rows_wrapper(fake_runner) -> None:
     fake_runner.stdout = (
-        '{"rows":[{"id":"s1","project_id":"p1","directory":"/repo",'
+        '{"rows":[{"id":"s1","project_id":"p1","directory":"/repo","title":"Fix bug",'
         '"time_created":1000,"time_updated":2000}]}'
     )
     source = OpenCodeCliSource(runner=fake_runner, executable="opencode")
@@ -45,6 +45,7 @@ def test_discovery_accepts_rows_wrapper(fake_runner) -> None:
     assert descriptors[0].session_id == "s1"
     assert descriptors[0].working_directory_hint == "/repo"
     assert descriptors[0].project_id_hint == "p1"
+    assert descriptors[0].title == "Fix bug"
     assert descriptors[0].created_at is not None
 
 
@@ -61,3 +62,35 @@ def test_discovery_raises_on_command_failure(fake_runner) -> None:
 
     with pytest.raises(HarnessSourceError, match="database unavailable"):
         source.discover(period)
+
+
+def test_discovery_includes_child_sessions_by_default(fake_runner) -> None:
+    fake_runner.stdout = "[]"
+    source = OpenCodeCliSource(runner=fake_runner, executable="opencode")
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ),
+        until=datetime(2026, 7, 27, tzinfo=TZ),
+    )
+
+    source.discover(period)
+
+    assert "parent_id IS NULL" not in fake_runner.calls[0][2]
+
+
+def test_root_only_excludes_child_sessions(fake_runner) -> None:
+    fake_runner.stdout = "[]"
+    source = OpenCodeCliSource(
+        runner=fake_runner,
+        executable="opencode",
+        root_only=True,
+    )
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ),
+        until=datetime(2026, 7, 27, tzinfo=TZ),
+    )
+
+    source.discover(period)
+
+    query = fake_runner.calls[0][2]
+    assert "AND parent_id IS NULL" in query
+    assert query.rstrip().endswith("DESC;")

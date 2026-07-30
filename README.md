@@ -14,6 +14,9 @@ Agent Worklog currently works with OpenCode and can:
 - Export sessions with `opencode export --sanitize`.
 - Group Git worktrees that belong to the same repository.
 - Keep child sessions linked to the correct repository.
+- Leave out subagent sessions with `--root-only` when you only want root sessions.
+- List each repository's session titles and working folders in the report.
+- Summarize models, tokens, and tools from `opencode stats`.
 - Include source activity IDs and confidence levels as supporting information.
 - Check session information for common secret patterns before creating a report or
   sending data to an optional LLM.
@@ -26,6 +29,9 @@ Agent Worklog currently works with OpenCode and can:
 - OpenCode available as `opencode`
 - An OpenCode version that provides `opencode db` and `opencode export --sanitize`
 - Git available as `git`
+
+`opencode stats` is optional. Without it, Agent Worklog leaves out the usage section and
+still creates the report.
 
 ## Installation
 
@@ -71,6 +77,44 @@ agent-worklog report --period last-week --no-llm
 
 The default output is written under `reports/`.
 
+## Command reference
+
+| Command | What it does |
+|---|---|
+| `doctor` | Checks that `opencode` and `git` run and that the OpenCode database can be found. |
+| `scan` | Shows which sessions fall in a period and how they group into repositories. |
+| `report` | Writes the Markdown report for a period. |
+
+`scan` and `report` share these options:
+
+| Option | What it does |
+|---|---|
+| `--days N` | Reports the last N days, ending now. |
+| `--period last-week` | Reports the previous full calendar week. `last-week` is the only accepted value. |
+| `--since ISO` | Starts the period at an exact time. |
+| `--until ISO` | Ends the period at an exact time. Requires `--since`. |
+| `--root-only` | Leaves out subagent sessions. |
+| `--verbose` | Also shows export, fallback, and LLM warnings. |
+| `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
+
+`report` also accepts:
+
+| Option | What it does |
+|---|---|
+| `--output PATH` | Writes to this file instead of the default folder. |
+| `--force` | Replaces the output file if it already exists. |
+| `--dry-run` | Prints the Markdown instead of writing a file. |
+| `--no-llm` | Creates the summary without an external LLM. |
+
+`doctor` accepts `--quiet`, which hides the list of checks and reports only through the
+exit code.
+
+Three rules apply to `scan` and `report`:
+
+- Give exactly one of `--days`, `--period`, or `--since`.
+- Use `--until` only together with `--since`.
+- Do not use `--verbose` and `--quiet` together.
+
 ## Reporting periods
 
 The `last-week` period means the previous full calendar week in the configured time
@@ -96,6 +140,18 @@ agent-worklog report \
 
 You must provide one of `--period`, `--days`, or `--since`. If you use `--until`, you
 must also use `--since`.
+
+## Subagent sessions
+
+Subagent sessions are included by default. Each one is linked to the repository it actually
+ran in, so a subagent that worked in another checkout appears under that repository. To
+report only root sessions:
+
+```bash
+agent-worklog report --period last-week --root-only
+```
+
+Both `scan` and `report` accept `--root-only`.
 
 ## Repository grouping
 
@@ -136,6 +192,14 @@ IDs, goals, commands, and filenames.
 If the service times out, returns an HTTP 429 or 5xx error, or returns invalid data,
 Agent Worklog tries once more. If the second request fails, it creates a summary without
 the LLM. Use `--no-llm` to keep report generation on your computer.
+
+## Usage statistics
+
+Each report includes a usage section built from `opencode stats`, covering models, tokens,
+and tools. OpenCode reports usage only for a period that ends now. The period shown in the
+report therefore starts when the report period starts and runs to the time the report is
+created. It covers the report period but is wider than it. If `opencode stats` is not
+available, Agent Worklog leaves the section out and adds a warning to the report.
 
 ## Output and file handling
 
@@ -187,8 +251,10 @@ Agent Worklog requests OpenCode exports with `--sanitize`. It also checks select
 session information for common secret patterns before creating a report or making an
 optional LLM request. Pattern checks cannot find every possible secret.
 
-Reports may still contain private goals, filenames, commands, and work descriptions.
-Always review a report before sharing it.
+Reports may still contain private goals, filenames, commands, work descriptions, and the
+full paths of your working folders. Those paths often include your user name and the name
+of a client or employer, and the secret-pattern checks leave them in place on purpose so a
+report can say where the work happened. Always review a report before sharing it.
 
 See
 [Privacy and security](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md)
@@ -215,6 +281,8 @@ creating an empty report.
 - Agent Worklog gets session data through the OpenCode command-line tool. It does not
   read the SQLite database directly.
 - Markdown is the only report format.
+- Usage statistics cover a period that ends when the report is created. They do not match
+  the report period exactly.
 - Agent Worklog does not keep a cache between runs and does not provide an `inspect`
   command.
 - Older sessions may use a backup ID if their working folders have been deleted.

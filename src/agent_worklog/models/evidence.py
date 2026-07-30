@@ -36,6 +36,8 @@ class EvidenceItem(BaseModel):
 class SessionEvidence(BaseModel):
     session_id: str
     repository_id: str
+    title: str | None = None
+    working_directory: str | None = None
     goals: list[EvidenceItem] = Field(default_factory=list)
     commands: list[EvidenceItem] = Field(default_factory=list)
     files_changed: list[EvidenceItem] = Field(default_factory=list)
