@@ -65,7 +65,10 @@ def period() -> DateRange:
 
 
 class PromptlessSource:
-    """A transcript whose human prompts the mapper could not identify."""
+    """A root transcript whose human prompts the mapper could not identify."""
+
+    def __init__(self, *, parent_session_id: str | None = None) -> None:
+        self.parent_session_id = parent_session_id
 
     def discover(self, period: DateRange) -> list[SessionDescriptor]:
         return [SessionDescriptor(harness="claude-code", session_id="old-transcript")]
@@ -74,6 +77,7 @@ class PromptlessSource:
         return AgentSession(
             harness="claude-code",
             session_id=descriptor.session_id,
+            parent_session_id=self.parent_session_id,
             activities=[
                 SessionActivity(
                     activity_id="a-1",
@@ -113,6 +117,25 @@ def test_scan_does_not_warn_when_a_session_has_user_messages() -> None:
 
     result = service.scan()
 
+    assert not any("no user messages" in warning for warning in result.warnings)
+
+
+def test_scan_does_not_warn_about_a_promptless_subagent_session() -> None:
+    """A subagent is spawned with its parent's prompt, so it holds no human prompt.
+
+    Measured over one week, 44 of 44 subagent transcripts have none. Warning about
+    every one of them would bury the single root session that lost its goals.
+    """
+
+    service = ScanService(
+        source=PromptlessSource(parent_session_id="root-session"),
+        period=period(),
+        resolver=StaticResolver(),
+    )
+
+    result = service.scan()
+
+    assert result.loaded_session_count == 1
     assert not any("no user messages" in warning for warning in result.warnings)
 
 

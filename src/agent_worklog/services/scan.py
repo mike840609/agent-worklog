@@ -27,7 +27,7 @@ class Resolver(Protocol):
 
 
 def _has_assistant_work_but_no_prompt(session: AgentSession) -> bool:
-    """Detect a session whose user prompts were all filtered out of the mapping.
+    """Detect a root session whose user prompts were all filtered out of the mapping.
 
     A Claude Code transcript written before roughly version 2.1.187 carries no
     `origin` key, so the mapper's `origin.kind == "human"` filter — which exists to
@@ -35,8 +35,15 @@ def _has_assistant_work_but_no_prompt(session: AgentSession) -> bool:
     user message in that file. 10 of 72 recent root sessions are affected, one of
     them with 188 assistant records. Loosening the filter would readmit the noise
     it was written to block, so the loss is reported instead of guessed at.
+
+    Child and subagent sessions are exempt. A subagent is spawned with a prompt its
+    parent wrote, not one a human typed, so it holds no human prompt by design:
+    measured over one week, 44 of 44 subagent transcripts have none, against 1 of 10
+    root sessions. Warning about them would bury the one case that means something.
     """
 
+    if session.parent_session_id is not None:
+        return False
     types = {activity.activity_type for activity in session.activities}
     return bool(types & _ASSISTANT_ACTIVITY_TYPES) and (
         ActivityType.USER_MESSAGE not in types

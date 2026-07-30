@@ -231,6 +231,10 @@ transcript 完全沒有這個 key，因此上述條件會濾掉該檔案的**每
 噪音重新放進來。改為讓損失可見——`services/scan.py` 在一個 session 有 assistant activity
 但沒有任何 `USER_MESSAGE` 時發出 warning，形狀比照既有的 timestamp-less activity warning。
 
+**該 warning 只針對 root session。** subagent 是由 parent 寫的 prompt 產生的，本來就不會有
+人類 prompt：實測一週內 44 個 subagent transcript **全部**沒有，而 root session 是 10 個裡
+有 1 個。若不排除 subagent，唯一有意義的那一筆會被 44 筆噪音埋掉。
+
 **`assistant` record 的 `message.content[]`：**
 
 | block `type` | 處理 |
