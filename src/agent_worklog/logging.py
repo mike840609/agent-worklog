@@ -66,8 +66,6 @@ class RichProgressReporter:
 
     def finish(self) -> None:
         status = self._status
-        if status is not None and self._console.is_dumb_terminal:
-            self._console.print(self._description())
         self._status = None
         self._stage = None
         if status is not None:

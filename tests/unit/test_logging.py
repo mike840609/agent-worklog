@@ -16,7 +16,8 @@ def forced_console(stream: StringIO) -> Console:
     )
 
 
-def test_progress_renders_generic_stage_and_absolute_count_separately() -> None:
+def test_progress_renders_one_transient_stage_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TERM", "xterm-256color")
     output_stream = StringIO()
     progress_stream = StringIO()
     reporter = ConsoleReporter(
@@ -29,11 +30,24 @@ def test_progress_renders_generic_stage_and_absolute_count_separately() -> None:
         progress.advance(2)
     reporter.message("done")
 
-    assert "Exporting sessions" in progress_stream.getvalue()
-    assert "2/3" in progress_stream.getvalue()
-    assert "done" not in progress_stream.getvalue()
+    progress_output = progress_stream.getvalue()
+    assert "Exporting sessions" in progress_output
+    assert "2/3" in progress_output
+    assert progress_output.count("\n") == 1
+    assert progress_output.endswith("\x1b[2K")
     assert "done" in output_stream.getvalue()
     assert "Exporting sessions" not in output_stream.getvalue()
+
+
+def test_progress_is_silent_when_the_terminal_cannot_render_transient_output() -> None:
+    progress_stream = StringIO()
+    reporter = ConsoleReporter(progress_console=forced_console(progress_stream))
+
+    with reporter.progress() as progress:
+        progress.start(ProgressStage.EXPORTING_SESSIONS, total=3)
+        progress.advance(2)
+
+    assert progress_stream.getvalue() == ""
 
 
 def test_quiet_progress_is_a_no_op() -> None:
