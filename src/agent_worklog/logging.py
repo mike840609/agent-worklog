@@ -5,8 +5,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from rich.console import Console
+from rich.padding import Padding
 from rich.status import Status
 from rich.table import Table
+from rich.text import Text
 
 from agent_worklog.progress import (
     NullProgressReporter,
@@ -36,12 +38,14 @@ class RichProgressReporter:
         self._total: int | None = None
         self._completed = 0
 
-    def _description(self) -> str:
+    def _description(self) -> Padding:
         assert self._stage is not None
         label = _STAGE_LABELS[self._stage]
-        if self._total is None:
-            return label
-        return f"{label} {self._completed}/{self._total}"
+        description = label
+        if self._total is not None:
+            description = f"{label} {self._completed}/{self._total}"
+        text = Text(description, overflow="ellipsis", no_wrap=True)
+        return Padding(text, (0, 0))
 
     def start(
         self,

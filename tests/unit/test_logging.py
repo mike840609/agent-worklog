@@ -7,12 +7,12 @@ from agent_worklog.logging import ConsoleReporter, RichProgressReporter
 from agent_worklog.progress import NullProgressReporter, ProgressStage
 
 
-def forced_console(stream: StringIO) -> Console:
+def forced_console(stream: StringIO, *, width: int = 100) -> Console:
     return Console(
         file=stream,
         force_terminal=True,
         color_system=None,
-        width=100,
+        width=width,
     )
 
 
@@ -39,7 +39,28 @@ def test_progress_renders_one_transient_stage_line(monkeypatch: pytest.MonkeyPat
     assert "Exporting sessions" not in output_stream.getvalue()
 
 
-def test_progress_is_silent_when_the_terminal_cannot_render_transient_output() -> None:
+def test_progress_ellipsizes_to_one_row_in_a_narrow_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TERM", "xterm-256color")
+    progress_stream = StringIO()
+    reporter = ConsoleReporter(
+        progress_console=forced_console(progress_stream, width=40),
+    )
+
+    with reporter.progress() as progress:
+        progress.start(ProgressStage.PREPARING_EVIDENCE, total=12345)
+        progress.advance(12345)
+
+    progress_output = progress_stream.getvalue()
+    assert "…" in progress_output
+    assert progress_output.count("\n") == 1
+
+
+def test_progress_is_silent_when_the_terminal_cannot_render_transient_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TERM", "dumb")
     progress_stream = StringIO()
     reporter = ConsoleReporter(progress_console=forced_console(progress_stream))
 
