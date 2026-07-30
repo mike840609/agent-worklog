@@ -30,6 +30,9 @@ Agent Worklog currently works with OpenCode and can:
 - An OpenCode version that provides `opencode db` and `opencode export --sanitize`
 - Git available as `git`
 
+`opencode stats` is optional. Without it, Agent Worklog leaves out the usage section and
+still creates the report.
+
 ## Installation
 
 The recommended way to install the command-line tool is with `pipx`:
@@ -109,6 +112,8 @@ report only root sessions:
 ```bash
 agent-worklog report --period last-week --root-only
 ```
+
+Both `scan` and `report` accept `--root-only`.
 
 ## Repository grouping
 
@@ -203,8 +208,10 @@ Agent Worklog requests OpenCode exports with `--sanitize`. It also removes commo
 secrets from all parts of the data before creating a report or making an optional LLM
 request.
 
-Reports may still contain private goals, filenames, commands, and work descriptions.
-Always review a report before sharing it.
+Reports may still contain private goals, filenames, commands, work descriptions, and the
+full paths of your working folders. Those paths often include your user name and the name
+of a client or employer, and removing secrets does not remove them. Always review a report
+before sharing it.
 
 See [Privacy and security](docs/privacy.md) for more details about data safety and
 current limits.
