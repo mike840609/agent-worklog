@@ -94,11 +94,11 @@ def test_progress_stages_are_stable_and_complete() -> None:
 def test_null_progress_reporter_accepts_the_full_lifecycle() -> None:
     reporter = NullProgressReporter()
 
-    reporter.start(ProgressStage.EXPORTING_SESSIONS, total=3)
-    reporter.advance(1)
-    reporter.advance(3)
-    reporter.finish()
-    reporter.finish()
+    assert reporter.start(ProgressStage.EXPORTING_SESSIONS, total=3) is None
+    assert reporter.advance(1) is None
+    assert reporter.advance(3) is None
+    assert reporter.finish() is None
+    assert reporter.finish() is None
 ```
 
 - [ ] **Step 2: Run the test and verify it fails**
