@@ -84,7 +84,14 @@ else in Agent Worklog sees it:
   human intent);
 - assistant message text;
 - tool names;
-- one command or file path per tool call.
+- one command or file path per tool call, when the call carries one.
+
+Not every tool call has a `command`, `file_path`, `path`, or `notebook_path` field.
+WebFetch's `url`, WebSearch's `query`, Task's `description`/`prompt`/`subagent_type`,
+TodoWrite's whole `todos` list, a path-less Glob call, and MCP tool calls in general all
+fall outside that set. For those, the mapper falls back to serializing the tool's entire
+input object to JSON and truncating it to 200 characters, so what reaches the report is
+not one command or path but as much of the full call as fits in that budget.
 
 Everything else is dropped at that boundary and never reaches a report or an LLM request:
 tool `stdout` and `stderr`, model thinking blocks, hook output, and system reminders. The
@@ -98,10 +105,11 @@ of fields, exactly as they do for OpenCode evidence.
 
 This is a description of a deliberate design choice about what Agent Worklog retains, not
 a guarantee about what Claude Code itself writes to disk, and not a claim that the
-retained fields are free of secrets — a command or file path can itself contain a
-credential, and pattern checks cannot find every possible secret. Reports built from
-Claude Code sessions may still contain prompts, commands, file paths, and full
-working-directory paths, exactly as reports built from OpenCode sessions do.
+retained fields are free of secrets — a command, file path, or a truncated serialized
+tool input can itself contain a credential, and pattern checks cannot find every possible
+secret. Reports built from Claude Code sessions may still contain prompts, commands, file
+paths, and full working-directory paths, exactly as reports built from OpenCode sessions
+do.
 
 ## Optional LLM use
 

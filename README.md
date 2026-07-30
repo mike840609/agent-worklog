@@ -281,10 +281,13 @@ for a complete list of settings.
 Agent Worklog requests OpenCode exports with `--sanitize`. Claude Code has no export
 command, so with `--harness claude-code` Agent Worklog reads `~/.claude/projects`
 transcripts directly and relies on the mapper keeping only prompts, assistant text, tool
-names, and one command or path per tool call; raw tool `stdout`/`stderr`, thinking blocks,
-and hook output are dropped before anything reaches a report or an LLM request. Both
-harnesses also go through the common secret-pattern checks before creating a report or
-making an optional LLM request. Pattern checks cannot find every possible secret.
+names, and one command or path per tool call when the call has one. A call with neither —
+WebFetch's `url`, WebSearch's `query`, TodoWrite's `todos` list, and MCP tool calls in
+general — has its whole input serialized to JSON and truncated to 200 characters instead.
+Raw tool `stdout`/`stderr`, thinking blocks, and hook output are dropped before anything
+reaches a report or an LLM request. Both harnesses also go through the common
+secret-pattern checks before creating a report or making an optional LLM request. Pattern
+checks cannot find every possible secret.
 
 Reports may still contain private goals, filenames, commands, work descriptions, and the
 full paths of your working folders. Those paths often include your user name and the name
