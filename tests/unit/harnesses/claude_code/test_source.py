@@ -148,3 +148,22 @@ def test_discover_on_a_missing_projects_directory_returns_nothing(tmp_path: Path
     source = ClaudeCodeFileSource(projects_directory=tmp_path / "absent")
 
     assert source.discover(PERIOD) == []
+
+
+def test_discover_excludes_a_session_created_after_the_period(tmp_path: Path) -> None:
+    """A session that started after the window ends is skipped at discovery.
+
+    The mtime prefilter cannot catch this one: the file was touched inside the
+    period but every record in it postdates `period.until`. A bug here drops
+    in-period sessions rather than merely missing a prefilter, so it is pinned.
+    """
+
+    root = tmp_path / "projects"
+    _write_session(
+        root / "-repo-main" / "sess-future.jsonl",
+        timestamp="2026-07-28T01:00:00.000Z",
+        mtime=datetime(2026, 7, 26, tzinfo=TZ),
+    )
+    source = ClaudeCodeFileSource(projects_directory=root)
+
+    assert source.discover(PERIOD) == []

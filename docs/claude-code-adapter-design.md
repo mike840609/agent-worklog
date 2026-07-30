@@ -300,9 +300,13 @@ metadata = {
 
 | 條件 | 產出 | status | confidence | `extraction_method` |
 |---|---|---|---|---|
-| 指令含 `2>&1` / `2>/dev/null` / `2>` | **無**（指令本身仍留在 `commands`） | — | — | — |
+| 指令重導 stderr（`2>`、`&>`、`\|&`） | **無**（指令本身仍留在 `commands`） | — | — | — |
 | `stderr_empty` 且 `not interrupted` 且 `is_verification_command` | `outcomes`（`Ran verification command: <cmd>`） | `UNKNOWN` | `MEDIUM` | `stderr_heuristic` |
-| `not stderr_empty` | `errors`（`<cmd>`） | `BLOCKED` | `MEDIUM` | `stderr_heuristic` |
+| `not stderr_empty` | **無** | — | — | — |
+
+最後一列同樣是實測的結果：**stderr 非空不代表失敗**。`git` 成功時也一直往 stderr 寫東西，
+所以這條規則在真實逐字紀錄上產出了 31 筆 `git stash`、`cd … && uv sync` 之類的噪音——報告
+沒有任何區塊會渲染它們，但它們全都進了對外的 LLM 請求。只有觀測到的 exit code 才值得記為失敗。
 
 「Verification passed」這個字串只保留給 OpenCode 的 exit-code 路徑
 （`successful_verification_command`，`HIGH`），那條路徑觀測到真實的 exit code。

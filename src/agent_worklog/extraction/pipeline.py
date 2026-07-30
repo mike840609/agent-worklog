@@ -31,7 +31,9 @@ _PATH_MAX_LENGTH = 512
 _PATH_REJECTED_CHARACTERS = frozenset("{}[]\"'`<>|*?")
 
 # Shell forms that make stderr empty by construction rather than by success.
-_STDERR_REDIRECTION_MARKERS = ("2>&1", "2>/dev/null", "2>")
+# "2>" already subsumes "2>&1", "2>/dev/null", and "2>>file"; "&>" and "|&" are
+# bash's send-both-streams forms, which redirect stderr without naming it.
+_STDERR_REDIRECTION_MARKERS = ("2>", "&>", "|&")
 
 
 def _normalize(text: str) -> str:
@@ -154,27 +156,19 @@ def _append_stderr_heuristic(
     `ruff` reports violations on stdout. Nothing here claims success. A command
     that redirects stderr is skipped outright, because for it the signal is not
     weak but absent.
+
+    Non-empty stderr is deliberately *not* treated as failure. `git` writes to
+    stderr on success constantly, so it produced 31 items of `git stash` and
+    `cd … && uv sync` noise against real transcripts — none of which the report
+    renders, while all of them travelled in the outbound LLM request. Only an
+    observed exit code makes a failure worth recording.
     """
 
     if _redirects_stderr(content):
         return
 
-    stderr_empty = activity.metadata.get("stderr_empty")
-    if stderr_empty is False:
-        _append_unique(
-            evidence.errors,
-            _item(
-                text=content,
-                activity=activity,
-                confidence=EvidenceConfidence.MEDIUM,
-                extraction_method="stderr_heuristic",
-                status=EvidenceStatus.BLOCKED,
-            ),
-            repository_id=repository_id,
-        )
-        return
     if (
-        stderr_empty is True
+        activity.metadata.get("stderr_empty") is True
         and activity.metadata.get("interrupted") is not True
         and is_verification_command(content)
     ):

@@ -20,9 +20,14 @@ All notable changes to this project are documented in this file.
   results carry no exit code, so a command whose stderr was empty is recorded as `Ran
   verification command: <command>` at MEDIUM confidence with an unknown status, and
   appears under "In Progress" rather than "Completed". A command that redirects or
-  discards its stderr (`2>&1`, `2>/dev/null`, `2>`) produces no outcome at all, because
-  its empty stderr is an artefact of the redirection. "Verification passed" remains
-  reserved for the OpenCode path, which observes a real exit code.
+  discards its stderr (`2>`, `&>`, `|&`) produces no outcome at all, because its empty
+  stderr is an artefact of the redirection. "Verification passed" remains reserved for the
+  OpenCode path, which observes a real exit code.
+- Stop treating non-empty stderr as a failed command on the Claude Code path. Git writes
+  to stderr on success, so the rule produced 31 items of `git stash` and `cd … && uv sync`
+  noise against real transcripts — none of which any report section renders, while all of
+  them travelled in the outbound LLM request. Only an observed exit code now records a
+  failure, which keeps the LLM and `--no-llm` reports describing the same set of problems.
 - Cap every evidence item's text at 300 characters for both harnesses, marking the cut
   with an ellipsis. A Claude Code `input.command` is retained whole, so a heredoc used to
   write a file previously carried that file's entire body into the report and into

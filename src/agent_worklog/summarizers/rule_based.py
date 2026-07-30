@@ -74,14 +74,16 @@ class RuleBasedSummarizer(RepositorySummarizer):
 
     def summarize(self, evidence: RepositoryEvidence) -> RepositorySummary:
         completed: list[str] = []
-        problems_resolved: list[str] = []
         goals: list[str] = []
         unobserved: list[str] = []
         key_files: list[str] = []
 
+        # `problems_resolved` stays empty here on purpose. Error evidence is always
+        # recorded BLOCKED, never COMPLETED, so selecting resolved problems from it
+        # could only ever return nothing. The LLM summarizer fills the field from
+        # the same error evidence, which is where the section comes from.
         for session in evidence.sessions:
             completed.extend(_completed(session.outcomes))
-            problems_resolved.extend(_completed(session.errors))
             goals.extend(
                 item.text
                 for item in session.goals
@@ -108,7 +110,6 @@ class RuleBasedSummarizer(RepositorySummarizer):
             normalized_remote=evidence.normalized_remote,
             summary=summary_text,
             completed=_limited(completed),
-            problems_resolved=_limited(problems_resolved),
             in_progress=_limited(in_progress),
             key_files=_limited(key_files),
             directories=session_directories(evidence),

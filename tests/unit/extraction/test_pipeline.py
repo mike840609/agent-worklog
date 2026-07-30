@@ -260,6 +260,22 @@ def test_stderr_redirecting_command_yields_no_outcome() -> None:
                     tool_name="Bash",
                     metadata={"stderr_empty": True, "interrupted": False},
                 ),
+                SessionActivity(
+                    activity_id="a-4",
+                    activity_type=ActivityType.TOOL_CALL,
+                    timestamp=datetime(2026, 7, 21, tzinfo=UTC),
+                    content="pytest -q &> out.log",
+                    tool_name="Bash",
+                    metadata={"stderr_empty": True, "interrupted": False},
+                ),
+                SessionActivity(
+                    activity_id="a-5",
+                    activity_type=ActivityType.TOOL_CALL,
+                    timestamp=datetime(2026, 7, 21, tzinfo=UTC),
+                    content="pytest -q |& tee out.log",
+                    tool_name="Bash",
+                    metadata={"stderr_empty": True, "interrupted": False},
+                ),
             ],
         ),
         repository=RepositoryIdentity(
@@ -274,7 +290,7 @@ def test_stderr_redirecting_command_yields_no_outcome() -> None:
 
     assert evidence.outcomes == []
     assert evidence.errors == []
-    assert len(evidence.commands) == 3  # the commands themselves are still evidence
+    assert len(evidence.commands) == 5  # the commands themselves are still evidence
 
 
 def test_stderr_redirecting_command_yields_no_error_either() -> None:
@@ -308,7 +324,8 @@ def test_stderr_redirecting_command_yields_no_error_either() -> None:
     assert evidence.outcomes == []
 
 
-def test_nonempty_stderr_yields_a_medium_error() -> None:
+def test_nonempty_stderr_is_not_treated_as_failure() -> None:
+    """`git` writes to stderr on success, so stderr alone cannot mean failure."""
     resolved = ResolvedSession(
         session=AgentSession(
             harness="claude-code",
@@ -319,7 +336,7 @@ def test_nonempty_stderr_yields_a_medium_error() -> None:
                     activity_id="a-1",
                     activity_type=ActivityType.TOOL_CALL,
                     timestamp=datetime(2026, 7, 21, tzinfo=UTC),
-                    content="ruff check .",
+                    content="git stash",
                     tool_name="Bash",
                     metadata={"stderr_empty": False, "interrupted": False},
                 )
@@ -335,12 +352,9 @@ def test_nonempty_stderr_yields_a_medium_error() -> None:
 
     evidence = extract_evidence(resolved)
 
-    assert len(evidence.errors) == 1
-    error = evidence.errors[0]
-    assert error.text == "ruff check ."
-    assert error.confidence is EvidenceConfidence.MEDIUM
-    assert error.extraction_method == "stderr_heuristic"
-    assert error.status is EvidenceStatus.BLOCKED
+    assert evidence.errors == []
+    assert evidence.outcomes == []
+    assert [item.text for item in evidence.commands] == ["git stash"]
 
 
 def test_interrupted_command_yields_no_verification_outcome() -> None:

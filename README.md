@@ -343,11 +343,12 @@ creating an empty report.
 - Repository grouping uses the Git information available when the report is created.
 - Codex is not currently supported.
 - Claude Code sessions have no exit codes, so no Claude Code report claims that a test or
-  lint command passed. A verification command whose stderr was empty is listed under
-  "In Progress" as `Ran verification command: <command>`, and a command that redirects its
-  stderr (`2>&1`, `2>/dev/null`) produces no outcome at all, because for those commands an
-  empty stderr says nothing. Verification results are reported as passing only for
-  OpenCode, where a real exit code is available.
+  lint command passed or failed. A verification command whose stderr was empty is listed
+  under "In Progress" as `Ran verification command: <command>`, and a command that
+  redirects its stderr (`2>`, `&>`, `|&`) produces no outcome at all, because for those
+  commands an empty stderr says nothing. Non-empty stderr is not treated as failure
+  either — Git writes to stderr on success. Verification results are reported as passing
+  only for OpenCode, where a real exit code is available.
 - A Claude Code session that spans several working directories is grouped under the
   last one.
 
