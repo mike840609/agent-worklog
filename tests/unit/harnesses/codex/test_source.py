@@ -57,6 +57,44 @@ def test_falls_back_to_the_rollout_scan_on_schema_drift(home: Path) -> None:
     assert [descriptor.session_id for descriptor in descriptors] == ["root-1"]
 
 
+def test_discovers_from_database_not_rollout(home: Path) -> None:
+    """Verify discover() uses the state database when available.
+
+    This test guards against implementations that unconditionally use
+    discover_rollouts without actually checking the database. The seeded
+    session id (db-only-1) exists only in the database, not the rollout
+    file. If discover() incorrectly skipped the database, this test would
+    fail because root-1 would be returned instead.
+    """
+    from tests.unit.harnesses.codex import seconds, write_database
+
+    db_timestamp = seconds(datetime(2026, 7, 22, 12, tzinfo=TZ))
+    write_database(
+        home / "state_5.sqlite",
+        rows=[
+            (
+                "db-only-1",
+                str(home / "sessions" / "2026" / "07" / "22" / "db-only.jsonl"),
+                db_timestamp,
+                db_timestamp,
+                "/worktrees/agent",
+                "Database-only session",
+                None,
+                "user",
+                0,
+            ),
+        ],
+    )
+
+    descriptors = CodexSource(home_directory=home).discover(PERIOD)
+    session_ids = [descriptor.session_id for descriptor in descriptors]
+
+    # Must return the database session, not the rollout session, proving
+    # the database path was actually taken
+    assert session_ids == ["db-only-1"]
+    assert "root-1" not in session_ids
+
+
 def test_describes_the_discovery_path(home: Path) -> None:
     assert describe_discovery(home) == "directory scan"
 

@@ -10,57 +10,13 @@ from agent_worklog.harnesses.codex.thread_catalog import (
     find_state_database,
 )
 from agent_worklog.models.time_range import DateRange
+from tests.unit.harnesses.codex import seconds, write_database
 
 TZ = ZoneInfo("Asia/Taipei")
 PERIOD = DateRange(
     since=datetime(2026, 7, 20, tzinfo=TZ),
     until=datetime(2026, 7, 27, tzinfo=TZ),
 )
-
-_SCHEMA = """
-CREATE TABLE threads (
-    id TEXT PRIMARY KEY,
-    rollout_path TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    cwd TEXT NOT NULL,
-    title TEXT NOT NULL,
-    agent_nickname TEXT,
-    thread_source TEXT,
-    archived INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE thread_spawn_edges (
-    parent_thread_id TEXT NOT NULL,
-    child_thread_id TEXT NOT NULL PRIMARY KEY,
-    status TEXT NOT NULL
-);
-"""
-
-
-def _seconds(value: datetime) -> int:
-    return int(value.timestamp())
-
-
-def _write_database(path: Path, rows: list[tuple], edges: list[tuple] | None = None) -> None:
-    if edges is None:
-        edges = []
-    connection = sqlite3.connect(path)
-    try:
-        connection.executescript(_SCHEMA)
-        connection.executemany(
-            "INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd,"
-            " title, agent_nickname, thread_source, archived)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            rows,
-        )
-        connection.executemany(
-            "INSERT INTO thread_spawn_edges"
-            " (parent_thread_id, child_thread_id, status) VALUES (?, ?, ?)",
-            edges,
-        )
-        connection.commit()
-    finally:
-        connection.close()
 
 
 @pytest.fixture
@@ -72,14 +28,14 @@ def home(tmp_path: Path) -> Path:
     archived.parent.mkdir(parents=True)
     archived.write_text("{}\n", encoding="utf-8")
 
-    _write_database(
+    write_database(
         tmp_path / "state_5.sqlite",
         rows=[
             (
                 "root-1",
                 str(rollout),
-                _seconds(datetime(2026, 7, 21, tzinfo=TZ)),
-                _seconds(datetime(2026, 7, 22, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 21, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 22, tzinfo=TZ)),
                 "/worktrees/agent",
                 "Add retry",
                 None,
@@ -89,8 +45,8 @@ def home(tmp_path: Path) -> Path:
             (
                 "sub-1",
                 str(rollout),
-                _seconds(datetime(2026, 7, 21, 2, tzinfo=TZ)),
-                _seconds(datetime(2026, 7, 21, 3, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 21, 2, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 21, 3, tzinfo=TZ)),
                 "/worktrees/agent",
                 "",
                 "Ampere",
@@ -100,8 +56,8 @@ def home(tmp_path: Path) -> Path:
             (
                 "archived-1",
                 str(archived),
-                _seconds(datetime(2026, 7, 23, tzinfo=TZ)),
-                _seconds(datetime(2026, 7, 23, 1, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 23, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 23, 1, tzinfo=TZ)),
                 "/worktrees/assets",
                 "Archived work",
                 None,
@@ -111,8 +67,8 @@ def home(tmp_path: Path) -> Path:
             (
                 "stale-1",
                 str(rollout),
-                _seconds(datetime(2026, 7, 1, tzinfo=TZ)),
-                _seconds(datetime(2026, 7, 2, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 1, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 2, tzinfo=TZ)),
                 "/worktrees/agent",
                 "Old work",
                 None,
@@ -122,8 +78,8 @@ def home(tmp_path: Path) -> Path:
             (
                 "null-source-1",
                 str(rollout),
-                _seconds(datetime(2026, 7, 21, 12, tzinfo=TZ)),
-                _seconds(datetime(2026, 7, 21, 13, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 21, 12, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 21, 13, tzinfo=TZ)),
                 "/worktrees/agent",
                 "NULL source work",
                 None,
@@ -133,8 +89,8 @@ def home(tmp_path: Path) -> Path:
             (
                 "automation-1",
                 str(rollout),
-                _seconds(datetime(2026, 7, 21, 14, tzinfo=TZ)),
-                _seconds(datetime(2026, 7, 21, 15, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 21, 14, tzinfo=TZ)),
+                seconds(datetime(2026, 7, 21, 15, tzinfo=TZ)),
                 "/worktrees/agent",
                 "Automation work",
                 None,
