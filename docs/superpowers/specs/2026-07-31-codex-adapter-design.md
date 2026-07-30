@@ -77,7 +77,7 @@ CLI 版本範圍 `0.144.0`–`0.146.0-alpha.3.1`。
 | `cwd` | TEXT | `working_directory_hint` |
 | `title` | TEXT | `title`；subagent 常為空字串 |
 | `agent_nickname` | TEXT | `title` 為空時的替代（實測值如 `Ampere`、`Gibbs`） |
-| `thread_source` | TEXT | `user` / `subagent`；用於 `--root-only` |
+| `thread_source` | TEXT | 用於 `--root-only`。實測值：`subagent` 293、`user` 56、NULL 64、`automation` 4、`system` 1、`realtime_voice` 1 — 可為 NULL，且不只兩種值 |
 | `model` | TEXT | 不使用，改用 `turn_context.model`（見 §6.5） |
 | `tokens_used` | INTEGER | 不使用，改用 rollout 內的差值（見 §6.5） |
 | `archived` | INTEGER | **不用於過濾**（見 §5.3） |
@@ -212,7 +212,9 @@ SELECT t.id, t.rollout_path, t.created_at, t.updated_at, t.cwd, t.title,
 
 `:since` / `:until` 為 unix 秒。此條件與 Claude Code adapter 的 mtime / `created_at` 邏輯同構。
 
-- `--root-only` 時追加 `AND t.thread_source != 'subagent'`。
+- `--root-only` 時追加 `AND t.thread_source IS NOT 'subagent'`。**必須用 `IS NOT` 而非 `!=`**：
+  SQL 三值邏輯讓 `NULL != 'subagent'` 求值為 NULL，該列會被排除。實測 411 筆中有 64 筆
+  （16%）`thread_source` 為 NULL，用 `!=` 會讓它們在 `--root-only` 報告中無聲消失。
 - `archived` **不參與過濾**：封存只是 UI 狀態，不代表那週沒有做那件事。
 - `title` 為空字串時改用 `agent_nickname`，兩者皆空則為 `None`。
 - `rollout_path` 指向的檔案不存在時，跳過該列並記錄 warning（實測 0 筆，但索引與磁碟可能漂移）。
