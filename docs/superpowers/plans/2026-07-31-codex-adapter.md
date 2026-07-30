@@ -29,7 +29,7 @@ Spec: `docs/superpowers/specs/2026-07-31-codex-adapter-design.md`
 **Files:**
 - Modify: `src/agent_worklog/config.py:23-40`
 - Modify: `src/agent_worklog/cli.py:38-41`, `src/agent_worklog/cli.py:122-140`
-- Test: `tests/unit/test_config.py` (create), `tests/integration/test_cli.py` (modify)
+- Test: `tests/unit/test_config.py` (modify — the file exists and already covers OpenCode and Claude Code defaults), `tests/integration/test_cli.py` (modify)
 
 **Interfaces:**
 - Consumes: nothing.
@@ -37,14 +37,9 @@ Spec: `docs/superpowers/specs/2026-07-31-codex-adapter-design.md`
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `tests/unit/test_config.py`:
+Append to the existing `tests/unit/test_config.py`, which already imports `Path`, `pytest` and `AppSettings`:
 
 ```python
-from pathlib import Path
-
-from agent_worklog.config import AppSettings
-
-
 def test_codex_defaults_to_the_user_codex_home() -> None:
     settings = AppSettings()
 
@@ -2175,42 +2170,53 @@ git commit -m "feat: accept --harness codex in doctor, scan, and report"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/integration/test_scan_service.py`:
+`tests/integration/test_scan_service.py:73` already has a `PromptlessSource` that hardcodes `harness="claude-code"`, plus a `period()` helper and a `StaticResolver`. Give the existing source a harness parameter rather than adding a second stub:
 
 ```python
-def test_missing_prompt_warning_does_not_name_claude_code_for_other_harnesses(
-    fake_git_runner,
-) -> None:
-    session = AgentSession(
-        harness="codex",
-        session_id="thread-1",
-        working_directory="/worktrees/agent",
-        created_at=datetime(2026, 7, 21, tzinfo=TZ),
-        updated_at=datetime(2026, 7, 21, tzinfo=TZ),
-        activities=[
-            SessionActivity(
-                activity_id="a-1",
-                activity_type=ActivityType.TOOL_CALL,
-                timestamp=datetime(2026, 7, 21, 1, tzinfo=TZ),
-                content="",
-                tool_name="exec",
-            )
-        ],
-    )
-    service = ScanService(
-        source=StubSource([session]),
-        period=PERIOD,
-        resolver=RepositoryResolver(runner=fake_git_runner),
-    )
+class PromptlessSource:
+    """A root transcript whose human prompts the mapper could not identify."""
 
-    result = service.scan()
+    def __init__(
+        self,
+        *,
+        parent_session_id: str | None = None,
+        harness: str = "claude-code",
+    ) -> None:
+        self.parent_session_id = parent_session_id
+        self.harness = harness
 
-    warning = next(w for w in result.warnings if "contributes no goals" in w)
-    assert "Claude Code" not in warning
-    assert "2.1.187" not in warning
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return [SessionDescriptor(harness=self.harness, session_id="old-transcript")]
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        return AgentSession(
+            harness=self.harness,
+            session_id=descriptor.session_id,
+            ...  # body unchanged
+        )
 ```
 
-The file already defines `PERIOD`, `TZ` and a stub source; reuse them. If the existing stub is named differently, use that name — do not add a second stub.
+Then append the test:
+
+```python
+def test_promptless_warning_names_claude_code_only_for_claude_code() -> None:
+    """No other harness has the pre-2.1.187 transcript problem to blame."""
+
+    claude = ScanService(
+        source=PromptlessSource(), period=period(), resolver=StaticResolver()
+    ).scan()
+    codex = ScanService(
+        source=PromptlessSource(harness="codex"),
+        period=period(),
+        resolver=StaticResolver(),
+    ).scan()
+
+    claude_warning = next(w for w in claude.warnings if "no user messages" in w)
+    codex_warning = next(w for w in codex.warnings if "no user messages" in w)
+    assert "2.1.187" in claude_warning
+    assert "Claude Code" not in codex_warning
+    assert "2.1.187" not in codex_warning
+```
 
 - [ ] **Step 2: Run the test to verify it fails**
 
