@@ -29,3 +29,13 @@ def test_configuration_doc_lists_the_claude_code_settings() -> None:
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
 
     assert "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY" in configuration
+
+
+def test_readmes_document_interactive_progress() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    assert "transient progress status" in readme
+    assert "`--quiet` hides the progress status" in readme
+    assert "暫時性的進度狀態" in readme_zh_tw
+    assert "`--quiet` 會隱藏進度狀態" in readme_zh_tw

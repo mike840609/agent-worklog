@@ -13,6 +13,7 @@ from agent_worklog.extraction.pipeline import extract_evidence
 from agent_worklog.models.evidence import RepositoryEvidence, SessionEvidence
 from agent_worklog.models.report import RepositorySummary, WorklogReport
 from agent_worklog.models.time_range import DateRange
+from agent_worklog.progress import NullProgressReporter, ProgressReporter, ProgressStage
 from agent_worklog.renderers.markdown import MarkdownRenderer
 from agent_worklog.security.redactor import redact_text, redact_value
 from agent_worklog.security.secure_files import atomic_secure_write
@@ -53,6 +54,7 @@ class ReportService:
         now_factory: Callable[[], datetime],
         usage_provider: Callable[[ScanResult], str] | None = None,
         usage_days: int | None = None,
+        progress: ProgressReporter | None = None,
     ) -> None:
         self._scan_service = scan_service
         self._summarizer = summarizer
@@ -62,11 +64,19 @@ class ReportService:
         self._now_factory = now_factory
         self._usage_provider = usage_provider
         self._usage_days = usage_days
+        self._progress = progress if progress is not None else NullProgressReporter()
 
     def _repository_evidence(self, scan: ScanResult) -> list[RepositoryEvidence]:
         child_counts = count_child_sessions_by_repository(scan.resolved_sessions)
         repositories: list[RepositoryEvidence] = []
-        for repository_id, resolved_items in scan.sessions_by_repository.items():
+        self._progress.start(
+            ProgressStage.PREPARING_EVIDENCE,
+            total=len(scan.sessions_by_repository),
+        )
+        for completed, (repository_id, resolved_items) in enumerate(
+            scan.sessions_by_repository.items(),
+            start=1,
+        ):
             first = resolved_items[0].repository
             sessions: list[SessionEvidence] = []
             branches: list[str] = []
@@ -87,6 +97,7 @@ class ReportService:
                     child_session_count=child_counts.get(repository_id, 0),
                 )
             )
+            self._progress.advance(completed)
         return repositories
 
     def generate(
@@ -97,15 +108,22 @@ class ReportService:
     ) -> ReportGenerationResult:
         scan = self._scan_service.scan()
         warnings = list(scan.warnings)
+        evidence_items = self._repository_evidence(scan)
         summaries: list[RepositorySummary] = []
-        for evidence in self._repository_evidence(scan):
+        self._progress.start(
+            ProgressStage.SUMMARIZING_REPOSITORIES,
+            total=len(evidence_items),
+        )
+        for completed, evidence in enumerate(evidence_items, start=1):
             summaries.append(self._summarizer.summarize(evidence))
             drain_warnings = getattr(self._summarizer, "drain_warnings", None)
             if callable(drain_warnings):
                 warnings.extend(cast(list[str], drain_warnings()))
+            self._progress.advance(completed)
         summaries.sort(key=lambda item: item.display_name.casefold())
         usage_text: str | None = None
         if self._usage_provider is not None:
+            self._progress.start(ProgressStage.COLLECTING_USAGE)
             try:
                 usage_text = redact_text(self._usage_provider(scan))
             except HarnessSourceError as exc:
@@ -118,8 +136,10 @@ class ReportService:
             usage_days=self._usage_days if usage_text else None,
             warnings=[redact_text(warning) for warning in warnings],
         )
+        self._progress.start(ProgressStage.RENDERING_REPORT)
         content = redact_text(self._renderer.render(report))
         if not dry_run:
+            self._progress.start(ProgressStage.WRITING_REPORT)
             atomic_secure_write(self._output_path, content, force=force)
         return ReportGenerationResult(
             report=report,

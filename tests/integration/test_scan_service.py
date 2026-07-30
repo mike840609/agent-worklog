@@ -10,7 +10,9 @@ from agent_worklog.models.session import (
     SessionDescriptor,
 )
 from agent_worklog.models.time_range import DateRange
+from agent_worklog.progress import ProgressStage
 from agent_worklog.services.scan import ScanService
+from tests.progress import RecordingProgressReporter
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -19,6 +21,7 @@ class FakeSource:
     def __init__(self) -> None:
         self.fail_session_ids: set[str] = set()
         self.fail_all = False
+        self.activity_timestamps: dict[str, datetime] = {}
         self.descriptors = [
             SessionDescriptor(harness="opencode", session_id="good-1"),
             SessionDescriptor(harness="opencode", session_id="bad"),
@@ -38,7 +41,10 @@ class FakeSource:
                 SessionActivity(
                     activity_id=f"{descriptor.session_id}:a1",
                     activity_type=ActivityType.USER_MESSAGE,
-                    timestamp=datetime(2026, 7, 22, tzinfo=TZ),
+                    timestamp=self.activity_timestamps.get(
+                        descriptor.session_id,
+                        datetime(2026, 7, 22, tzinfo=TZ),
+                    ),
                     content="Add weekly report generation",
                 )
             ],
@@ -150,3 +156,28 @@ def test_scan_continues_after_one_export_failure() -> None:
     assert result.failed_session_count == 1
     assert any("bad" in warning for warning in result.warnings)
     assert list(result.sessions_by_repository) == ["git:github.com/mike/agent-worklog"]
+
+
+def test_scan_reports_every_discovered_descriptor_as_processed() -> None:
+    source = FakeSource()
+    source.fail_session_ids = {"bad"}
+    source.activity_timestamps["good-2"] = datetime(2026, 7, 1, tzinfo=TZ)
+    progress = RecordingProgressReporter()
+    service = ScanService(
+        source=source,
+        period=period(),
+        resolver=StaticResolver(),
+        progress=progress,
+    )
+
+    result = service.scan()
+
+    assert result.loaded_session_count == 1
+    assert result.failed_session_count == 1
+    assert progress.events == [
+        ("start", ProgressStage.DISCOVERING_SESSIONS, None),
+        ("start", ProgressStage.EXPORTING_SESSIONS, 3),
+        ("advance", 1),
+        ("advance", 2),
+        ("advance", 3),
+    ]

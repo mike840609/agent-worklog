@@ -27,6 +27,7 @@ from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_da
 from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.process import CommandRunner
+from agent_worklog.progress import ProgressReporter
 from agent_worklog.renderers.markdown import MarkdownRenderer
 from agent_worklog.repositories.resolver import RepositoryResolver
 from agent_worklog.services.doctor import run_doctor
@@ -145,6 +146,7 @@ def _build_scan_service(
     root_only: bool = False,
     *,
     harness: Harness = Harness.OPENCODE,
+    progress: ProgressReporter | None = None,
 ) -> ScanService:
     _require_enabled_harness(settings, harness)
     git_runner = CommandRunner(timeout_seconds=5.0)
@@ -165,6 +167,7 @@ def _build_scan_service(
         source=source,
         period=period,
         resolver=RepositoryResolver(runner=git_runner),
+        progress=progress,
     )
 
 
@@ -204,6 +207,7 @@ def _build_report_service(
     *,
     now: datetime,
     harness: Harness = Harness.OPENCODE,
+    progress: ProgressReporter | None = None,
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
@@ -221,7 +225,13 @@ def _build_report_service(
     usage_provider, days = _usage_provider(settings, period, harness, now)
 
     return ReportService(
-        scan_service=_build_scan_service(settings, period, root_only, harness=harness),
+        scan_service=_build_scan_service(
+            settings,
+            period,
+            root_only,
+            harness=harness,
+            progress=progress,
+        ),
         summarizer=summarizer,
         renderer=MarkdownRenderer(),
         period=period,
@@ -229,6 +239,7 @@ def _build_report_service(
         now_factory=lambda: now,
         usage_provider=usage_provider,
         usage_days=days,
+        progress=progress,
     )
 
 
@@ -298,11 +309,18 @@ def scan(
             timezone=settings.report.timezone,
             now=now,
         )
-        result = _build_scan_service(
-            settings, selected_period, root_only, harness=harness
-        ).scan()
-        if result.loaded_session_count == 0:
-            raise NoSessionsError(f"no {harness.value} activity found in the requested period")
+        with reporter.progress() as progress:
+            result = _build_scan_service(
+                settings,
+                selected_period,
+                root_only,
+                harness=harness,
+                progress=progress,
+            ).scan()
+            if result.loaded_session_count == 0:
+                raise NoSessionsError(
+                    f"no {harness.value} activity found in the requested period"
+                )
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
         return
@@ -350,18 +368,22 @@ def report(
             now=now,
         )
         output_path = output or _default_output_path(settings, selected_period)
-        service = _build_report_service(
-            settings,
-            selected_period,
-            output_path,
-            no_llm,
-            root_only,
-            now=now,
-            harness=harness,
-        )
-        result = service.generate(force=force, dry_run=dry_run)
-        if not result.report.repositories:
-            raise NoSessionsError(f"no {harness.value} activity found in the requested period")
+        with reporter.progress() as progress:
+            service = _build_report_service(
+                settings,
+                selected_period,
+                output_path,
+                no_llm,
+                root_only,
+                now=now,
+                harness=harness,
+                progress=progress,
+            )
+            result = service.generate(force=force, dry_run=dry_run)
+            if not result.report.repositories:
+                raise NoSessionsError(
+                    f"no {harness.value} activity found in the requested period"
+                )
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
         return

@@ -48,6 +48,15 @@ All notable changes to this project are documented in this file.
 - Move the shared subprocess runner out of the OpenCode package into
   `agent_worklog.process.CommandRunner` so both harnesses depend on one implementation.
 
+## 0.3.0
+
+- Add a transient, single-line progress status to `scan` and `report`, showing the
+  current stage and accurate session or repository counts during long operations.
+- Keep progress on stderr so `report --dry-run` stdout remains valid Markdown, and
+  suppress progress completely with `--quiet`.
+- Keep progress labels generic to avoid exposing session, path, repository, warning,
+  or API details; clip long statuses to one row on narrow terminals.
+
 ## 0.2.0
 
 - Re-release 0.1.1 under a correct semantic version. That release added features, so it

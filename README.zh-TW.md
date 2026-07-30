@@ -117,6 +117,10 @@ agent-worklog report --period last-week --no-llm
 | `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
 
+`scan` 與 `report` 執行時會顯示暫時性的進度狀態，指出目前所在階段。處理工作階段與
+repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀態。使用
+`report --dry-run` 時，進度會寫入 stderr，stdout 只會包含 Markdown。
+
 `report` 另外還接受：
 
 | 選項 | 用途 |
