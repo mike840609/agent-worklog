@@ -136,14 +136,14 @@ repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀�
 | `--dry-run` | 直接印出 Markdown，不寫入檔案。 |
 | `--no-llm` | 不使用外部 LLM 產生摘要。 |
 
-`doctor` 也接受 `--harness NAME` 與 `--quiet`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果。
+`doctor` 也接受 `--harness NAME`、`--quiet` 與 `--verbose`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果；`--verbose` 不會改變 `doctor` 的輸出內容。
 使用 `--harness claude-code` 時，`doctor` 會改為檢查設定的 `~/.claude/projects` 資料夾是否存在且可讀，而不是檢查 `opencode` 執行檔與資料庫。
 
-`scan` 與 `report` 有三條規則：
+有三條規則：
 
-- `--days`、`--period`、`--since` 三者只能擇一使用。
-- `--until` 只能搭配 `--since` 使用。
-- `--verbose` 與 `--quiet` 不能同時使用。
+- `--days`、`--period`、`--since` 三者只能擇一使用（`scan` 與 `report`）。
+- `--until` 只能搭配 `--since` 使用（`scan` 與 `report`）。
+- `--verbose` 與 `--quiet` 不能同時使用（三個指令都適用）。
 
 ## 統計期間
 

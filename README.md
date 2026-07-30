@@ -141,16 +141,17 @@ stderr so stdout contains only Markdown.
 | `--dry-run` | Prints the Markdown instead of writing a file. |
 | `--no-llm` | Creates the summary without an external LLM. |
 
-`doctor` also accepts `--harness NAME` and `--quiet`. `--quiet` hides the list of checks
-and reports only through the exit code. With `--harness claude-code`, `doctor` checks that
+`doctor` also accepts `--harness NAME`, `--quiet`, and `--verbose`. `--quiet` hides the
+list of checks and reports only through the exit code; `--verbose` does not change what
+`doctor` prints. With `--harness claude-code`, `doctor` checks that
 the configured `~/.claude/projects` directory exists and is readable, instead of checking
 for the `opencode` executable and database.
 
-Three rules apply to `scan` and `report`:
+Three rules apply:
 
-- Give exactly one of `--days`, `--period`, or `--since`.
-- Use `--until` only together with `--since`.
-- Do not use `--verbose` and `--quiet` together.
+- Give exactly one of `--days`, `--period`, or `--since` (`scan` and `report`).
+- Use `--until` only together with `--since` (`scan` and `report`).
+- Do not use `--verbose` and `--quiet` together (all three commands).
 
 ## Reporting periods
 
