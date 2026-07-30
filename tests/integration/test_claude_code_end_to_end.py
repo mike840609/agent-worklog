@@ -1,0 +1,110 @@
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from typer.testing import CliRunner
+
+import agent_worklog.cli as cli
+
+TZ = ZoneInfo("Asia/Taipei")
+
+
+def _invoke(
+    monkeypatch,
+    claude_code_projects: Path,
+    git_only_runner,
+    output: Path,
+    *extra_args: str,
+):
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+    )
+    monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
+        str(claude_code_projects),
+    )
+    return CliRunner().invoke(
+        cli.app,
+        [
+            "report",
+            "--harness",
+            "claude-code",
+            "--period",
+            "last-week",
+            "--no-llm",
+            "--output",
+            str(output),
+            *extra_args,
+        ],
+    )
+
+
+def test_claude_code_report_groups_by_repository_and_reports_usage(
+    tmp_path: Path,
+    monkeypatch,
+    claude_code_projects: Path,
+    git_only_runner,
+) -> None:
+    output = tmp_path / "worklog.md"
+
+    result = _invoke(monkeypatch, claude_code_projects, git_only_runner, output)
+
+    assert result.exit_code == 0, result.stdout
+    content = output.read_text(encoding="utf-8")
+    assert "github.com/mike/agent-worklog" in content
+    assert "github.com/mike/assets-tracker" in content
+    assert "Retry for the price fetcher" in content
+    assert "## Usage" in content
+    assert "claude-opus-5" in content
+    assert "Window: the last" not in content  # exact period, no widened-window caveat
+    assert "ACCEPTANCE_SECRET_MARKER" not in content
+    assert "Verification passed: pytest -q (inferred)" in content
+
+
+def test_root_only_excludes_the_subagent_repository(
+    tmp_path: Path,
+    monkeypatch,
+    claude_code_projects: Path,
+    git_only_runner,
+) -> None:
+    output = tmp_path / "worklog.md"
+
+    result = _invoke(
+        monkeypatch,
+        claude_code_projects,
+        git_only_runner,
+        output,
+        "--root-only",
+    )
+
+    assert result.exit_code == 0, result.stdout
+    content = output.read_text(encoding="utf-8")
+    assert "github.com/mike/agent-worklog" in content
+    assert "github.com/mike/assets-tracker" not in content
+
+
+def test_scan_reports_the_claude_code_sessions(
+    monkeypatch,
+    claude_code_projects: Path,
+    git_only_runner,
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+    )
+    monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
+        str(claude_code_projects),
+    )
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["scan", "--harness", "claude-code", "--period", "last-week"],
+    )
+
+    assert result.exit_code == 0, result.stdout
