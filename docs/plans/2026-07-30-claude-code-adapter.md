@@ -1,7 +1,5 @@
 # Claude Code Adapter Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add Claude Code as a second harness so `agent-worklog scan|report --harness claude-code` produces the same repository-grouped Markdown worklog that OpenCode does.
 
 **Architecture:** A new `ClaudeCodeFileSource` implements the existing `HarnessSessionSource` contract by reading `~/.claude/projects/**/*.jsonl` directly — Claude Code has no export command. Because there is no `--sanitize` upstream, the mapper deliberately drops data at map time rather than relying on `security/redactor.py` alone. The shared pipeline (resolver, filtering, hierarchy, extraction, summarizers, renderer) is unchanged except for one new MEDIUM-confidence branch in `extraction/pipeline.py`.
