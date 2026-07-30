@@ -1,5 +1,5 @@
 from agent_worklog.config import AppSettings
-from agent_worklog.harnesses.opencode.cli_runner import CommandResult
+from agent_worklog.process import CommandResult
 from agent_worklog.services.doctor import run_doctor
 
 

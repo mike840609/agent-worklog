@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.harnesses.opencode.cli_runner import CommandResult
+from agent_worklog.process import CommandResult
 
 
 @dataclass

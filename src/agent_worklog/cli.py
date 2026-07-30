@@ -17,11 +17,11 @@ from agent_worklog.errors import (
     NoSessionsError,
     ReportOutputError,
 )
-from agent_worklog.harnesses.opencode.cli_runner import CommandRunner
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
 from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
 from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
+from agent_worklog.process import CommandRunner
 from agent_worklog.renderers.markdown import MarkdownRenderer
 from agent_worklog.repositories.resolver import RepositoryResolver
 from agent_worklog.services.doctor import run_doctor
