@@ -8,7 +8,7 @@ from agent_worklog.errors import HarnessSourceError
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.renderers.markdown import MarkdownRenderer
 from agent_worklog.services.report import ReportService
-from agent_worklog.services.scan import ScanService
+from agent_worklog.services.scan import ScanResult, ScanService
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 from tests.integration.test_scan_service import FakeSource, StaticResolver
 
@@ -94,7 +94,7 @@ def test_usage_statistics_are_written_into_the_report(tmp_path: Path) -> None:
         period=period(),
         output_path=output,
         now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
-        usage_provider=lambda: "gpt-5-mini  1234 tokens",
+        usage_provider=lambda _scan: "gpt-5-mini  1234 tokens",
         usage_days=10,
     )
 
@@ -117,7 +117,7 @@ def test_usage_text_is_redacted_on_the_report_model(tmp_path: Path) -> None:
         period=period(),
         output_path=output,
         now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
-        usage_provider=lambda: "auth: Bearer super-secret-token\ngpt-5-mini  1234 tokens",
+        usage_provider=lambda _scan: "auth: Bearer super-secret-token\ngpt-5-mini  1234 tokens",
         usage_days=10,
     )
 
@@ -130,7 +130,7 @@ def test_usage_text_is_redacted_on_the_report_model(tmp_path: Path) -> None:
 
 
 def test_usage_failure_becomes_a_warning(tmp_path: Path) -> None:
-    def failing_provider() -> str:
+    def failing_provider(_scan: ScanResult) -> str:
         raise HarnessSourceError("stats unsupported")
 
     source = FakeSource()

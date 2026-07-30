@@ -148,7 +148,7 @@ def _build_report_service(
         period=period,
         output_path=output_path,
         now_factory=lambda: now,
-        usage_provider=lambda: collect_usage_stats(
+        usage_provider=lambda _scan: collect_usage_stats(
             runner=stats_runner,
             executable=cli_settings.executable,
             days=days,
