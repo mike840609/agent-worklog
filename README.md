@@ -77,6 +77,44 @@ agent-worklog report --period last-week --no-llm
 
 The default output is written under `reports/`.
 
+## Command reference
+
+| Command | What it does |
+|---|---|
+| `doctor` | Checks that `opencode` and `git` run and that the OpenCode database can be found. |
+| `scan` | Shows which sessions fall in a period and how they group into repositories. |
+| `report` | Writes the Markdown report for a period. |
+
+`scan` and `report` share these options:
+
+| Option | What it does |
+|---|---|
+| `--days N` | Reports the last N days, ending now. |
+| `--period last-week` | Reports the previous full calendar week. `last-week` is the only accepted value. |
+| `--since ISO` | Starts the period at an exact time. |
+| `--until ISO` | Ends the period at an exact time. Requires `--since`. |
+| `--root-only` | Leaves out subagent sessions. |
+| `--verbose` | Also shows export, fallback, and LLM warnings. |
+| `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
+
+`report` also accepts:
+
+| Option | What it does |
+|---|---|
+| `--output PATH` | Writes to this file instead of the default folder. |
+| `--force` | Replaces the output file if it already exists. |
+| `--dry-run` | Prints the Markdown instead of writing a file. |
+| `--no-llm` | Creates the summary without an external LLM. |
+
+`doctor` accepts `--quiet`, which hides the list of checks and reports only through the
+exit code.
+
+Three rules apply to `scan` and `report`:
+
+- Give exactly one of `--days`, `--period`, or `--since`.
+- Use `--until` only together with `--since`.
+- Do not use `--verbose` and `--quiet` together.
+
 ## Reporting periods
 
 The `last-week` period means the previous full calendar week in the configured time
