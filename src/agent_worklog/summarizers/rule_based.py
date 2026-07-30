@@ -36,12 +36,18 @@ def _limited(items: list[str]) -> list[str]:
     return [*ordered[:_MAX_ITEMS], f"Additional items omitted: {omitted}"]
 
 
+# MEDIUM evidence is inferred rather than observed, so it is labelled in the
+# report instead of being presented as a confirmed outcome.
+_INFERRED_SUFFIX = " (inferred)"
+_REPORTABLE_CONFIDENCE = (EvidenceConfidence.HIGH, EvidenceConfidence.MEDIUM)
+
+
 def _completed(items: list[EvidenceItem]) -> list[str]:
     return [
-        item.text
+        item.text + (_INFERRED_SUFFIX if item.confidence == EvidenceConfidence.MEDIUM else "")
         for item in items
         if item.status == EvidenceStatus.COMPLETED
-        and item.confidence == EvidenceConfidence.HIGH
+        and item.confidence in _REPORTABLE_CONFIDENCE
     ]
 
 

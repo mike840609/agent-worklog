@@ -89,6 +89,52 @@ def _append_unique(
         items.append(candidate)
 
 
+def _append_stderr_heuristic(
+    evidence: SessionEvidence,
+    *,
+    activity: SessionActivity,
+    content: str,
+    repository_id: str,
+) -> None:
+    """Infer command success from stderr when the harness reports no exit code.
+
+    Claude Code's tool results carry no exit code, so this is the only signal
+    available. It is a guess — pytest writes failures to stdout — so everything
+    it produces is MEDIUM confidence, never HIGH.
+    """
+
+    stderr_empty = activity.metadata.get("stderr_empty")
+    if stderr_empty is False:
+        _append_unique(
+            evidence.errors,
+            _item(
+                text=content,
+                activity=activity,
+                confidence=EvidenceConfidence.MEDIUM,
+                extraction_method="stderr_heuristic",
+                status=EvidenceStatus.BLOCKED,
+            ),
+            repository_id=repository_id,
+        )
+        return
+    if (
+        stderr_empty is True
+        and activity.metadata.get("interrupted") is not True
+        and is_verification_command(content)
+    ):
+        _append_unique(
+            evidence.outcomes,
+            _item(
+                text=f"Verification passed: {content}",
+                activity=activity,
+                confidence=EvidenceConfidence.MEDIUM,
+                extraction_method="stderr_heuristic",
+                status=EvidenceStatus.COMPLETED,
+            ),
+            repository_id=repository_id,
+        )
+
+
 def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
     """Extract conservative evidence from one repository-resolved session."""
 
@@ -157,6 +203,13 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                         extraction_method="successful_verification_command",
                         status=EvidenceStatus.COMPLETED,
                     ),
+                    repository_id=repository_id,
+                )
+            elif exit_code is None:
+                _append_stderr_heuristic(
+                    evidence,
+                    activity=activity,
+                    content=content,
                     repository_id=repository_id,
                 )
             continue
