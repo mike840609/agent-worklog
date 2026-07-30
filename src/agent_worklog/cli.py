@@ -118,6 +118,27 @@ def _default_output_path(settings: AppSettings, period: DateRange) -> Path:
     return settings.report.output_directory / filename
 
 
+def _require_enabled_harness(settings: AppSettings, harness: Harness) -> None:
+    """Refuse a harness its configuration has turned off.
+
+    A privacy tool must not advertise an off switch that does nothing: reading
+    `~/.claude/projects` is exactly the kind of thing an operator may need to
+    forbid for a whole machine.
+    """
+
+    enabled = (
+        settings.harnesses.claude_code.enabled
+        if harness is Harness.CLAUDE_CODE
+        else settings.harnesses.opencode.enabled
+    )
+    if not enabled:
+        variable = f"AGENT_WORKLOG_HARNESSES__{harness.name}__ENABLED"
+        raise ConfigurationError(
+            f"harness {harness.value} is disabled by configuration; "
+            f"set {variable}=true to use it"
+        )
+
+
 def _build_scan_service(
     settings: AppSettings,
     period: DateRange,
@@ -125,6 +146,7 @@ def _build_scan_service(
     *,
     harness: Harness = Harness.OPENCODE,
 ) -> ScanService:
+    _require_enabled_harness(settings, harness)
     git_runner = CommandRunner(timeout_seconds=5.0)
     source: HarnessSessionSource
     if harness is Harness.CLAUDE_CODE:
@@ -232,6 +254,7 @@ def doctor(
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        _require_enabled_harness(settings, harness)
         runner = CommandRunner(
             timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
         )

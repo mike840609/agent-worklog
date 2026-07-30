@@ -13,7 +13,7 @@ No YAML configuration file is loaded in the MVP.
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_HARNESSES__OPENCODE__ENABLED` | `true` | Records whether the harness is enabled. |
+| `AGENT_WORKLOG_HARNESSES__OPENCODE__ENABLED` | `true` | Set to `false` to make `--harness opencode` fail with a configuration error (exit code 3). |
 | `AGENT_WORKLOG_HARNESSES__OPENCODE__SOURCE` | `cli` | Source identifier; only `cli` is implemented. |
 | `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | OpenCode executable name or path. |
 | `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS` | `30` | Timeout for OpenCode commands. |
@@ -30,13 +30,17 @@ agent-worklog doctor
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED` | `true` | Records whether the harness is enabled. |
+| `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED` | `true` | Set to `false` to make `--harness claude-code` fail with a configuration error (exit code 3). |
 | `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY` | `~/.claude/projects` | Directory containing per-project session transcripts. |
 
 Selecting the harness is a CLI concern, not a settings one: pass `--harness claude-code`
 to `doctor`, `scan`, or `report`. No executable or CLI timeout setting applies, because
 Agent Worklog reads the JSONL transcripts under `projects_directory` directly and never
 launches a Claude Code process.
+
+`ENABLED` is a refusal, not a default: setting it to `false` does not switch the other
+harness on, it makes `doctor`, `scan`, and `report` refuse the disabled one. Use it to
+forbid reading a transcript store on a machine where that is not permitted.
 
 Example:
 

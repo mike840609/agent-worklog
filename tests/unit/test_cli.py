@@ -48,3 +48,46 @@ def test_build_scan_service_selects_the_claude_code_source(tmp_path) -> None:
     )
 
     assert isinstance(service._source, ClaudeCodeFileSource)
+
+
+def test_a_disabled_harness_is_refused_with_a_configuration_error(tmp_path) -> None:
+    """An off switch a privacy tool advertises has to actually turn something off."""
+
+    import agent_worklog.cli as cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["scan", "--days", "7", "--harness", "claude-code"],
+        env={"AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED": "false"},
+    )
+
+    assert result.exit_code == 3
+    assert "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED" in result.stdout
+
+
+def test_doctor_refuses_a_disabled_harness() -> None:
+    import agent_worklog.cli as cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["doctor", "--harness", "opencode"],
+        env={"AGENT_WORKLOG_HARNESSES__OPENCODE__ENABLED": "false"},
+    )
+
+    assert result.exit_code == 3
+    assert "disabled by configuration" in result.stdout
+
+
+def test_report_still_runs_when_the_harness_is_enabled(tmp_path) -> None:
+    import agent_worklog.cli as cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["scan", "--days", "7", "--harness", "claude-code"],
+        env={
+            "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED": "true",
+            "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(tmp_path),
+        },
+    )
+
+    assert result.exit_code == 4  # no sessions in an empty directory, not a config error

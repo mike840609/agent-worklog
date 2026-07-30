@@ -16,6 +16,7 @@ class OpenCodeCliSettings(BaseModel):
 class OpenCodeSettings(BaseModel):
     """OpenCode harness settings."""
 
+    # `false` makes `--harness opencode` fail with a configuration error.
     enabled: bool = True
     source: str = "cli"
     cli: OpenCodeCliSettings = Field(default_factory=OpenCodeCliSettings)
@@ -24,6 +25,8 @@ class OpenCodeSettings(BaseModel):
 class ClaudeCodeSettings(BaseModel):
     """Claude Code harness settings."""
 
+    # `false` makes `--harness claude-code` fail with a configuration error, so an
+    # operator can forbid reading `~/.claude/projects` on a whole machine.
     enabled: bool = True
     projects_directory: Path = Field(
         default_factory=lambda: Path.home() / ".claude" / "projects"
