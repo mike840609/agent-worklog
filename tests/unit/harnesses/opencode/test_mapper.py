@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 
 from agent_worklog.errors import SessionParseError
-from agent_worklog.harnesses.opencode.cli_runner import CommandResult
 from agent_worklog.harnesses.opencode.mapper import OpenCodeExportMapper
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
 from agent_worklog.models.session import ActivityType, SessionDescriptor, UsageSemantics
+from agent_worklog.process import CommandResult
 
 FIXTURES = Path(__file__).parents[3] / "fixtures" / "opencode"
 

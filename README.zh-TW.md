@@ -16,27 +16,39 @@ Agent Worklog 把 coding agent 的工作階段（session）整理成給主管看
 
 ## 功能
 
-Agent Worklog 目前支援 OpenCode，可以：
+Agent Worklog 支援 OpenCode 與 Claude Code，可以：
 
 - 找出所有專案的 OpenCode 工作階段，不論你現在位於哪個資料夾。
+- 直接從 `~/.claude/projects` 讀取 Claude Code 工作階段，包含 subagent 逐字紀錄。
 - 依照最近幾天、某一個日曆週，或指定的日期區間挑選工作階段。
-- 使用 `opencode export --sanitize` 匯出工作階段。
+- OpenCode 專屬：使用 `opencode export --sanitize` 匯出工作階段。Claude Code 沒有匯出指令，因此沒有對應的步驟。
 - 把屬於同一個 repository 的 Git worktree 歸為同一組。
 - 讓子工作階段（child session）連結到正確的 repository。
 - 使用 `--root-only` 排除 subagent 工作階段，只保留根工作階段。
 - 在報告中列出每個 repository 的工作階段標題與工作資料夾。
-- 依 `opencode stats` 彙整模型、token 與工具的使用狀況。
+- 依模型彙整 token 使用量：OpenCode 取自 `opencode stats`，Claude Code 取自工作階段本身記錄的計數。
 - 附上來源活動 ID 與信心程度作為佐證資訊。
 - 在產生報告或送資料給選用的 LLM 之前，先檢查工作階段資訊中常見的機密字串樣式。
-- 某個工作階段匯出失敗時仍會繼續執行，並在報告中加上警告。
+- 某個工作階段讀取失敗時仍會繼續執行，並在報告中加上警告。
 - 在 POSIX 系統上，以僅擁有者可讀寫的 `0600` 權限寫出報告。
 
 ## 系統需求
+
+使用 `--harness opencode`（預設值）時：
 
 - Python 3.11 以上
 - 可以用 `opencode` 執行的 OpenCode
 - 支援 `opencode db` 與 `opencode export --sanitize` 的 OpenCode 版本
 - 可以用 `git` 執行的 Git
+
+使用 `--harness claude-code` 時：
+
+- Python 3.11 以上
+- 可以用 `git` 執行的 Git
+- 一個可讀取的 `~/.claude/projects` 資料夾（或由
+  `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY` 設定的資料夾）
+
+不需要安裝 Claude Code 命令列工具；Agent Worklog 會直接讀取工作階段的逐字紀錄檔案。
 
 `opencode stats` 是選用的。沒有它時，Agent Worklog 會略過使用量區塊，仍然會產生報告。
 
@@ -84,11 +96,19 @@ agent-worklog report --period last-week --no-llm
 
 預設輸出會寫到 `reports/` 底下。
 
+上面三個指令預設都是 `--harness opencode`。要用 Claude Code 的話，各自加上 `--harness
+claude-code` 即可，不需要安裝 OpenCode：
+
+```bash
+agent-worklog doctor --harness claude-code
+agent-worklog report --harness claude-code --period last-week --no-llm
+```
+
 ## 指令參考
 
 | 指令 | 用途 |
 |---|---|
-| `doctor` | 檢查 `opencode` 與 `git` 能否執行，以及能否找到 OpenCode 資料庫。 |
+| `doctor` | 檢查目前選用的 harness 與 `git` 是否就緒。 |
 | `scan` | 顯示哪些工作階段落在指定期間內，以及它們如何分組成 repository。 |
 | `report` | 產生指定期間的 Markdown 報告。 |
 
@@ -100,6 +120,7 @@ agent-worklog report --period last-week --no-llm
 | `--period last-week` | 統計上一個完整的日曆週。`last-week` 是唯一可用的值。 |
 | `--since ISO` | 以指定時間作為期間起點。 |
 | `--until ISO` | 以指定時間作為期間終點，必須搭配 `--since`。 |
+| `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）或 `claude-code`。 |
 | `--root-only` | 排除 subagent 工作階段。 |
 | `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
@@ -117,7 +138,8 @@ repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀�
 | `--dry-run` | 直接印出 Markdown，不寫入檔案。 |
 | `--no-llm` | 不使用外部 LLM 產生摘要。 |
 
-`doctor` 接受 `--quiet`，會隱藏檢查清單，只用結束代碼回報結果。
+`doctor` 也接受 `--harness NAME` 與 `--quiet`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果。
+使用 `--harness claude-code` 時，`doctor` 會改為檢查設定的 `~/.claude/projects` 資料夾是否存在且可讀，而不是檢查 `opencode` 執行檔與資料庫。
 
 `scan` 與 `report` 有三條規則：
 
@@ -165,7 +187,7 @@ Agent Worklog 會逐一檢查每個工作階段，決定它屬於哪個 reposito
 
 1. Git `origin` remote。
 2. 由共用 Git 目錄雜湊產生的 ID。
-3. OpenCode 專案 ID。
+3. harness 的專案 ID——OpenCode 的專案 ID，或 Claude Code 用來存放逐字紀錄的各專案資料夾名稱。
 4. 由工作目錄雜湊產生的 ID。
 5. 該工作階段專用的 unknown ID。
 
@@ -192,7 +214,9 @@ LLM 請求包含的是挑選過的工作資訊，而不是完整逐字紀錄。A
 
 ## 使用量統計
 
-每份報告都包含一個由 `opencode stats` 產生的使用量區塊，涵蓋模型、token 與工具。OpenCode 只回報「結束於現在」的期間，因此報告中顯示的期間會從報告期間的起點開始，一路延伸到報告產生的時間；它涵蓋報告期間，但範圍比較寬。如果沒有 `opencode stats`，Agent Worklog 會略過這個區塊，並在報告中加上警告。
+使用 `--harness opencode` 時，每份報告都包含一個由 `opencode stats` 產生的使用量區塊，涵蓋模型、token 與工具。OpenCode 只回報「結束於現在」的期間，因此報告中顯示的期間會從報告期間的起點開始，一路延伸到報告產生的時間；它涵蓋報告期間，但範圍比較寬。如果沒有 `opencode stats`，Agent Worklog 會略過這個區塊，並在報告中加上警告。
+
+使用 `--harness claude-code` 時，使用量區塊是根據工作階段本身記錄的 token 計數產生的，因此涵蓋的是報告期間，而不是一段結束於報告產生時間的窗口；上述「範圍比較寬」的但書並不適用。期間內的每一個模型 turn 都會被計入，包含只產生內部推理（thinking）的 turn，它們的 token 由相鄰那筆有記錄的活動一併帶入。這也是它唯一的誤差來源：正好落在期間邊界上的 turn，可能會被算到邊界的另一側。
 
 ## 輸出與檔案處理
 
@@ -237,7 +261,11 @@ export AGENT_WORKLOG_LLM__ENABLED="false"
 
 ## 隱私
 
-Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料，並在產生報告或發出選用的 LLM 請求之前，檢查挑選過的工作階段資訊中常見的機密字串樣式。樣式檢查無法找出所有可能的機密資料。
+Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒有匯出指令，所以使用 `--harness claude-code` 時，Agent Worklog 會直接讀取 `~/.claude/projects` 底下的逐字紀錄，改為仰賴 mapper 只保留人類提示、助理文字訊息、工具名稱，以及每次工具呼叫（若有的話）的一組指令或路徑。如果一次工具呼叫兩者都沒有——例如 WebFetch 的 `url`、WebSearch 的 `query`、TodoWrite 整份的 `todos` 清單，或一般的 MCP 工具呼叫——就會改成把整個輸入序列化成 JSON，並截斷到 200 個字元。工具原始的 `stdout`／`stderr`、思考內容與 hook 輸出，都會在資料進入報告或 LLM 請求之前被捨棄。
+
+接著，兩種 harness 進入報告的每一筆佐證資訊（evidence）都會被截斷到 300 個字元，並在截斷處標上 `…`。這道長度上限的作用，是攔下像 `cat > design.md <<'EOF' … EOF` 這種 heredoc——它把整個檔案內容包在同一個指令字串裡——避免整段內容被複製進報告或 LLM 請求。機密字串樣式檢查做不到這件事：一份設計文件或事件說明裡沒有任何金鑰樣式，只有長度上限能把它移除。
+
+兩種 harness 都會在產生報告或發出選用的 LLM 請求之前，經過常見的機密字串樣式檢查。樣式檢查無法找出所有可能的機密資料。
 
 報告中仍可能包含私人的目標、檔名、指令、工作描述，以及工作資料夾的完整路徑。這些路徑常常包含你的使用者名稱，以及客戶或雇主的名稱；機密字串檢查刻意保留它們，好讓報告能說明工作發生在哪裡。分享報告前請務必先檢查內容。
 
@@ -246,7 +274,7 @@ Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料，並在產生報
 
 ## 失敗處理與結束代碼
 
-如果某個工作階段無法匯出，Agent Worklog 會略過它並在報告中加上警告。如果所有工作階段都無法匯出，指令會直接以錯誤結束，而不會產生空白報告。
+如果某個工作階段無法讀取，Agent Worklog 會略過它並在報告中加上警告——OpenCode 是 `opencode export` 失敗，Claude Code 則是逐字紀錄檔案無法讀取。如果所有工作階段都無法讀取，指令會直接以錯誤結束，而不會產生空白報告。
 
 | 代碼 | 意義 |
 |---:|---|
@@ -254,19 +282,21 @@ Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料，並在產生報
 | 2 | 指令選項無效 |
 | 3 | 設定錯誤 |
 | 4 | 沒有符合的活動 |
-| 5 | OpenCode 或 Git 相依性錯誤 |
+| 5 | Harness 或 Git 相依性錯誤 |
 | 7 | 報告檔案錯誤 |
 
 ## 目前支援範圍與限制
 
-- 目前只支援 OpenCode 這個 coding agent 工具。
-- Agent Worklog 透過 OpenCode 命令列工具取得工作階段資料，不會直接讀取 SQLite 資料庫。
+- 目前支援的 coding agent 工具是 OpenCode 與 Claude Code；用 `--harness` 挑選其中一個。
+- 使用 `--harness opencode` 時，Agent Worklog 透過 OpenCode 命令列工具取得工作階段資料，不會直接讀取 SQLite 資料庫。
 - 報告格式只有 Markdown。
-- 使用量統計涵蓋的期間結束於報告產生的時間，並不會與報告期間完全一致。
+- 使用量的期間但書只適用於 OpenCode：`opencode stats` 涵蓋的期間結束於報告產生的時間，範圍比報告期間寬。Claude Code 的使用量是根據工作階段本身產生的，涵蓋的就是報告期間，誤差不超過期間兩端各一個模型 turn。
 - Agent Worklog 不會在多次執行之間保留快取，也沒有提供 `inspect` 指令。
-- 較舊的工作階段若工作資料夾已被刪除，可能會使用備援 ID。
+- 較舊的 OpenCode 工作階段若工作資料夾已被刪除，可能會使用備援 ID。
 - Repository 分組使用的是產生報告當下可取得的 Git 資訊。
-- 目前不支援 Codex 與 Claude Code。
+- 目前不支援 Codex。
+- Claude Code 工作階段沒有結束代碼（exit code），因此 Claude Code 的報告不會聲稱任何測試或 lint 指令通過或失敗。stderr 為空的驗證指令會以 `Ran verification command: <command>` 列在「In Progress」底下；若指令自己重導了 stderr（`2>`、`&>`、`|&`），則完全不產生任何結果判定，因為這種情況下 stderr 為空並不代表任何事。stderr 非空同樣不視為失敗——Git 成功時也會往 stderr 寫東西。只有 OpenCode 有真正的 exit code，才會把驗證結果報告為通過。
+- 若一個 Claude Code 工作階段橫跨多個工作目錄，會被歸到最後一個工作目錄底下。
 
 ## 開發檢查
 

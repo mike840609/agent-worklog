@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from agent_worklog.errors import HarnessSourceError
-from agent_worklog.harnesses.opencode.cli_runner import CommandResult
 from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
 from agent_worklog.models.time_range import DateRange
+from agent_worklog.process import CommandResult
 
 TZ = ZoneInfo("Asia/Taipei")
 

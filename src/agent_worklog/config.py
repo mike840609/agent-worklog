@@ -16,15 +16,28 @@ class OpenCodeCliSettings(BaseModel):
 class OpenCodeSettings(BaseModel):
     """OpenCode harness settings."""
 
+    # `false` makes `--harness opencode` fail with a configuration error.
     enabled: bool = True
     source: str = "cli"
     cli: OpenCodeCliSettings = Field(default_factory=OpenCodeCliSettings)
+
+
+class ClaudeCodeSettings(BaseModel):
+    """Claude Code harness settings."""
+
+    # `false` makes `--harness claude-code` fail with a configuration error, so an
+    # operator can forbid reading `~/.claude/projects` on a whole machine.
+    enabled: bool = True
+    projects_directory: Path = Field(
+        default_factory=lambda: Path.home() / ".claude" / "projects"
+    )
 
 
 class HarnessSettings(BaseModel):
     """Configured coding-agent harnesses."""
 
     opencode: OpenCodeSettings = Field(default_factory=OpenCodeSettings)
+    claude_code: ClaudeCodeSettings = Field(default_factory=ClaudeCodeSettings)
 
 
 class ReportSettings(BaseModel):

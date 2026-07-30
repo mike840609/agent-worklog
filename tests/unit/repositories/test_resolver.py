@@ -1,6 +1,6 @@
-from agent_worklog.harnesses.opencode.cli_runner import CommandResult
 from agent_worklog.models.repository import RepositoryIdentityType
 from agent_worklog.models.session import AgentSession
+from agent_worklog.process import CommandResult
 from agent_worklog.repositories.resolver import RepositoryResolver
 
 

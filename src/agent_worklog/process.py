@@ -1,4 +1,4 @@
-"""Safe subprocess execution for OpenCode and Git commands."""
+"""Safe subprocess execution for harness and Git commands."""
 
 import os
 import subprocess

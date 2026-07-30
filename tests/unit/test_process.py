@@ -3,8 +3,8 @@ import sys
 
 import pytest
 
-from agent_worklog.harnesses.opencode import cli_runner
-from agent_worklog.harnesses.opencode.cli_runner import CommandRunner
+from agent_worklog import process
+from agent_worklog.process import CommandRunner
 
 
 def test_runner_disables_interactive_git_and_uses_argument_list() -> None:
@@ -20,7 +20,7 @@ def test_timeout_becomes_a_failed_result(monkeypatch: pytest.MonkeyPatch) -> Non
     def timing_out_run(*args: object, **kwargs: object) -> None:
         raise subprocess.TimeoutExpired(cmd=["opencode", "stats"], timeout=5.0)
 
-    monkeypatch.setattr(cli_runner.subprocess, "run", timing_out_run)
+    monkeypatch.setattr(process.subprocess, "run", timing_out_run)
 
     result = CommandRunner(timeout_seconds=5).run(["opencode", "stats"])
 

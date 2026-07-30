@@ -34,6 +34,7 @@ class TokenUsage(BaseModel):
 class SessionDescriptor(BaseModel):
     harness: str
     session_id: str
+    source_location: str | None = None
     title: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

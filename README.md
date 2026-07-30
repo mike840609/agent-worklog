@@ -17,28 +17,43 @@ engineers time.
 
 ## Capabilities
 
-Agent Worklog currently works with OpenCode and can:
+Agent Worklog works with OpenCode and Claude Code and can:
 
 - Find OpenCode sessions across all projects, no matter which folder you are in.
+- Read Claude Code sessions straight from `~/.claude/projects`, including subagent
+  transcripts.
 - Select sessions from recent days, a calendar week, or a specific date range.
-- Export sessions with `opencode export --sanitize`.
+- For OpenCode: export sessions with `opencode export --sanitize`. Claude Code has no
+  export command, so this step has no equivalent there.
 - Group Git worktrees that belong to the same repository.
 - Keep child sessions linked to the correct repository.
 - Leave out subagent sessions with `--root-only` when you only want root sessions.
 - List each repository's session titles and working folders in the report.
-- Summarize models, tokens, and tools from `opencode stats`.
+- Summarize token usage per model: from `opencode stats` for OpenCode, and from the
+  counters recorded in the sessions themselves for Claude Code.
 - Include source activity IDs and confidence levels as supporting information.
 - Check session information for common secret patterns before creating a report or
   sending data to an optional LLM.
-- Continue when one session cannot be exported and add a warning to the report.
+- Continue when one session cannot be read and add a warning to the report.
 - On POSIX systems, write reports with owner-only `0600` permissions.
 
 ## Requirements
+
+For `--harness opencode` (the default):
 
 - Python 3.11 or newer
 - OpenCode available as `opencode`
 - An OpenCode version that provides `opencode db` and `opencode export --sanitize`
 - Git available as `git`
+
+For `--harness claude-code`:
+
+- Python 3.11 or newer
+- Git available as `git`
+- A readable `~/.claude/projects` directory (or the directory configured with
+  `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY`)
+
+No Claude Code CLI is required; Agent Worklog reads the session transcripts directly.
 
 `opencode stats` is optional. Without it, Agent Worklog leaves out the usage section and
 still creates the report.
@@ -87,11 +102,19 @@ agent-worklog report --period last-week --no-llm
 
 The default output is written under `reports/`.
 
+Those three commands default to `--harness opencode`. For Claude Code, add `--harness
+claude-code` to each — no OpenCode installation is needed:
+
+```bash
+agent-worklog doctor --harness claude-code
+agent-worklog report --harness claude-code --period last-week --no-llm
+```
+
 ## Command reference
 
 | Command | What it does |
 |---|---|
-| `doctor` | Checks that `opencode` and `git` run and that the OpenCode database can be found. |
+| `doctor` | Checks that the selected harness and `git` are ready to use. |
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
 
@@ -103,6 +126,7 @@ The default output is written under `reports/`.
 | `--period last-week` | Reports the previous full calendar week. `last-week` is the only accepted value. |
 | `--since ISO` | Starts the period at an exact time. |
 | `--until ISO` | Ends the period at an exact time. Requires `--since`. |
+| `--harness NAME` | Harness to read sessions from: `opencode` (default) or `claude-code`. |
 | `--root-only` | Leaves out subagent sessions. |
 | `--verbose` | Also shows export, fallback, and LLM warnings. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
@@ -121,8 +145,10 @@ stderr so stdout contains only Markdown.
 | `--dry-run` | Prints the Markdown instead of writing a file. |
 | `--no-llm` | Creates the summary without an external LLM. |
 
-`doctor` accepts `--quiet`, which hides the list of checks and reports only through the
-exit code.
+`doctor` also accepts `--harness NAME` and `--quiet`. `--quiet` hides the list of checks
+and reports only through the exit code. With `--harness claude-code`, `doctor` checks that
+the configured `~/.claude/projects` directory exists and is readable, instead of checking
+for the `opencode` executable and database.
 
 Three rules apply to `scan` and `report`:
 
@@ -175,7 +201,8 @@ It uses the following information in order:
 
 1. The Git `origin` remote.
 2. An ID created from a hash of the shared Git directory.
-3. The OpenCode project ID.
+3. The harness project ID — OpenCode's project ID, or the per-project directory name
+   Claude Code stores transcripts under.
 4. An ID created from a hash of the working directory.
 5. A separate unknown ID for the session.
 
@@ -210,11 +237,20 @@ the LLM. Use `--no-llm` to keep report generation on your computer.
 
 ## Usage statistics
 
-Each report includes a usage section built from `opencode stats`, covering models, tokens,
-and tools. OpenCode reports usage only for a period that ends now. The period shown in the
-report therefore starts when the report period starts and runs to the time the report is
-created. It covers the report period but is wider than it. If `opencode stats` is not
-available, Agent Worklog leaves the section out and adds a warning to the report.
+With `--harness opencode`, each report includes a usage section built from `opencode
+stats`, covering models, tokens, and tools. OpenCode reports usage only for a period that
+ends now. The period shown in the report therefore starts when the report period starts
+and runs to the time the report is created. It covers the report period but is wider than
+it. If `opencode stats` is not available, Agent Worklog leaves the section out and adds a
+warning to the report.
+
+With `--harness claude-code`, the usage section is built from token counters recorded in
+the sessions themselves, so it covers the report period instead of a window that ends when
+the report is created; the "wider than the period" caveat above does not apply. It counts
+every model turn in the period, including turns that produced only internal reasoning,
+whose tokens are carried by the neighbouring recorded activity. That last part is also its
+one imprecision: a turn sitting exactly on the period boundary can be counted on the other
+side of it.
 
 ## Output and file handling
 
@@ -262,9 +298,24 @@ for a complete list of settings.
 
 ## Privacy
 
-Agent Worklog requests OpenCode exports with `--sanitize`. It also checks selected
-session information for common secret patterns before creating a report or making an
-optional LLM request. Pattern checks cannot find every possible secret.
+Agent Worklog requests OpenCode exports with `--sanitize`. Claude Code has no export
+command, so with `--harness claude-code` Agent Worklog reads `~/.claude/projects`
+transcripts directly and relies on the mapper keeping only prompts, assistant text, tool
+names, and one command or path per tool call when the call has one. A call with neither —
+WebFetch's `url`, WebSearch's `query`, TodoWrite's `todos` list, and MCP tool calls in
+general — has its whole input serialized to JSON and truncated to 200 characters instead.
+Raw tool `stdout`/`stderr`, thinking blocks, and hook output are dropped before anything
+reaches a report or an LLM request.
+
+For both harnesses, every piece of supporting information that reaches a report is then
+capped at 300 characters and marked with a `…` where it was cut. That is what stops a long
+command — a heredoc such as `cat > design.md <<'EOF' … EOF`, which carries the whole file
+it writes inside one command string — from being copied into the report or an LLM request.
+The secret-pattern checks cannot do this job: a design document or a write-up contains no
+credential pattern, so only the length limit removes it.
+
+Both harnesses also go through the common secret-pattern checks before creating a report
+or making an optional LLM request. Pattern checks cannot find every possible secret.
 
 Reports may still contain private goals, filenames, commands, work descriptions, and the
 full paths of your working folders. Those paths often include your user name and the name
@@ -277,8 +328,9 @@ for more details about data safety and current limits.
 
 ## Failure handling and exit codes
 
-If one session cannot be exported, Agent Worklog skips it and adds a warning to the
-report. If no sessions can be exported, the command stops with an error instead of
+If one session cannot be read, Agent Worklog skips it and adds a warning to the report.
+That means a failed `opencode export` for OpenCode, or an unreadable transcript file for
+Claude Code. If no sessions can be read, the command stops with an error instead of
 creating an empty report.
 
 | Code | Meaning |
@@ -287,22 +339,34 @@ creating an empty report.
 | 2 | Invalid command options |
 | 3 | Settings error |
 | 4 | No matching activity |
-| 5 | OpenCode or Git dependency error |
+| 5 | Harness or Git dependency error |
 | 7 | Report file error |
 
 ## Current support and limits
 
-- OpenCode is the only supported coding-agent tool.
-- Agent Worklog gets session data through the OpenCode command-line tool. It does not
-  read the SQLite database directly.
+- OpenCode and Claude Code are the supported coding-agent tools; select one with
+  `--harness`.
+- For `--harness opencode`, Agent Worklog gets session data through the OpenCode
+  command-line tool. It does not read the SQLite database directly.
 - Markdown is the only report format.
-- Usage statistics cover a period that ends when the report is created. They do not match
-  the report period exactly.
+- The usage window caveat applies to OpenCode only: `opencode stats` covers a period
+  that ends when the report is created, so it is wider than the report period. Claude
+  Code usage is built from the sessions themselves, so it covers the report period, to
+  within a single model turn at each end of it.
 - Agent Worklog does not keep a cache between runs and does not provide an `inspect`
   command.
-- Older sessions may use a backup ID if their working folders have been deleted.
+- Older OpenCode sessions may use a backup ID if their working folders have been deleted.
 - Repository grouping uses the Git information available when the report is created.
-- Codex and Claude Code are not currently supported.
+- Codex is not currently supported.
+- Claude Code sessions have no exit codes, so no Claude Code report claims that a test or
+  lint command passed or failed. A verification command whose stderr was empty is listed
+  under "In Progress" as `Ran verification command: <command>`, and a command that
+  redirects its stderr (`2>`, `&>`, `|&`) produces no outcome at all, because for those
+  commands an empty stderr says nothing. Non-empty stderr is not treated as failure
+  either — Git writes to stderr on success. Verification results are reported as passing
+  only for OpenCode, where a real exit code is available.
+- A Claude Code session that spans several working directories is grouped under the
+  last one.
 
 ## Development checks
 

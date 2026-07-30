@@ -20,9 +20,50 @@ from agent_worklog.models.evidence import (
 from agent_worklog.models.repository import ResolvedSession
 from agent_worklog.models.session import ActivityType, SessionActivity
 
+# An evidence item is a pointer back to work, not a copy of it. Both harnesses put
+# a whole tool input into `SessionActivity.content` — a Claude Code `input.command`
+# holding a heredoc body carries the file it writes, and there is no upstream
+# `--sanitize` on that path — so the cap lives here, where every item is built.
+EVIDENCE_TEXT_MAX_LENGTH = 300
+
+# A path that survives the `_file_path` fallback below must fit in one report line.
+_PATH_MAX_LENGTH = 512
+_PATH_REJECTED_CHARACTERS = frozenset("{}[]\"'`<>|*?")
+
+# Shell forms that make stderr empty by construction rather than by success.
+# "2>" already subsumes "2>&1", "2>/dev/null", and "2>>file"; "&>" and "|&" are
+# bash's send-both-streams forms, which redirect stderr without naming it.
+_STDERR_REDIRECTION_MARKERS = ("2>", "&>", "|&")
+
 
 def _normalize(text: str) -> str:
     return " ".join(text.split()).strip()
+
+
+def _truncate(text: str) -> str:
+    """Cap one evidence item, marking the cut so a reader sees text was removed."""
+
+    if len(text) <= EVIDENCE_TEXT_MAX_LENGTH:
+        return text
+    return text[: EVIDENCE_TEXT_MAX_LENGTH - 1].rstrip() + "…"
+
+
+def _is_plausible_path(value: str) -> bool:
+    """Reject fallback text that is not a path.
+
+    `_file_path` falls back to the activity's content, which for a file tool call
+    carrying no path key is the mapper's serialized input — for a `Write`-shaped
+    call that is the file's own `content`. Rendering that under "Key Files" would
+    copy source into the report, so anything unlike a single path is refused.
+    """
+
+    if not value or len(value) > _PATH_MAX_LENGTH:
+        return False
+    if any(character in _PATH_REJECTED_CHARACTERS for character in value):
+        return False
+    if any(character.isspace() for character in value):
+        return False
+    return "/" in value or "\\" in value or "." in value
 
 
 def _nested_mapping(value: object) -> Mapping[str, object]:
@@ -57,7 +98,7 @@ def _file_path(activity: SessionActivity) -> str | None:
             if isinstance(value, str) and value.strip():
                 return value.strip()
     content = _normalize(activity.content)
-    return content or None
+    return content if _is_plausible_path(content) else None
 
 
 def _item(
@@ -69,7 +110,7 @@ def _item(
     status: EvidenceStatus = EvidenceStatus.UNKNOWN,
 ) -> EvidenceItem:
     return EvidenceItem(
-        text=_normalize(text),
+        text=_truncate(_normalize(text)),
         source_activity_ids=[activity.activity_id],
         confidence=confidence,
         extraction_method=extraction_method,
@@ -87,6 +128,67 @@ def _append_unique(
     existing = {(item.text.casefold(), repository_id) for item in items}
     if key not in existing:
         items.append(candidate)
+
+
+def _redirects_stderr(command: str) -> bool:
+    """Detect a command whose empty stderr is an artefact of its own redirection.
+
+    `pytest 2>&1 | tail` and `ruff check . 2>/dev/null` leave stderr empty no
+    matter what happened, so `stderr_empty` carries no information about them.
+    Measured against real transcripts, 96 of 113 inferences came from commands
+    shaped like this.
+
+    ponytail: plain substring match, not shell-aware. A heredoc that *writes about*
+    redirection — `cat <<EOF > doc.md` containing the text `cmd &> file` — matches
+    too. That costs a suppressed annotation on a command whose outcome was already
+    unobserved, never a wrong claim, and never the `commands` list, so the trade is
+    worth it. Parse the shell only if a real verification result goes missing.
+    """
+
+    return any(marker in command for marker in _STDERR_REDIRECTION_MARKERS)
+
+
+def _append_stderr_heuristic(
+    evidence: SessionEvidence,
+    *,
+    activity: SessionActivity,
+    content: str,
+    repository_id: str,
+) -> None:
+    """Record what a command was, not how it ended, when there is no exit code.
+
+    Claude Code's tool results carry no exit code, so empty stderr is the only
+    signal available — and it is a weak one: pytest writes `FAILED` to stdout and
+    `ruff` reports violations on stdout. Nothing here claims success. A command
+    that redirects stderr is skipped outright, because for it the signal is not
+    weak but absent.
+
+    Non-empty stderr is deliberately *not* treated as failure. `git` writes to
+    stderr on success constantly, so it produced 31 items of `git stash` and
+    `cd … && uv sync` noise against real transcripts — none of which the report
+    renders, while all of them travelled in the outbound LLM request. Only an
+    observed exit code makes a failure worth recording.
+    """
+
+    if _redirects_stderr(content):
+        return
+
+    if (
+        activity.metadata.get("stderr_empty") is True
+        and activity.metadata.get("interrupted") is not True
+        and is_verification_command(content)
+    ):
+        _append_unique(
+            evidence.outcomes,
+            _item(
+                text=f"Ran verification command: {content}",
+                activity=activity,
+                confidence=EvidenceConfidence.MEDIUM,
+                extraction_method="stderr_heuristic",
+                status=EvidenceStatus.UNKNOWN,
+            ),
+            repository_id=repository_id,
+        )
 
 
 def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
@@ -157,6 +259,13 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                         extraction_method="successful_verification_command",
                         status=EvidenceStatus.COMPLETED,
                     ),
+                    repository_id=repository_id,
+                )
+            elif exit_code is None:
+                _append_stderr_heuristic(
+                    evidence,
+                    activity=activity,
+                    content=content,
                     repository_id=repository_id,
                 )
             continue

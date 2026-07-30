@@ -73,3 +73,108 @@ def test_rule_summary_limits_each_section_to_twenty_items() -> None:
 
     assert len(summary.completed) == 21
     assert summary.completed[-1] == "Additional items omitted: 2"
+
+
+def test_medium_confidence_completed_evidence_is_marked_inferred() -> None:
+    """An observed outcome reads plainly; an inferred one is labelled as inferred."""
+
+    evidence = RepositoryEvidence(
+        repository_id="git:github.com/mike/agent-worklog",
+        display_name="Agent Worklog",
+        sessions=[
+            SessionEvidence(
+                session_id="sess-1",
+                repository_id="git:github.com/mike/agent-worklog",
+                outcomes=[
+                    EvidenceItem(
+                        text="Coverage threshold met",
+                        source_activity_ids=["a-1"],
+                        confidence=EvidenceConfidence.MEDIUM,
+                        extraction_method="test_only_medium_signal",
+                        status=EvidenceStatus.COMPLETED,
+                    ),
+                    EvidenceItem(
+                        text="Verification passed: ruff check .",
+                        source_activity_ids=["a-2"],
+                        confidence=EvidenceConfidence.HIGH,
+                        extraction_method="successful_verification_command",
+                        status=EvidenceStatus.COMPLETED,
+                    ),
+                ],
+            )
+        ],
+    )
+
+    summary = RuleBasedSummarizer().summarize(evidence)
+
+    assert "Coverage threshold met (inferred)" in summary.completed
+    assert "Verification passed: ruff check ." in summary.completed
+
+
+def test_unobserved_outcomes_are_listed_in_progress_not_completed() -> None:
+    """A Claude Code verification run has no exit code, so no success is claimed.
+
+    The item must still reach the report: an unobserved outcome belongs under
+    In Progress, never under Completed, and never nowhere.
+    """
+
+    evidence = RepositoryEvidence(
+        repository_id="git:github.com/mike/agent-worklog",
+        display_name="Agent Worklog",
+        sessions=[
+            SessionEvidence(
+                session_id="sess-1",
+                repository_id="git:github.com/mike/agent-worklog",
+                outcomes=[
+                    EvidenceItem(
+                        text="Ran verification command: pytest -q",
+                        source_activity_ids=["a-1"],
+                        confidence=EvidenceConfidence.MEDIUM,
+                        extraction_method="stderr_heuristic",
+                        status=EvidenceStatus.UNKNOWN,
+                    )
+                ],
+            )
+        ],
+    )
+
+    summary = RuleBasedSummarizer().summarize(evidence)
+
+    assert summary.completed == []
+    assert summary.in_progress == ["Ran verification command: pytest -q"]
+
+
+def test_low_confidence_outcomes_are_still_excluded() -> None:
+    """Assistant self-claims stay out of the report entirely, in every section."""
+
+    evidence = RepositoryEvidence(
+        repository_id="git:github.com/mike/agent-worklog",
+        display_name="Agent Worklog",
+        sessions=[
+            SessionEvidence(
+                session_id="sess-1",
+                repository_id="git:github.com/mike/agent-worklog",
+                outcomes=[
+                    EvidenceItem(
+                        text="I implemented the retry",
+                        source_activity_ids=["a-1"],
+                        confidence=EvidenceConfidence.LOW,
+                        extraction_method="assistant_claim",
+                        status=EvidenceStatus.COMPLETED,
+                    ),
+                    EvidenceItem(
+                        text="I fixed the flaky test",
+                        source_activity_ids=["a-2"],
+                        confidence=EvidenceConfidence.LOW,
+                        extraction_method="assistant_claim",
+                        status=EvidenceStatus.UNKNOWN,
+                    ),
+                ],
+            )
+        ],
+    )
+
+    summary = RuleBasedSummarizer().summarize(evidence)
+
+    assert summary.completed == []
+    assert summary.in_progress == []

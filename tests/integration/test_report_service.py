@@ -10,7 +10,7 @@ from agent_worklog.models.time_range import DateRange
 from agent_worklog.progress import ProgressReporter, ProgressStage
 from agent_worklog.renderers.markdown import MarkdownRenderer
 from agent_worklog.services.report import ReportService
-from agent_worklog.services.scan import ScanService
+from agent_worklog.services.scan import ScanResult, ScanService
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 from tests.integration.test_scan_service import FakeSource, StaticResolver
 from tests.progress import RecordingProgressReporter
@@ -30,7 +30,7 @@ def service(
     output: Path,
     *,
     progress: ProgressReporter | None = None,
-    usage_provider: Callable[[], str] | None = None,
+    usage_provider: Callable[[ScanResult], str] | None = None,
 ) -> ReportService:
     return ReportService(
         scan_service=ScanService(
@@ -54,7 +54,7 @@ def test_all_exports_failing_is_an_error(tmp_path: Path) -> None:
     source = FakeSource()
     source.fail_all = True
 
-    with pytest.raises(HarnessSourceError, match="all OpenCode session exports failed"):
+    with pytest.raises(HarnessSourceError, match="all opencode session loads failed"):
         service(source, tmp_path / "report.md").generate(force=False)
 
 
@@ -122,7 +122,7 @@ def test_usage_statistics_are_written_into_the_report(tmp_path: Path) -> None:
         period=period(),
         output_path=output,
         now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
-        usage_provider=lambda: "gpt-5-mini  1234 tokens",
+        usage_provider=lambda _scan: "gpt-5-mini  1234 tokens",
         usage_days=10,
     )
 
@@ -145,7 +145,7 @@ def test_usage_text_is_redacted_on_the_report_model(tmp_path: Path) -> None:
         period=period(),
         output_path=output,
         now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
-        usage_provider=lambda: "auth: Bearer super-secret-token\ngpt-5-mini  1234 tokens",
+        usage_provider=lambda _scan: "auth: Bearer super-secret-token\ngpt-5-mini  1234 tokens",
         usage_days=10,
     )
 
@@ -158,7 +158,7 @@ def test_usage_text_is_redacted_on_the_report_model(tmp_path: Path) -> None:
 
 
 def test_usage_failure_becomes_a_warning(tmp_path: Path) -> None:
-    def failing_provider() -> str:
+    def failing_provider(_scan: ScanResult) -> str:
         raise HarnessSourceError("stats unsupported")
 
     source = FakeSource()
@@ -188,7 +188,7 @@ def test_report_emits_repository_and_output_stages(tmp_path: Path) -> None:
         FakeSource(),
         tmp_path / "report.md",
         progress=progress,
-        usage_provider=lambda: "gpt-5-mini 1234 tokens",
+        usage_provider=lambda _scan: "gpt-5-mini 1234 tokens",
     ).generate()
 
     assert progress.events == [
@@ -208,7 +208,7 @@ def test_report_emits_repository_and_output_stages(tmp_path: Path) -> None:
 
 
 def test_report_dry_run_skips_write_after_usage_failure(tmp_path: Path) -> None:
-    def failing_provider() -> str:
+    def failing_provider(_scan: ScanResult) -> str:
         raise HarnessSourceError("stats unsupported")
 
     progress = RecordingProgressReporter()

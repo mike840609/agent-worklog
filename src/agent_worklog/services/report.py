@@ -52,7 +52,7 @@ class ReportService:
         period: DateRange,
         output_path: Path,
         now_factory: Callable[[], datetime],
-        usage_provider: Callable[[], str] | None = None,
+        usage_provider: Callable[[ScanResult], str] | None = None,
         usage_days: int | None = None,
         progress: ProgressReporter | None = None,
     ) -> None:
@@ -125,9 +125,9 @@ class ReportService:
         if self._usage_provider is not None:
             self._progress.start(ProgressStage.COLLECTING_USAGE)
             try:
-                usage_text = redact_text(self._usage_provider())
+                usage_text = redact_text(self._usage_provider(scan))
             except HarnessSourceError as exc:
-                warnings.append(f"OpenCode usage statistics unavailable: {exc}")
+                warnings.append(f"usage statistics unavailable: {exc}")
         report = WorklogReport(
             generated_at=self._now_factory(),
             period=self._period,

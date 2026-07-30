@@ -2,6 +2,52 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Add `--harness {opencode,claude-code}` to `doctor`, `scan`, and `report`, defaulting
+  to `opencode`. Read Claude Code session transcripts directly from
+  `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY` (default
+  `~/.claude/projects`); `--harness claude-code` runs no external harness CLI, and
+  `doctor` instead checks that the projects directory exists and is readable, plus
+  `git --version`.
+- Build the Claude Code usage table from token counters recorded on the sessions
+  themselves, so it covers the report period rather than a trailing window ending at
+  report generation time, which is what `opencode stats` still reports. Every model turn
+  in the period is counted, including turns that emitted only internal reasoning; their
+  tokens are carried by the neighbouring recorded activity, which is also the table's one
+  imprecision — a turn on the period boundary can be counted on the other side of it.
+- Report Claude Code verification commands without claiming an outcome. Claude Code tool
+  results carry no exit code, so a command whose stderr was empty is recorded as `Ran
+  verification command: <command>` at MEDIUM confidence with an unknown status, and
+  appears under "In Progress" rather than "Completed". A command that redirects or
+  discards its stderr (`2>`, `&>`, `|&`) produces no outcome at all, because its empty
+  stderr is an artefact of the redirection. "Verification passed" remains reserved for the
+  OpenCode path, which observes a real exit code.
+- Stop treating non-empty stderr as a failed command on the Claude Code path. Git writes
+  to stderr on success, so the rule produced 31 items of `git stash` and `cd … && uv sync`
+  noise against real transcripts — none of which any report section renders, while all of
+  them travelled in the outbound LLM request. Only an observed exit code now records a
+  failure, which keeps the LLM and `--no-llm` reports describing the same set of problems.
+- Cap every evidence item's text at 300 characters for both harnesses, marking the cut
+  with an ellipsis. A Claude Code `input.command` is retained whole, so a heredoc used to
+  write a file previously carried that file's entire body into the report and into
+  optional LLM requests; secret-pattern redaction cannot detect such text.
+- Group a Claude Code session that spans several working directories under the last
+  one, and read subagent transcripts alongside root sessions, excluded by `--root-only`
+  like OpenCode child sessions.
+- Warn when a root session records assistant work but no user messages. A Claude Code
+  transcript written before roughly version 2.1.187 does not mark human prompts, so such
+  a session contributes no goals; the warning replaces a silent loss. Subagent sessions
+  are exempt, because a subagent is spawned with its parent's prompt and holds no human
+  prompt by design.
+- Skip models whose usage totals are all zero in the Claude Code usage table, so the
+  `<synthetic>` placeholder Claude Code writes for local and error turns no longer adds
+  an all-zero row.
+- Honor `AGENT_WORKLOG_HARNESSES__*__ENABLED`. Selecting a disabled harness now fails
+  with a configuration error (exit code 3) instead of the setting being ignored.
+- Move the shared subprocess runner out of the OpenCode package into
+  `agent_worklog.process.CommandRunner` so both harnesses depend on one implementation.
+
 ## 0.3.0
 
 - Add a transient, single-line progress status to `scan` and `report`, showing the

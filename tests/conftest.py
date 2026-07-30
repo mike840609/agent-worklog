@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.harnesses.opencode.cli_runner import CommandResult
+from agent_worklog.process import CommandResult
 
 
 @dataclass
@@ -178,3 +178,166 @@ class AcceptanceCommandRunner:
 @pytest.fixture
 def mocked_opencode() -> AcceptanceCommandRunner:
     return AcceptanceCommandRunner()
+
+
+@dataclass
+class GitOnlyCommandRunner:
+    """Answer git queries for the Claude Code acceptance run; no harness CLI."""
+
+    remotes: dict[str, str] = field(default_factory=dict)
+
+    def run(self, args: list[str]) -> CommandResult:
+        if len(args) >= 5 and args[:2] == ["git", "-C"]:
+            cwd = args[2]
+            command = args[3:]
+            if command == ["remote", "get-url", "origin"]:
+                remote = self.remotes.get(cwd)
+                if remote:
+                    return CommandResult(0, remote, "")
+                return CommandResult(2, "", "no remote")
+            if command == ["rev-parse", "--git-common-dir"]:
+                return CommandResult(0, f"{cwd}/.git", "")
+            if command == ["branch", "--show-current"]:
+                return CommandResult(0, "main", "")
+        if args[:1] == ["git"]:
+            return CommandResult(0, "git version 2.45.0", "")
+        return CommandResult(1, "", f"unexpected command: {args}")
+
+
+@pytest.fixture
+def claude_code_projects(tmp_path: Path) -> Path:
+    """A projects directory with one root session and one subagent session."""
+
+    root = tmp_path / "claude-projects"
+    session_dir = root / "-repo-agent-worklog"
+    session_dir.mkdir(parents=True)
+
+    def record(payload: dict) -> str:
+        return json.dumps(payload)
+
+    root_lines = [
+        record(
+            {
+                "type": "user",
+                "origin": {"kind": "human"},
+                "message": {
+                    "role": "user",
+                    "content": "Add retry to the price fetcher",
+                },
+                "uuid": "u-1",
+                "timestamp": "2026-07-21T01:00:00.000Z",
+                "cwd": "/worktrees/agent-main",
+                "gitBranch": "main",
+            }
+        ),
+        record(
+            {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-opus-5",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "I implemented the retry."},
+                        {
+                            "type": "tool_use",
+                            "id": "toolu-1",
+                            "name": "Bash",
+                            "input": {"command": "pytest -q"},
+                        },
+                    ],
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 200,
+                        "cache_read_input_tokens": 1000,
+                        "cache_creation_input_tokens": 50,
+                    },
+                },
+                "uuid": "a-1",
+                "timestamp": "2026-07-21T01:00:01.000Z",
+                "cwd": "/worktrees/agent-main",
+                "gitBranch": "main",
+            }
+        ),
+        record(
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "toolu-1", "content": "ok"}
+                    ],
+                },
+                "toolUseResult": {
+                    "stdout": "ACCEPTANCE_SECRET_MARKER 42 passed",
+                    "stderr": "",
+                    "interrupted": False,
+                    "isImage": False,
+                },
+                "uuid": "u-2",
+                "timestamp": "2026-07-21T01:00:02.000Z",
+                "cwd": "/worktrees/agent-main",
+                "gitBranch": "main",
+            }
+        ),
+        # Thinking-only, so it emits no activity, and last, so its usage has no
+        # later activity to ride on. Its tokens must still reach the usage table.
+        record(
+            {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-opus-5",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "ACCEPTANCE_SECRET_MARKER plan"}
+                    ],
+                    "usage": {
+                        "input_tokens": 5,
+                        "output_tokens": 100,
+                        "cache_read_input_tokens": 500,
+                        "cache_creation_input_tokens": 25,
+                    },
+                },
+                "uuid": "a-2",
+                "timestamp": "2026-07-21T01:00:03.000Z",
+                "cwd": "/worktrees/agent-main",
+                "gitBranch": "main",
+            }
+        ),
+        record({"type": "ai-title", "aiTitle": "Retry for the price fetcher"}),
+    ]
+    (session_dir / "root-session.jsonl").write_text(
+        "\n".join(root_lines) + "\n", encoding="utf-8"
+    )
+
+    subagent_dir = session_dir / "root-session" / "subagents"
+    subagent_dir.mkdir(parents=True)
+    (subagent_dir / "agent-abc.jsonl").write_text(
+        record(
+            {
+                "type": "user",
+                "origin": {"kind": "human"},
+                "message": {"role": "user", "content": "Review the retry helper"},
+                "uuid": "u-3",
+                "timestamp": "2026-07-22T01:00:00.000Z",
+                "cwd": "/worktrees/assets",
+                "gitBranch": "main",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (subagent_dir / "agent-abc.meta.json").write_text(
+        json.dumps({"agentType": "general-purpose", "description": "Review the helper"}),
+        encoding="utf-8",
+    )
+    return root
+
+
+@pytest.fixture
+def git_only_runner() -> GitOnlyCommandRunner:
+    return GitOnlyCommandRunner(
+        remotes={
+            "/worktrees/agent-main": "git@github.com:mike/agent-worklog.git",
+            "/worktrees/assets": "git@github.com:mike/assets-tracker.git",
+        }
+    )

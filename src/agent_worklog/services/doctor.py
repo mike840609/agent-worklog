@@ -1,10 +1,11 @@
 """Environment diagnostics."""
 
+import os
 from dataclasses import dataclass
 from typing import Protocol
 
 from agent_worklog.config import AppSettings
-from agent_worklog.harnesses.opencode.cli_runner import CommandResult
+from agent_worklog.process import CommandResult
 
 
 class Runner(Protocol):
@@ -36,13 +37,28 @@ def _check(runner: Runner, name: str, args: list[str]) -> DoctorCheck:
     return DoctorCheck(name=name, ok=result.returncode == 0, detail=detail)
 
 
-def run_doctor(settings: AppSettings, *, runner: Runner) -> DoctorResult:
-    """Validate OpenCode CLI, database access, and Git without exposing env values."""
+def run_doctor(
+    settings: AppSettings,
+    *,
+    runner: Runner,
+    harness: str = "opencode",
+) -> DoctorResult:
+    """Validate the selected harness and Git without exposing env values."""
 
-    executable = settings.harnesses.opencode.cli.executable
-    checks = [
-        _check(runner, "opencode version", [executable, "--version"]),
-        _check(runner, "opencode database", [executable, "db", "path"]),
-        _check(runner, "git", ["git", "--version"]),
-    ]
+    checks: list[DoctorCheck] = []
+    if harness == "claude-code":
+        directory = settings.harnesses.claude_code.projects_directory
+        readable = directory.is_dir() and os.access(directory, os.R_OK)
+        checks.append(
+            DoctorCheck(
+                name="claude code projects directory",
+                ok=readable,
+                detail=str(directory),
+            )
+        )
+    else:
+        executable = settings.harnesses.opencode.cli.executable
+        checks.append(_check(runner, "opencode version", [executable, "--version"]))
+        checks.append(_check(runner, "opencode database", [executable, "db", "path"]))
+    checks.append(_check(runner, "git", ["git", "--version"]))
     return DoctorResult(checks=checks)

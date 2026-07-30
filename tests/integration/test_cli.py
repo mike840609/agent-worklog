@@ -59,13 +59,21 @@ def test_report_refuses_overwrite_without_force(
 ) -> None:
     existing_report = tmp_path / "report.md"
     existing_report.write_text("existing")
-    monkeypatch.setattr(
-        cli,
-        "_build_report_service",
-        lambda settings, period, output_path, no_llm, root_only=False, *, now, progress=None: (
-            StubReportService(output_path, period)
-        ),
-    )
+
+    def build(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness=cli.Harness.OPENCODE,
+        progress=None,
+    ):
+        return StubReportService(output_path, period)
+
+    monkeypatch.setattr(cli, "_build_report_service", build)
 
     result = runner.invoke(
         cli.app,
@@ -82,7 +90,17 @@ def test_report_supports_previous_calendar_week(
 ) -> None:
     captured: dict[str, DateRange] = {}
 
-    def build(settings, period, output_path, no_llm, root_only=False, *, now, progress=None):
+    def build(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness=cli.Harness.OPENCODE,
+        progress=None,
+    ):
         captured["period"] = period
         return StubReportService(output_path, period)
 
@@ -123,11 +141,17 @@ def test_no_llm_never_constructs_http_summarizer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "secret-key")
-    monkeypatch.setattr(
-        cli,
-        "_build_scan_service",
-        lambda settings, period, root_only=False, *, progress=None: object(),
-    )
+    def build_scan(
+        settings,
+        period,
+        root_only=False,
+        *,
+        harness=cli.Harness.OPENCODE,
+        progress=None,
+    ):
+        return object()
+
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
 
     def fail_constructor(**kwargs):
         raise AssertionError("LLM summarizer must not be constructed")
@@ -216,6 +240,7 @@ def test_report_passes_root_only_to_the_report_service(
         root_only=False,
         *,
         now,
+        harness=cli.Harness.OPENCODE,
         progress=None,
     ):
         captured["root_only"] = root_only
@@ -253,7 +278,14 @@ def test_scan_passes_root_only_to_the_scan_service(monkeypatch: pytest.MonkeyPat
                 warnings=[],
             )
 
-    def build(settings, period, root_only=False, *, progress=None):
+    def build(
+        settings,
+        period,
+        root_only=False,
+        *,
+        harness=cli.Harness.OPENCODE,
+        progress=None,
+    ):
         captured["root_only"] = root_only
         captured["progress"] = progress
         return StubScanService()
@@ -280,7 +312,14 @@ def test_quiet_scan_passes_a_null_progress_reporter(
                 warnings=[],
             )
 
-    def build(settings, period, root_only=False, *, progress=None):
+    def build(
+        settings,
+        period,
+        root_only=False,
+        *,
+        harness=cli.Harness.OPENCODE,
+        progress=None,
+    ):
         captured["progress"] = progress
         return StubScanService()
 
@@ -327,6 +366,7 @@ def test_dry_run_keeps_progress_out_of_stdout(
         root_only=False,
         *,
         now,
+        harness=cli.Harness.OPENCODE,
         progress=None,
     ):
         return ProgressReportService(output_path, period, progress)
