@@ -215,8 +215,8 @@ optional LLM request. Pattern checks cannot find every possible secret.
 
 Reports may still contain private goals, filenames, commands, work descriptions, and the
 full paths of your working folders. Those paths often include your user name and the name
-of a client or employer, and removing secrets does not remove them. Always review a report
-before sharing it.
+of a client or employer, and the secret-pattern checks leave them in place on purpose so a
+report can say where the work happened. Always review a report before sharing it.
 
 See
 [Privacy and security](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md)
