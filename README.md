@@ -285,9 +285,17 @@ names, and one command or path per tool call when the call has one. A call with 
 WebFetch's `url`, WebSearch's `query`, TodoWrite's `todos` list, and MCP tool calls in
 general — has its whole input serialized to JSON and truncated to 200 characters instead.
 Raw tool `stdout`/`stderr`, thinking blocks, and hook output are dropped before anything
-reaches a report or an LLM request. Both harnesses also go through the common
-secret-pattern checks before creating a report or making an optional LLM request. Pattern
-checks cannot find every possible secret.
+reaches a report or an LLM request.
+
+For both harnesses, every piece of supporting information that reaches a report is then
+capped at 300 characters and marked with a `…` where it was cut. That is what stops a long
+command — a heredoc such as `cat > design.md <<'EOF' … EOF`, which carries the whole file
+it writes inside one command string — from being copied into the report or an LLM request.
+The secret-pattern checks cannot do this job: a design document or a write-up contains no
+credential pattern, so only the length limit removes it.
+
+Both harnesses also go through the common secret-pattern checks before creating a report
+or making an optional LLM request. Pattern checks cannot find every possible secret.
 
 Reports may still contain private goals, filenames, commands, work descriptions, and the
 full paths of your working folders. Those paths often include your user name and the name

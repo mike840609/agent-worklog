@@ -20,9 +20,45 @@ from agent_worklog.models.evidence import (
 from agent_worklog.models.repository import ResolvedSession
 from agent_worklog.models.session import ActivityType, SessionActivity
 
+# An evidence item is a pointer back to work, not a copy of it. Both harnesses put
+# a whole tool input into `SessionActivity.content` — a Claude Code `input.command`
+# holding a heredoc body carries the file it writes, and there is no upstream
+# `--sanitize` on that path — so the cap lives here, where every item is built.
+EVIDENCE_TEXT_MAX_LENGTH = 300
+
+# A path that survives the `_file_path` fallback below must fit in one report line.
+_PATH_MAX_LENGTH = 512
+_PATH_REJECTED_CHARACTERS = frozenset("{}[]\"'`<>|*?")
+
 
 def _normalize(text: str) -> str:
     return " ".join(text.split()).strip()
+
+
+def _truncate(text: str) -> str:
+    """Cap one evidence item, marking the cut so a reader sees text was removed."""
+
+    if len(text) <= EVIDENCE_TEXT_MAX_LENGTH:
+        return text
+    return text[: EVIDENCE_TEXT_MAX_LENGTH - 1].rstrip() + "…"
+
+
+def _is_plausible_path(value: str) -> bool:
+    """Reject fallback text that is not a path.
+
+    `_file_path` falls back to the activity's content, which for a file tool call
+    carrying no path key is the mapper's serialized input — for a `Write`-shaped
+    call that is the file's own `content`. Rendering that under "Key Files" would
+    copy source into the report, so anything unlike a single path is refused.
+    """
+
+    if not value or len(value) > _PATH_MAX_LENGTH:
+        return False
+    if any(character in _PATH_REJECTED_CHARACTERS for character in value):
+        return False
+    if any(character.isspace() for character in value):
+        return False
+    return "/" in value or "\\" in value or "." in value
 
 
 def _nested_mapping(value: object) -> Mapping[str, object]:
@@ -57,7 +93,7 @@ def _file_path(activity: SessionActivity) -> str | None:
             if isinstance(value, str) and value.strip():
                 return value.strip()
     content = _normalize(activity.content)
-    return content or None
+    return content if _is_plausible_path(content) else None
 
 
 def _item(
@@ -69,7 +105,7 @@ def _item(
     status: EvidenceStatus = EvidenceStatus.UNKNOWN,
 ) -> EvidenceItem:
     return EvidenceItem(
-        text=_normalize(text),
+        text=_truncate(_normalize(text)),
         source_activity_ids=[activity.activity_id],
         confidence=confidence,
         extraction_method=extraction_method,

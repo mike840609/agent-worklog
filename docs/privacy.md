@@ -90,8 +90,8 @@ Not every tool call has a `command`, `file_path`, `path`, or `notebook_path` fie
 WebFetch's `url`, WebSearch's `query`, Task's `description`/`prompt`/`subagent_type`,
 TodoWrite's whole `todos` list, a path-less Glob call, and MCP tool calls in general all
 fall outside that set. For those, the mapper falls back to serializing the tool's entire
-input object to JSON and truncating it to 200 characters, so what reaches the report is
-not one command or path but as much of the full call as fits in that budget.
+input object to JSON and truncating it to 200 characters, so what the mapper keeps is not
+one command or path but as much of the full call as fits in that budget.
 
 Everything else is dropped at that boundary and never reaches a report or an LLM request:
 tool `stdout` and `stderr`, model thinking blocks, hook output, and system reminders. The
@@ -110,6 +110,31 @@ tool input can itself contain a credential, and pattern checks cannot find every
 secret. Reports built from Claude Code sessions may still contain prompts, commands, file
 paths, and full working-directory paths, exactly as reports built from OpenCode sessions
 do.
+
+## The 300-character evidence budget
+
+The mapper alone does not bound how much text a single retained field can hold. A Bash
+`input.command` is kept whole, and a heredoc puts the entire body of the file it writes
+inside that one command string — as far as length goes, `cat > design.md <<'EOF' … EOF` or
+`gh pr create --body-file - <<'EOF' … EOF` is a file, not a command. The 200-character
+truncation described above applies only to the JSON fallback, which is the rare path.
+
+The bound that does apply to a report is in the extraction layer, and it covers both
+harnesses: **every evidence item's text is capped at 300 characters**
+(`EVIDENCE_TEXT_MAX_LENGTH` in `extraction/pipeline.py`), with a trailing `…` marking the
+cut so a reader can tell that text was removed. 300 characters identify any real command
+while refusing to carry a file, a diff, or a write-up. Nothing longer than that reaches
+the rendered Markdown, the report's provenance lists, or an outbound LLM request.
+
+Redaction cannot substitute for this cap, which is why the cap exists. A pasted design
+document, an incident write-up, or a block of source code contains no credential pattern,
+so `redact_text` passes it through untouched; only a length budget removes it.
+
+One neighbouring fallback is closed for the same reason. A file tool call that carries no
+path key at all would otherwise have its serialized input treated as a file path and
+listed under "Key Files", which for a `Write`-shaped call means the beginning of the
+file's own `content`. Text that does not look like a single path is refused instead, so
+such a call contributes no "Key File" entry rather than an entry made of file contents.
 
 ## Optional LLM use
 

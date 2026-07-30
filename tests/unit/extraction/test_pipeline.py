@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from agent_worklog.extraction.pipeline import extract_evidence
+from agent_worklog.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH, extract_evidence
 from agent_worklog.models.evidence import EvidenceConfidence, EvidenceStatus
 from agent_worklog.models.repository import (
     RepositoryIdentity,
@@ -92,6 +92,81 @@ def test_assistant_completion_claim_is_low_confidence_unknown() -> None:
 
     assert evidence.outcomes[0].status == "unknown"
     assert evidence.outcomes[0].confidence == "low"
+
+
+def test_long_command_text_is_capped_and_marked_as_cut() -> None:
+    """A heredoc body in `input.command` must not reach the report or an LLM."""
+
+    heredoc = (
+        "cat > report.md <<'EOF' "
+        + "AUTH_BYPASS_WRITEUP secret finding paragraph. " * 60
+        + "EOF"
+    )
+    evidence = extract_evidence(
+        resolved(
+            SessionActivity(
+                activity_id="tool-1",
+                activity_type=ActivityType.TOOL_CALL,
+                tool_name="bash",
+                content=heredoc,
+            )
+        )
+    )
+
+    command = evidence.commands[0]
+    assert len(heredoc) > 1000
+    assert len(command.text) == EVIDENCE_TEXT_MAX_LENGTH
+    assert command.text.endswith("…")
+    assert command.text.startswith("cat > report.md <<'EOF'")
+
+
+def test_short_command_text_is_left_exactly_as_recorded() -> None:
+    evidence = extract_evidence(
+        resolved(
+            SessionActivity(
+                activity_id="tool-1",
+                activity_type=ActivityType.TOOL_CALL,
+                tool_name="bash",
+                content="pytest -q",
+            )
+        )
+    )
+
+    assert evidence.commands[0].text == "pytest -q"
+
+
+def test_file_tool_without_a_path_key_reports_no_key_file() -> None:
+    """A `Write`-shaped call missing `file_path` must not render its content as a path."""
+
+    evidence = extract_evidence(
+        resolved(
+            SessionActivity(
+                activity_id="tool-1",
+                activity_type=ActivityType.TOOL_CALL,
+                tool_name="write",
+                content='{"content": "SECRET_FILE_BODY def main(): ...", "mode": "w"}',
+            )
+        )
+    )
+
+    assert evidence.files_changed == []
+
+
+def test_file_tool_content_fallback_still_accepts_a_bare_path() -> None:
+    evidence = extract_evidence(
+        resolved(
+            SessionActivity(
+                activity_id="tool-1",
+                activity_type=ActivityType.TOOL_CALL,
+                tool_name="write",
+                content="src/agent_worklog/cli.py",
+            )
+        )
+    )
+
+    assert [item.text for item in evidence.files_changed] == [
+        "src/agent_worklog/cli.py"
+    ]
 
 
 def test_extraction_carries_session_title_and_directory() -> None:

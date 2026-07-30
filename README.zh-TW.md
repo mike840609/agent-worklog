@@ -249,7 +249,11 @@ export AGENT_WORKLOG_LLM__ENABLED="false"
 
 ## 隱私
 
-Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒有匯出指令，所以使用 `--harness claude-code` 時，Agent Worklog 會直接讀取 `~/.claude/projects` 底下的逐字紀錄，改為仰賴 mapper 只保留人類提示、助理文字訊息、工具名稱，以及每次工具呼叫（若有的話）的一組指令或路徑。如果一次工具呼叫兩者都沒有——例如 WebFetch 的 `url`、WebSearch 的 `query`、TodoWrite 整份的 `todos` 清單，或一般的 MCP 工具呼叫——就會改成把整個輸入序列化成 JSON，並截斷到 200 個字元。工具原始的 `stdout`／`stderr`、思考內容與 hook 輸出，都會在資料進入報告或 LLM 請求之前被捨棄。兩種 harness 都會在產生報告或發出選用的 LLM 請求之前，經過常見的機密字串樣式檢查。樣式檢查無法找出所有可能的機密資料。
+Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒有匯出指令，所以使用 `--harness claude-code` 時，Agent Worklog 會直接讀取 `~/.claude/projects` 底下的逐字紀錄，改為仰賴 mapper 只保留人類提示、助理文字訊息、工具名稱，以及每次工具呼叫（若有的話）的一組指令或路徑。如果一次工具呼叫兩者都沒有——例如 WebFetch 的 `url`、WebSearch 的 `query`、TodoWrite 整份的 `todos` 清單，或一般的 MCP 工具呼叫——就會改成把整個輸入序列化成 JSON，並截斷到 200 個字元。工具原始的 `stdout`／`stderr`、思考內容與 hook 輸出，都會在資料進入報告或 LLM 請求之前被捨棄。
+
+接著，兩種 harness 進入報告的每一筆佐證資訊（evidence）都會被截斷到 300 個字元，並在截斷處標上 `…`。這道長度上限的作用，是攔下像 `cat > design.md <<'EOF' … EOF` 這種 heredoc——它把整個檔案內容包在同一個指令字串裡——避免整段內容被複製進報告或 LLM 請求。機密字串樣式檢查做不到這件事：一份設計文件或事件說明裡沒有任何金鑰樣式，只有長度上限能把它移除。
+
+兩種 harness 都會在產生報告或發出選用的 LLM 請求之前，經過常見的機密字串樣式檢查。樣式檢查無法找出所有可能的機密資料。
 
 報告中仍可能包含私人的目標、檔名、指令、工作描述，以及工作資料夾的完整路徑。這些路徑常常包含你的使用者名稱，以及客戶或雇主的名稱；機密字串檢查刻意保留它們，好讓報告能說明工作發生在哪裡。分享報告前請務必先檢查內容。
 
