@@ -59,9 +59,11 @@ def test_claude_code_report_groups_by_repository_and_reports_usage(
     assert "Retry for the price fetcher" in content
     assert "## Usage" in content
     # Pin the four aggregated usage numbers (input, output, cache read, cache write) to
-    # the fixture's message.usage block, not just the model name appearing somewhere.
-    assert "claude-opus-5     10     200       1,000           50" in content
-    assert "Total             10     200       1,000           50" in content
+    # the fixture's message.usage blocks, not just the model name appearing somewhere.
+    # The totals include the trailing thinking-only record, which emits no activity of
+    # its own: 10+5 input, 200+100 output, 1,000+500 cache read, 50+25 cache write.
+    assert "claude-opus-5     15     300       1,500           75" in content
+    assert "Total             15     300       1,500           75" in content
     assert "Window: the last" not in content  # exact period, no widened-window caveat
     assert "ACCEPTANCE_SECRET_MARKER" not in content
     # No exit code exists, so the run is reported without claiming an outcome, and

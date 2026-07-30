@@ -279,6 +279,30 @@ def claude_code_projects(tmp_path: Path) -> Path:
                 "gitBranch": "main",
             }
         ),
+        # Thinking-only, so it emits no activity, and last, so its usage has no
+        # later activity to ride on. Its tokens must still reach the usage table.
+        record(
+            {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-opus-5",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "ACCEPTANCE_SECRET_MARKER plan"}
+                    ],
+                    "usage": {
+                        "input_tokens": 5,
+                        "output_tokens": 100,
+                        "cache_read_input_tokens": 500,
+                        "cache_creation_input_tokens": 25,
+                    },
+                },
+                "uuid": "a-2",
+                "timestamp": "2026-07-21T01:00:03.000Z",
+                "cwd": "/worktrees/agent-main",
+                "gitBranch": "main",
+            }
+        ),
         record({"type": "ai-title", "aiTitle": "Retry for the price fetcher"}),
     ]
     (session_dir / "root-session.jsonl").write_text(

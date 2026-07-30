@@ -90,6 +90,28 @@ def _tool_content(tool_input: object) -> str:
     return serialized[:_TOOL_INPUT_MAX_LENGTH]
 
 
+def _record_usage(message: Mapping[str, Any]) -> tuple[str, dict[str, int]] | None:
+    """Return one assistant record's model and token counts, or None if it has none."""
+
+    usage = _as_mapping(message.get("usage"))
+    model = message.get("model")
+    if not usage or not isinstance(model, str) or not model:
+        return None
+
+    per_record: dict[str, int] = {}
+    for canonical, source_key in _USAGE_FIELDS.items():
+        value = _int_value(usage.get(source_key))
+        if value is not None:
+            per_record[canonical] = value
+    return (model, per_record) if per_record else None
+
+
+def _accumulate(target: dict[str, int], source: Mapping[str, int]) -> dict[str, int]:
+    for key, value in source.items():
+        target[key] = target.get(key, 0) + value
+    return target
+
+
 def _tool_result_flags(
     records: Iterable[Mapping[str, Any]],
 ) -> dict[str, dict[str, object]]:
@@ -134,6 +156,13 @@ class ClaudeCodeJsonlMapper:
 
         activities: list[SessionActivity] = []
         totals: dict[str, int] = {}
+        # Usage must ride on an activity: `filter_session_to_period` narrows the
+        # activity list, and the usage table must cover only the report period. A
+        # thinking-only record emits no activity, so its usage is held here and
+        # merged into the next activity from the same model — 1,171 of 4,227
+        # assistant records are shaped that way, carrying 25% of all output tokens.
+        pending_usage: dict[str, dict[str, int]] = {}
+        attached_usage: dict[str, dict[str, int]] = {}
         title: str | None = None
         working_directory: str | None = None
         first_timestamp: datetime | None = None
@@ -188,9 +217,31 @@ class ClaudeCodeJsonlMapper:
                 timestamp=timestamp,
                 result_flags=result_flags,
             )
-            if emitted:
-                self._attach_usage(emitted[0], message=message, totals=totals)
             activities.extend(emitted)
+
+            record_usage = _record_usage(message)
+            if record_usage is None:
+                continue
+            model, per_record = record_usage
+            _accumulate(totals, per_record)
+            if emitted:
+                # One activity per record carries the usage, so a multi-block
+                # record is not counted twice.
+                usage = _accumulate(pending_usage.pop(model, {}), per_record)
+                emitted[0].metadata["model"] = model
+                emitted[0].metadata["usage"] = usage
+                attached_usage[model] = usage
+            else:
+                _accumulate(pending_usage.setdefault(model, {}), per_record)
+
+        # Usage still held when the transcript ends — a session whose last records
+        # are thinking-only — joins the last activity that carried the same model.
+        # A model that emitted no activity anywhere in the session still counts in
+        # `token_usage`; it cannot reach the per-model table, which reads activities.
+        for model, leftover in pending_usage.items():
+            attached = attached_usage.get(model)
+            if attached is not None:
+                _accumulate(attached, leftover)
 
         return AgentSession(
             harness="claude-code",
@@ -260,37 +311,6 @@ class ClaudeCodeJsonlMapper:
                     )
                 )
             # `thinking` blocks are dropped: internal reasoning is not work evidence.
+            # Their tokens are not: the record's usage is still accounted for in
+            # `map`, which is why thinking-only records emit nothing but count.
         return activities
-
-    def _attach_usage(
-        self,
-        activity: SessionActivity,
-        *,
-        message: Mapping[str, Any],
-        totals: dict[str, int],
-    ) -> None:
-        """Record per-model usage on one activity per assistant record.
-
-        ponytail: attached to the first emitted activity so a multi-block record
-        is not counted twice. A record that emits no activity (thinking only)
-        loses its usage; those carry few tokens. Aggregate properly if that
-        undercount ever matters.
-        """
-
-        usage = _as_mapping(message.get("usage"))
-        model = message.get("model")
-        if not usage or not isinstance(model, str) or not model:
-            return
-
-        per_record: dict[str, int] = {}
-        for canonical, source_key in _USAGE_FIELDS.items():
-            value = _int_value(usage.get(source_key))
-            if value is None:
-                continue
-            per_record[canonical] = value
-            totals[canonical] = totals.get(canonical, 0) + value
-        if not per_record:
-            return
-
-        activity.metadata["model"] = model
-        activity.metadata["usage"] = per_record

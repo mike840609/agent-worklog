@@ -26,7 +26,10 @@ renderer 全部沿用。
 1. `agent-worklog scan --harness claude-code` 與 `report --harness claude-code` 可用。
 2. Claude Code session 依 Git repository 分組，與 OpenCode 的分組結果格式一致。
 3. `--root-only`、`--days`/`--period`/`--since`、`--dry-run` 等既有 option 行為不變。
-4. 報告的 usage 區段從 session 內的 `message.usage` 產生，精確落在報告期間。
+4. 報告的 usage 區段從 session 內的 `message.usage` 產生，落在報告期間而非結束於現在的窗口。
+   期間內每一筆 `message.usage` 都要計入，包含只有 `thinking` block、不產生 activity 的
+   record（實測 4,227 筆帶 usage 的 assistant record 中有 1,171 筆如此，佔 25% output
+   token）；其用量由同一 model 相鄰的 activity 帶入。
 5. 現有 OpenCode 使用者行為零改變（`--harness` 預設 `opencode`）。
 
 ## 3. Non-Goals

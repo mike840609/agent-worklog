@@ -204,7 +204,7 @@ LLM 請求包含的是挑選過的工作資訊，而不是完整逐字紀錄。A
 
 使用 `--harness opencode` 時，每份報告都包含一個由 `opencode stats` 產生的使用量區塊，涵蓋模型、token 與工具。OpenCode 只回報「結束於現在」的期間，因此報告中顯示的期間會從報告期間的起點開始，一路延伸到報告產生的時間；它涵蓋報告期間，但範圍比較寬。如果沒有 `opencode stats`，Agent Worklog 會略過這個區塊，並在報告中加上警告。
 
-使用 `--harness claude-code` 時，使用量區塊是根據工作階段本身記錄的 token 計數產生的，因此涵蓋的期間與報告期間完全一致；上述「範圍比較寬」的但書並不適用。
+使用 `--harness claude-code` 時，使用量區塊是根據工作階段本身記錄的 token 計數產生的，因此涵蓋的是報告期間，而不是一段結束於報告產生時間的窗口；上述「範圍比較寬」的但書並不適用。期間內的每一個模型 turn 都會被計入，包含只產生內部推理（thinking）的 turn，它們的 token 由相鄰那筆有記錄的活動一併帶入。這也是它唯一的誤差來源：正好落在期間邊界上的 turn，可能會被算到邊界的另一側。
 
 ## 輸出與檔案處理
 
@@ -278,7 +278,7 @@ Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒
 - 目前支援的 coding agent 工具是 OpenCode 與 Claude Code；用 `--harness` 挑選其中一個。
 - 使用 `--harness opencode` 時，Agent Worklog 透過 OpenCode 命令列工具取得工作階段資料，不會直接讀取 SQLite 資料庫。
 - 報告格式只有 Markdown。
-- 使用量的期間但書只適用於 OpenCode：`opencode stats` 涵蓋的期間結束於報告產生的時間，範圍比報告期間寬。Claude Code 的使用量是根據工作階段本身產生的，涵蓋的期間與報告期間完全一致。
+- 使用量的期間但書只適用於 OpenCode：`opencode stats` 涵蓋的期間結束於報告產生的時間，範圍比報告期間寬。Claude Code 的使用量是根據工作階段本身產生的，涵蓋的就是報告期間，誤差不超過期間兩端各一個模型 turn。
 - Agent Worklog 不會在多次執行之間保留快取，也沒有提供 `inspect` 指令。
 - 較舊的 OpenCode 工作階段若工作資料夾已被刪除，可能會使用備援 ID。
 - Repository 分組使用的是產生報告當下可取得的 Git 資訊。

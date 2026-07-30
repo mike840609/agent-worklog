@@ -28,8 +28,9 @@ Both harnesses then continue:
 5. `report` builds a usage section: for OpenCode, by requesting aggregate counters with
    `opencode stats` over a trailing window that contains the report period; for Claude
    Code, from token counters already attached to each mapped activity, which cover the
-   report period exactly. Either way the usage output holds model, token, and tool
-   totals rather than session content, and it is redacted before it reaches the report.
+   report period rather than a window ending now. Either way the usage output holds model,
+   token, and tool totals rather than session content, and it is redacted before it
+   reaches the report.
 6. The redacted evidence is rendered locally or optionally sent to an OpenAI-compatible
    endpoint.
 7. Markdown is written with an atomic replacement and owner-only `0600` permissions on

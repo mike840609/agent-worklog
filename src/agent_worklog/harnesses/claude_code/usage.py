@@ -32,8 +32,14 @@ def _totals_by_model(scan: ScanResult) -> dict[str, dict[str, int]]:
 def render_claude_code_usage(scan: ScanResult) -> str:
     """Return an aligned per-model token table for the scanned sessions.
 
-    Unlike `opencode stats`, this covers exactly the report period: usage rides
-    on the activities that `filter_session_to_period` already narrowed.
+    Unlike `opencode stats`, this needs no trailing window: usage rides on the
+    activities that `filter_session_to_period` already narrowed, so the table
+    covers the report period instead of one ending at generation time.
+
+    It is exact to the activity rather than to the second. Usage from an assistant
+    turn that emitted no activity of its own — a thinking-only turn — is carried by
+    the neighbouring activity from the same model, so a turn sitting on the period
+    boundary can be counted on the other side of it.
     """
 
     totals = _totals_by_model(scan)

@@ -229,8 +229,12 @@ it. If `opencode stats` is not available, Agent Worklog leaves the section out a
 warning to the report.
 
 With `--harness claude-code`, the usage section is built from token counters recorded in
-the sessions themselves, so it covers the report period exactly; the "wider than the
-period" caveat above does not apply.
+the sessions themselves, so it covers the report period instead of a window that ends when
+the report is created; the "wider than the period" caveat above does not apply. It counts
+every model turn in the period, including turns that produced only internal reasoning,
+whose tokens are carried by the neighbouring recorded activity. That last part is also its
+one imprecision: a turn sitting exactly on the period boundary can be counted on the other
+side of it.
 
 ## Output and file handling
 
@@ -330,8 +334,8 @@ creating an empty report.
 - Markdown is the only report format.
 - The usage window caveat applies to OpenCode only: `opencode stats` covers a period
   that ends when the report is created, so it is wider than the report period. Claude
-  Code usage is built from the sessions themselves, so it covers the report period
-  exactly.
+  Code usage is built from the sessions themselves, so it covers the report period, to
+  within a single model turn at each end of it.
 - Agent Worklog does not keep a cache between runs and does not provide an `inspect`
   command.
 - Older OpenCode sessions may use a backup ID if their working folders have been deleted.

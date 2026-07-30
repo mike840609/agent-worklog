@@ -127,6 +127,143 @@ def test_attaches_per_model_usage_to_one_activity_per_record(records, descriptor
     ]
 
 
+def _usage(*, input_tokens: int, output_tokens: int) -> dict:
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+
+
+def _thinking_only(uuid: str, *, usage: dict) -> dict:
+    return {
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-5",
+            "role": "assistant",
+            "content": [{"type": "thinking", "thinking": "THINKING_MARKER"}],
+            "usage": usage,
+        },
+        "uuid": uuid,
+        "timestamp": "2026-07-21T01:00:00.000Z",
+        "cwd": "/repo/main",
+    }
+
+
+def _tool_call(uuid: str, *, usage: dict) -> dict:
+    return {
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-5",
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": f"toolu-{uuid}",
+                    "name": "Bash",
+                    "input": {"command": "pytest -q"},
+                }
+            ],
+            "usage": usage,
+        },
+        "uuid": uuid,
+        "timestamp": "2026-07-21T01:00:01.000Z",
+        "cwd": "/repo/main",
+    }
+
+
+def test_thinking_only_usage_merges_into_the_next_activity(descriptor) -> None:
+    """Thinking is output tokens; a record that emits no activity must still count."""
+
+    session = ClaudeCodeJsonlMapper().map(
+        [
+            _thinking_only("a-1", usage=_usage(input_tokens=3, output_tokens=700)),
+            _tool_call("a-2", usage=_usage(input_tokens=10, output_tokens=200)),
+        ],
+        descriptor,
+    )
+
+    carriers = [
+        activity for activity in session.activities if "usage" in activity.metadata
+    ]
+    assert len(carriers) == 1
+    assert carriers[0].metadata["usage"] == {
+        "input_tokens": 13,
+        "output_tokens": 900,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+    }
+    assert session.token_usage is not None
+    assert session.token_usage.input_tokens == 13
+    assert session.token_usage.output_tokens == 900
+
+
+def test_trailing_thinking_only_usage_joins_the_last_activity(descriptor) -> None:
+    """A transcript ending in thinking has no later activity to merge forward into."""
+
+    session = ClaudeCodeJsonlMapper().map(
+        [
+            _tool_call("a-1", usage=_usage(input_tokens=10, output_tokens=200)),
+            _thinking_only("a-2", usage=_usage(input_tokens=3, output_tokens=700)),
+        ],
+        descriptor,
+    )
+
+    carriers = [
+        activity for activity in session.activities if "usage" in activity.metadata
+    ]
+    assert len(carriers) == 1
+    assert carriers[0].metadata["usage"] == {
+        "input_tokens": 13,
+        "output_tokens": 900,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+    }
+    assert session.token_usage is not None
+    assert session.token_usage.output_tokens == 900
+
+
+def test_a_write_calls_content_never_reaches_the_session(descriptor) -> None:
+    """`_tool_content` must prefer the path key over serializing the whole input.
+
+    A `Write` input holds `file_path` and `content`. The JSON fallback sorts keys,
+    so `content` would come first and the file body would be what is retained.
+    """
+
+    session = ClaudeCodeJsonlMapper().map(
+        [
+            {
+                "type": "assistant",
+                "message": {
+                    "model": "claude-opus-5",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu-1",
+                            "name": "Write",
+                            "input": {
+                                "file_path": "/repo/main/src/fetch.py",
+                                "content": "WRITE_CONTENT_MARKER def fetch(): ...",
+                            },
+                        }
+                    ],
+                },
+                "uuid": "a-1",
+                "timestamp": "2026-07-21T01:00:00.000Z",
+                "cwd": "/repo/main",
+            }
+        ],
+        descriptor,
+    )
+
+    assert [activity.content for activity in session.activities] == [
+        "/repo/main/src/fetch.py"
+    ]
+    assert "WRITE_CONTENT_MARKER" not in session.model_dump_json()
+
+
 def test_every_activity_has_a_timestamp(records, descriptor) -> None:
     """ScanService warns about timestamp-less activities; Claude Code always has them."""
 

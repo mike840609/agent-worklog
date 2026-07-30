@@ -11,9 +11,11 @@ All notable changes to this project are documented in this file.
   `doctor` instead checks that the projects directory exists and is readable, plus
   `git --version`.
 - Build the Claude Code usage table from token counters recorded on the sessions
-  themselves, so it covers the report period exactly. This is narrower than the
-  OpenCode `opencode stats` window, which remains a trailing window ending at report
-  generation time.
+  themselves, so it covers the report period rather than a trailing window ending at
+  report generation time, which is what `opencode stats` still reports. Every model turn
+  in the period is counted, including turns that emitted only internal reasoning; their
+  tokens are carried by the neighbouring recorded activity, which is also the table's one
+  imprecision — a turn on the period boundary can be counted on the other side of it.
 - Report Claude Code verification commands without claiming an outcome. Claude Code tool
   results carry no exit code, so a command whose stderr was empty is recorded as `Ran
   verification command: <command>` at MEDIUM confidence with an unknown status, and
