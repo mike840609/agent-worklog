@@ -221,6 +221,16 @@ Claude Code 的 `type: "user"` 同時裝載 tool_result 回填、hook 注入內�
 
 符合條件者 → `ActivityType.USER_MESSAGE`。
 
+**版本下限：`origin` 欄位大約自 Claude Code `2.1.187` 起才寫入。** 更早版本寫出的
+transcript 完全沒有這個 key，因此上述條件會濾掉該檔案的**每一筆** user message——實測 72 個
+近期 root session 中有 10 個如此，其中一個帶 188 筆 assistant record，卻產生零個 goal。
+`discover` 的 `mtime >= period.since` prefilter 代表一份被 resume 的舊 transcript 在一般的
+週報執行中就會被讀到。
+
+這個條件**不放寬**：任何啟發式的 fallback 都可能把它本來要擋掉的 hook 與 system-reminder
+噪音重新放進來。改為讓損失可見——`services/scan.py` 在一個 session 有 assistant activity
+但沒有任何 `USER_MESSAGE` 時發出 warning，形狀比照既有的 timestamp-less activity warning。
+
 **`assistant` record 的 `message.content[]`：**
 
 | block `type` | 處理 |
@@ -436,3 +446,5 @@ outcome；非空 stderr → MEDIUM error。同時斷言 OpenCode 的 exit-code �
 4. Session 檔案可達數 MB，`load` 會將整個 transcript 讀進記憶體後才丟資料。
    `discover` 的 mtime prefilter 是唯一的成本控制手段。
 5. JSONL record schema 屬 Claude Code 內部實作，可能隨版本變動。實測基準為 `2.1.220`。
+6. Claude Code `2.1.187` 之前寫出的 transcript 沒有 `origin` 欄位，該 session 不會產生任何
+   goal（§6.2）。`scan` 與報告的 warning 區段會列出這些 session。
