@@ -16,20 +16,18 @@ Agent Worklog 把 coding agent 的工作階段（session）整理成給主管看
 
 ## 功能
 
-Agent Worklog 支援 OpenCode 與 Claude Code，可以：
+Agent Worklog 支援 OpenCode 與 Claude Code。無論選用哪一種支援的 coding-agent
+harness，都可以：
 
-- 找出所有專案的 OpenCode 工作階段，不論你現在位於哪個資料夾。
-- 直接從 `~/.claude/projects` 讀取 Claude Code 工作階段，包含 subagent 逐字紀錄。
+- 找出所有專案的 coding-agent 工作階段，不受目前所在資料夾限制。
 - 依照最近幾天、某一個日曆週，或指定的日期區間挑選工作階段。
-- OpenCode 專屬：使用 `opencode export --sanitize` 匯出工作階段。Claude Code 沒有匯出指令，因此沒有對應的步驟。
 - 把屬於同一個 repository 的 Git worktree 歸為同一組。
-- 讓子工作階段（child session）連結到正確的 repository。
-- 使用 `--root-only` 排除 subagent 工作階段，只保留根工作階段。
+- 讓 child 與 subagent 工作階段連結到正確的 repository，或使用 `--root-only` 排除它們。
 - 在報告中列出每個 repository 的工作階段標題與工作資料夾。
-- 依模型彙整 token 使用量：OpenCode 取自 `opencode stats`，Claude Code 取自工作階段本身記錄的計數。
+- 在所選 harness 提供資料時，依模型彙整 token 使用量。
 - 附上來源活動 ID 與信心程度作為佐證資訊。
 - 在產生報告或送資料給選用的 LLM 之前，先檢查工作階段資訊中常見的機密字串樣式。
-- 某個工作階段讀取失敗時仍會繼續執行，並在報告中加上警告。
+- 某個工作階段無法讀取時仍繼續執行，並在報告中加上警告。
 - 在 POSIX 系統上，以僅擁有者可讀寫的 `0600` 權限寫出報告。
 
 ## 系統需求
@@ -121,7 +119,7 @@ agent-worklog report --harness claude-code --period last-week --no-llm
 | `--since ISO` | 以指定時間作為期間起點。 |
 | `--until ISO` | 以指定時間作為期間終點，必須搭配 `--since`。 |
 | `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）或 `claude-code`。 |
-| `--root-only` | 排除 subagent 工作階段。 |
+| `--root-only` | 排除 child 與 subagent 工作階段。 |
 | `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
 

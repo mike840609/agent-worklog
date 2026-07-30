@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 0.4.0
+
+- Rewrite both README capability lists as outcome-oriented capability summaries while
+  keeping harness-specific acquisition and accounting details in their dedicated sections.
+- Keep the runtime and project versions consistent with release metadata, and correct the
+  stale Claude Code stderr limitation.
 - Add `--harness {opencode,claude-code}` to `doctor`, `scan`, and `report`, defaulting
   to `opencode`. Read Claude Code session transcripts directly from
   `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY` (default

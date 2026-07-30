@@ -20,7 +20,7 @@ Then create a GitHub repository environment named `pypi` under **Settings → En
 
 ## Verify a release without publishing
 
-Run the `Release` workflow manually from GitHub Actions. A manual run builds and validates the distributions, but the publish job is skipped.
+Run the `Release` workflow manually from GitHub Actions. A manual run builds and validates the distributions, but the `publish` and `release` jobs are skipped.
 
 The build job runs:
 
@@ -50,9 +50,27 @@ git tag -a v0.1.0 -m "Release v0.1.0"
 git push origin v0.1.0
 ```
 
-The workflow verifies that `v0.1.0` matches `version = "0.1.0"`, builds the package, publishes it through OIDC, and creates a GitHub Release containing the distributions.
+The workflow verifies that `v0.1.0` matches `version = "0.1.0"`, builds the package, publishes it through OIDC, and then creates a GitHub Release containing the same distributions. PyPI publication and GitHub Release creation run as separate sequential jobs.
 
 PyPI versions are immutable. A corrected release must use a new version such as `0.1.1`; an existing file or version cannot be overwritten.
+
+## Recover after PyPI succeeds
+
+If the `publish` job succeeds but the later `release` job fails, diagnose the failure and confirm that PyPI contains the version before retrying. Do not create another tag, rerun the whole workflow, or rerun the `publish` job. Rerun only failed jobs in the original workflow run:
+
+```bash
+version=0.1.0
+gh run view RUN_ID --repo mike840609/agent-worklog --json jobs \
+  --jq '.jobs[] | [.name, .conclusion] | @tsv'
+curl -fsS "https://pypi.org/pypi/agent-worklog/${version}/json" |
+  uv run python -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])'
+gh run rerun RUN_ID --repo mike840609/agent-worklog --failed
+gh run watch RUN_ID --repo mike840609/agent-worklog --exit-status
+```
+
+Proceed only when `publish` is recorded as successful, `release` as failed, and the PyPI query prints the requested version. `--failed` then reruns only the separate `release` job. That job downloads the original `distributions` artifact and creates the missing GitHub Release. It creates the release as a draft, replaces both assets, and publishes only after both uploads succeed. On retry, it reuses any existing draft; if the preceding attempt published successfully before the runner reported failure, it verifies that both assets exist.
+
+If the job conclusions do not have that exact shape, or PyPI does not contain the expected version, stop and diagnose the state instead of using this recovery path. Never move or replace the tag.
 
 ## Install after publication
 
