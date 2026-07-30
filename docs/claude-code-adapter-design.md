@@ -446,8 +446,8 @@ outcome；非空 stderr → MEDIUM error。同時斷言 OpenCode 的 exit-code �
 ## 13. 已知限制
 
 1. Claude Code transcript 不提供驗證指令的 observed exit code，因此報告不會宣稱驗證指令通過或失敗。
-   stderr 為空且沒有重導的驗證指令只會記為 `UNKNOWN`；stderr 非空也不會單獨視為失敗，
-   因為 Git 等工具成功時仍可能寫入 stderr。
+   stderr 為空、沒有重導且未中斷的驗證指令只會記為 `UNKNOWN`；中斷的指令不會產生
+   outcome，stderr 非空也不會單獨視為失敗，因為 Git 等工具成功時仍可能寫入 stderr。
 2. 跨 cwd 的 session（worktree 情境）只會被歸到最後一個 cwd 對應的 repository。
 3. 單一 session 橫跨多 branch 時，報告顯示的是產生報告當下 `git branch --show-current`
    的結果，而非 session 當時實際的 branch。

@@ -123,7 +123,7 @@ agent-worklog report --harness claude-code --period last-week --no-llm
 | `--since ISO` | Starts the period at an exact time. |
 | `--until ISO` | Ends the period at an exact time. Requires `--since`. |
 | `--harness NAME` | Harness to read sessions from: `opencode` (default) or `claude-code`. |
-| `--root-only` | Leaves out subagent sessions. |
+| `--root-only` | Leaves out child and subagent sessions. |
 | `--verbose` | Also shows export, fallback, and LLM warnings. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
 
