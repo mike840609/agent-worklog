@@ -88,7 +88,9 @@ class ScanService:
             )
 
         if descriptors and successful_exports == 0 and failed_count == len(descriptors):
-            raise HarnessSourceError("all OpenCode session exports failed")
+            raise HarnessSourceError(
+                f"all {descriptors[0].harness} session loads failed"
+            )
 
         return ScanResult(
             period=self._period,

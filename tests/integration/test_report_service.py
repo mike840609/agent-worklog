@@ -37,7 +37,7 @@ def test_all_exports_failing_is_an_error(tmp_path: Path) -> None:
     source = FakeSource()
     source.fail_all = True
 
-    with pytest.raises(HarnessSourceError, match="all OpenCode session exports failed"):
+    with pytest.raises(HarnessSourceError, match="all opencode session loads failed"):
         service(source, tmp_path / "report.md").generate(force=False)
 
 

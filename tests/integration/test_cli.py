@@ -56,13 +56,13 @@ def test_report_refuses_overwrite_without_force(
 ) -> None:
     existing_report = tmp_path / "report.md"
     existing_report.write_text("existing")
-    monkeypatch.setattr(
-        cli,
-        "_build_report_service",
-        lambda settings, period, output_path, no_llm, root_only=False, *, now: (
-            StubReportService(output_path, period)
-        ),
-    )
+
+    def build(
+        settings, period, output_path, no_llm, root_only=False, *, now, harness=cli.Harness.OPENCODE
+    ):
+        return StubReportService(output_path, period)
+
+    monkeypatch.setattr(cli, "_build_report_service", build)
 
     result = runner.invoke(
         cli.app,
@@ -79,7 +79,9 @@ def test_report_supports_previous_calendar_week(
 ) -> None:
     captured: dict[str, DateRange] = {}
 
-    def build(settings, period, output_path, no_llm, root_only=False, *, now):
+    def build(
+        settings, period, output_path, no_llm, root_only=False, *, now, harness=cli.Harness.OPENCODE
+    ):
         captured["period"] = period
         return StubReportService(output_path, period)
 
@@ -123,7 +125,7 @@ def test_no_llm_never_constructs_http_summarizer(
     monkeypatch.setattr(
         cli,
         "_build_scan_service",
-        lambda settings, period, root_only=False: object(),
+        lambda settings, period, root_only=False, *, harness=cli.Harness.OPENCODE: object(),
     )
 
     def fail_constructor(**kwargs):
@@ -205,7 +207,9 @@ def test_report_passes_root_only_to_the_report_service(
 ) -> None:
     captured: dict[str, bool] = {}
 
-    def build(settings, period, output_path, no_llm, root_only=False, *, now):
+    def build(
+        settings, period, output_path, no_llm, root_only=False, *, now, harness=cli.Harness.OPENCODE
+    ):
         captured["root_only"] = root_only
         return StubReportService(output_path, period)
 
@@ -239,7 +243,7 @@ def test_scan_passes_root_only_to_the_scan_service(monkeypatch: pytest.MonkeyPat
                 warnings=[],
             )
 
-    def build(settings, period, root_only=False):
+    def build(settings, period, root_only=False, *, harness=cli.Harness.OPENCODE):
         captured["root_only"] = root_only
         return StubScanService()
 

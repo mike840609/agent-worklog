@@ -39,3 +39,42 @@ def test_doctor_reports_a_timed_out_check_instead_of_crashing(fake_runner) -> No
     )
     assert database_check.ok is False
     assert "timed out" in database_check.detail
+
+
+def test_doctor_skips_opencode_checks_for_claude_code(tmp_path) -> None:
+    from agent_worklog.config import AppSettings
+    from agent_worklog.services.doctor import run_doctor
+
+    class RecordingRunner:
+        def __init__(self) -> None:
+            self.calls: list[list[str]] = []
+
+        def run(self, args: list[str]) -> CommandResult:
+            self.calls.append(args)
+            return CommandResult(0, "git version 2.0.0", "")
+
+    settings = AppSettings()
+    settings.harnesses.claude_code.projects_directory = tmp_path
+    runner = RecordingRunner()
+
+    result = run_doctor(settings, runner=runner, harness="claude-code")
+
+    assert result.ok
+    assert all(call[0] != "opencode" for call in runner.calls)
+    assert any("claude code projects" in check.name for check in result.checks)
+
+
+def test_doctor_fails_when_the_projects_directory_is_missing(tmp_path) -> None:
+    from agent_worklog.config import AppSettings
+    from agent_worklog.services.doctor import run_doctor
+
+    class GitOnlyRunner:
+        def run(self, args: list[str]) -> CommandResult:
+            return CommandResult(0, "git version 2.0.0", "")
+
+    settings = AppSettings()
+    settings.harnesses.claude_code.projects_directory = tmp_path / "absent"
+
+    result = run_doctor(settings, runner=GitOnlyRunner(), harness="claude-code")
+
+    assert not result.ok
