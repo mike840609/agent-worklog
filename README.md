@@ -1,9 +1,9 @@
 # Agent Worklog
 
-Agent Worklog turns coding-agent sessions into weekly engineering reports. It saves
-engineers time and makes it easier to share progress with managers.
+Agent Worklog turns coding-agent sessions into weekly reports for managers, saving
+engineers time.
 
-![Agent Worklog overview](docs/assets/agent-worklog-overview.png)
+![Agent sessions are grouped into weekly engineering reports](https://github.com/mike840609/agent-worklog/raw/refs/heads/main/docs/assets/agent-worklog-overview.png)
 
 ## Capabilities
 
@@ -15,10 +15,10 @@ Agent Worklog currently works with OpenCode and can:
 - Group Git worktrees that belong to the same repository.
 - Keep child sessions linked to the correct repository.
 - Include source activity IDs and confidence levels as supporting information.
-- Remove common secrets before creating a report or sending data to an optional LLM.
+- Check session information for common secret patterns before creating a report or
+  sending data to an optional LLM.
 - Continue when one session cannot be exported and add a warning to the report.
-- Write Markdown reports safely with permissions that allow only the owner to read
-  them.
+- On POSIX systems, write reports with owner-only `0600` permissions.
 
 ## Requirements
 
@@ -103,9 +103,9 @@ Agent Worklog checks each session separately to decide which repository it belon
 It uses the following information in order:
 
 1. The Git `origin` remote.
-2. A protected ID based on the shared Git directory.
+2. An ID created from a hash of the shared Git directory.
 3. The OpenCode project ID.
-4. A protected ID based on the working directory.
+4. An ID created from a hash of the working directory.
 5. A separate unknown ID for the session.
 
 SSH and HTTPS addresses for the same repository are treated as the same repository.
@@ -128,11 +128,14 @@ export OPENAI_API_KEY="..."
 agent-worklog report --period last-week
 ```
 
-The request contains organized information with secrets removed. It does not contain
-raw transcripts or raw session details. If the service times out, returns an HTTP 429
-or 5xx error, or returns invalid data, Agent Worklog tries once more. If the second
-request fails, it creates a summary without the LLM. Use `--no-llm` to keep report
-generation on your computer.
+LLM requests contain selected work information rather than full transcripts. Agent
+Worklog checks session information for common secret patterns before building each
+request. The request may still include repository and branch names, session and activity
+IDs, goals, commands, and filenames.
+
+If the service times out, returns an HTTP 429 or 5xx error, or returns invalid data,
+Agent Worklog tries once more. If the second request fails, it creates a summary without
+the LLM. Use `--no-llm` to keep report generation on your computer.
 
 ## Output and file handling
 
@@ -174,19 +177,22 @@ export AGENT_WORKLOG_LLM__BASE_URL="https://api.openai.com/v1/"
 export AGENT_WORKLOG_LLM__ENABLED="false"
 ```
 
-See [Configuration](docs/configuration.md) for a complete list of settings.
+See the
+[configuration guide](https://github.com/mike840609/agent-worklog/blob/main/docs/configuration.md)
+for a complete list of settings.
 
 ## Privacy
 
-Agent Worklog requests OpenCode exports with `--sanitize`. It also removes common
-secrets from all parts of the data before creating a report or making an optional LLM
-request.
+Agent Worklog requests OpenCode exports with `--sanitize`. It also checks selected
+session information for common secret patterns before creating a report or making an
+optional LLM request. Pattern checks cannot find every possible secret.
 
 Reports may still contain private goals, filenames, commands, and work descriptions.
 Always review a report before sharing it.
 
-See [Privacy and security](docs/privacy.md) for more details about data safety and
-current limits.
+See
+[Privacy and security](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md)
+for more details about data safety and current limits.
 
 ## Failure handling and exit codes
 
@@ -200,7 +206,7 @@ creating an empty report.
 | 2 | Invalid command options |
 | 3 | Settings error |
 | 4 | No matching activity |
-| 5 | OpenCode error |
+| 5 | OpenCode or Git dependency error |
 | 7 | Report file error |
 
 ## Current support and limits
@@ -225,7 +231,9 @@ uv run pyright
 uv build
 ```
 
-See [Releasing Agent Worklog](docs/releasing.md) for release instructions.
+See
+[Releasing Agent Worklog](https://github.com/mike840609/agent-worklog/blob/main/docs/releasing.md)
+for release instructions.
 
 ## License
 
