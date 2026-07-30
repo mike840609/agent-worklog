@@ -135,6 +135,12 @@ repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀�
 | `--force` | 輸出檔案已存在時直接覆寫。 |
 | `--dry-run` | 直接印出 Markdown，不寫入檔案。 |
 | `--no-llm` | 不使用外部 LLM 產生摘要。 |
+| `--detail LEVEL` | 報告的詳細程度：`full`（預設）或 `brief`。 |
+
+`--detail brief` 會產生適合貼進週報的簡短報告：保留標頭，每個 repository 保留摘要與
+Completed、Problems Resolved、In Progress 各最多五條，不輸出 Key Files、Directories、
+Sessions、Branches 與用量表格。警告在兩種詳細程度下都會保留，因為警告說明的是工具讀不到的
+資料，而不是你做過的工作。
 
 `doctor` 也接受 `--harness NAME`、`--quiet` 與 `--verbose`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果；`--verbose` 不會改變 `doctor` 的輸出內容。
 使用 `--harness claude-code` 時，`doctor` 會改為檢查設定的 `~/.claude/projects` 資料夾是否存在且可讀，而不是檢查 `opencode` 執行檔與資料庫。

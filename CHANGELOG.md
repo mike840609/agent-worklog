@@ -8,6 +8,11 @@ All notable changes to this project are documented in this file.
   renderer, so there is one truncation point and the `Additional items omitted`
   count is always the real remainder. LLM-produced lists are now capped at 20
   items like rule-based ones; they were previously unbounded.
+- Add `--detail {full,brief}` to `report`, defaulting to `full`, which is the
+  existing output. `--detail brief` keeps the header, and for each repository the
+  summary and up to five each of Completed, Problems Resolved, and In Progress;
+  it leaves out Key Files, Directories, Sessions, Branches, and the usage table.
+  Warnings are kept at both levels.
 
 ## 0.4.0
 

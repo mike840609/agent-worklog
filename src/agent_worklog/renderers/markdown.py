@@ -1,14 +1,24 @@
 """Markdown rendering for worklog reports."""
 
+from enum import StrEnum
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from agent_worklog.models.report import WorklogReport
 
+
+class DetailLevel(StrEnum):
+    BRIEF = "brief"
+    FULL = "full"
+
+
 # The renderer is the report's only truncation point. Both summarizers now emit
-# complete lists, so the omitted-item count below is always the real remainder.
-_FULL_SECTION_LIMIT = 20
+# complete lists, so the omitted-item count is always the real remainder.
+_SECTION_LIMITS = {
+    DetailLevel.FULL: 20,
+    DetailLevel.BRIEF: 5,
+}
 
 
 class MarkdownRenderer:
@@ -26,12 +36,18 @@ class MarkdownRenderer:
         )
         self._template = environment.get_template("worklog.md.j2")
 
-    def render(self, report: WorklogReport) -> str:
+    def render(
+        self,
+        report: WorklogReport,
+        *,
+        detail: DetailLevel = DetailLevel.FULL,
+    ) -> str:
         tzinfo = report.period.since.tzinfo
         timezone = getattr(tzinfo, "key", str(tzinfo))
         output = self._template.render(
             report=report,
             timezone=timezone,
-            section_limit=_FULL_SECTION_LIMIT,
+            section_limit=_SECTION_LIMITS[detail],
+            full=detail is DetailLevel.FULL,
         )
         return f"{output.rstrip()}\n"

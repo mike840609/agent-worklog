@@ -140,6 +140,14 @@ stderr so stdout contains only Markdown.
 | `--force` | Replaces the output file if it already exists. |
 | `--dry-run` | Prints the Markdown instead of writing a file. |
 | `--no-llm` | Creates the summary without an external LLM. |
+| `--detail LEVEL` | How much detail the report contains: `full` (default) or `brief`. |
+
+`--detail brief` produces a short report for a status update: it keeps the
+header, and for each repository the summary and up to five each of Completed,
+Problems Resolved, and In Progress. It leaves out Key Files, Directories,
+Sessions, Branches, and the usage table. Warnings are always kept, at both
+detail levels, because they report data the tool could not read rather than work
+you did.
 
 `doctor` also accepts `--harness NAME`, `--quiet`, and `--verbose`. `--quiet` hides the
 list of checks and reports only through the exit code; `--verbose` does not change what

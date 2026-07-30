@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from agent_worklog.models.report import RepositorySummary, SessionRef, WorklogReport
 from agent_worklog.models.time_range import DateRange
-from agent_worklog.renderers.markdown import MarkdownRenderer
+from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -153,3 +153,68 @@ def test_a_section_at_exactly_the_limit_has_no_overflow_line() -> None:
 
     assert "- Completed 19" in output
     assert "Additional items omitted" not in output
+
+
+def test_brief_keeps_the_narrative_sections_and_drops_the_appendices() -> None:
+    output = MarkdownRenderer().render(sample_report(), detail=DetailLevel.BRIEF)
+
+    assert "# Engineering Worklog" in output
+    assert "### Agent Worklog" in output
+    assert "Implemented the MVP." in output
+    assert "Sessions: 2" in output
+    assert "#### Completed" in output
+    assert "#### In Progress" in output
+
+    assert "#### Key Files" not in output
+    assert "#### Directories" not in output
+    assert "#### Sessions" not in output
+    assert "#### Branches" not in output
+
+
+def test_brief_keeps_warnings() -> None:
+    """A shorter report is a request for less detail, not less disclosure."""
+
+    output = MarkdownRenderer().render(sample_report(), detail=DetailLevel.BRIEF)
+
+    assert "## Warnings" in output
+    assert "One session could not be exported." in output
+
+
+def test_brief_drops_the_usage_block() -> None:
+    report = sample_report()
+    report.usage_text = "OVERVIEW\nSessions 2"
+    report.usage_days = 5
+
+    output = MarkdownRenderer().render(report, detail=DetailLevel.BRIEF)
+
+    assert "## Usage" not in output
+    assert "OVERVIEW" not in output
+    assert "Window: the last" not in output
+
+
+def test_full_keeps_the_usage_block() -> None:
+    report = sample_report()
+    report.usage_text = "OVERVIEW\nSessions 2"
+    report.usage_days = 5
+
+    output = MarkdownRenderer().render(report, detail=DetailLevel.FULL)
+
+    assert "## Usage" in output
+    assert "OVERVIEW" in output
+
+
+def test_brief_caps_sections_at_five_items() -> None:
+    items = [f"Completed {index:02d}" for index in range(25)]
+
+    output = MarkdownRenderer().render(
+        report_with_completed(items),
+        detail=DetailLevel.BRIEF,
+    )
+
+    assert "- Completed 04" in output
+    assert "- Completed 05" not in output
+    assert "- Additional items omitted: 20" in output
+
+
+def test_brief_default_is_full() -> None:
+    assert MarkdownRenderer().render(sample_report()) == EXPECTED_FULL_OUTPUT

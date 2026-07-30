@@ -29,6 +29,7 @@ Sessions: {{ repository.session_count }}{% if repository.child_session_count %} 
 {{ section("Completed", repository.completed, section_limit) -}}
 {{ section("Problems Resolved", repository.problems_resolved, section_limit) -}}
 {{ section("In Progress", repository.in_progress, section_limit) -}}
+{% if full %}
 {{ section("Key Files", repository.key_files, section_limit, code=true) -}}
 {{ section("Directories", repository.directories, none, code=true) -}}
 {% if repository.sessions %}
@@ -39,8 +40,11 @@ Sessions: {{ repository.session_count }}{% if repository.child_session_count %} 
 {% endfor %}
 {% endif %}
 {{ section("Branches", repository.branches, none, code=true) }}
+{% else %}
+
+{% endif %}
 {% endfor %}
-{% if report.usage_text %}
+{% if full and report.usage_text %}
 ## Usage
 {% if report.usage_days %}
 

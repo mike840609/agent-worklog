@@ -14,7 +14,7 @@ from agent_worklog.models.evidence import RepositoryEvidence, SessionEvidence
 from agent_worklog.models.report import RepositorySummary, WorklogReport
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.progress import NullProgressReporter, ProgressReporter, ProgressStage
-from agent_worklog.renderers.markdown import MarkdownRenderer
+from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
 from agent_worklog.security.redactor import redact_text, redact_value
 from agent_worklog.security.secure_files import atomic_secure_write
 from agent_worklog.services.scan import ScanResult, ScanService
@@ -23,7 +23,12 @@ from agent_worklog.summarizers.base import RepositorySummarizer
 
 
 class Renderer(Protocol):
-    def render(self, report: WorklogReport) -> str: ...
+    def render(
+        self,
+        report: WorklogReport,
+        *,
+        detail: DetailLevel = DetailLevel.FULL,
+    ) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,7 @@ class ReportService:
         now_factory: Callable[[], datetime],
         usage_provider: Callable[[ScanResult], str] | None = None,
         usage_days: int | None = None,
+        detail: DetailLevel = DetailLevel.FULL,
         progress: ProgressReporter | None = None,
     ) -> None:
         self._scan_service = scan_service
@@ -64,6 +70,7 @@ class ReportService:
         self._now_factory = now_factory
         self._usage_provider = usage_provider
         self._usage_days = usage_days
+        self._detail = detail
         self._progress = progress if progress is not None else NullProgressReporter()
 
     def _repository_evidence(self, scan: ScanResult) -> list[RepositoryEvidence]:
@@ -137,7 +144,7 @@ class ReportService:
             warnings=[redact_text(warning) for warning in warnings],
         )
         self._progress.start(ProgressStage.RENDERING_REPORT)
-        content = redact_text(self._renderer.render(report))
+        content = redact_text(self._renderer.render(report, detail=self._detail))
         if not dry_run:
             self._progress.start(ProgressStage.WRITING_REPORT)
             atomic_secure_write(self._output_path, content, force=force)
