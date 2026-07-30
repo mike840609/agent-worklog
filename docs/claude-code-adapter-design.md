@@ -291,6 +291,15 @@ metadata = {
 做 `casefold()`，因此 Claude Code 的 `Edit` → `edit`、`Bash` → `bash`、`Write` → `write`
 直接命中現有集合。
 
+### 7.1 `RuleBasedSummarizer` 必須一併放寬（實作計畫階段補上）
+
+`summarizers/rule_based.py:39-45` 的 `_completed()` 只收
+`confidence == EvidenceConfidence.HIGH`，因此上述 MEDIUM evidence 在 `--no-llm` 報告中會被
+整批丟棄，heuristic 等於死碼。條件放寬為 `{HIGH, MEDIUM}`，並在 MEDIUM 項目後綴
+`" (inferred)"`，讓「觀測到的」與「推論的」在 Markdown 裡仍然分得開。
+
+`LOW`（`assistant_claim`）維持排除。
+
 ---
 
 ## 8. Usage 區段
