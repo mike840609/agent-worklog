@@ -107,6 +107,11 @@ The default output is written under `reports/`.
 | `--verbose` | Also shows export, fallback, and LLM warnings. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
 
+While `scan` and `report` are working, they show a transient progress status with the
+current stage. Session and repository stages also show a `completed/total` count.
+`--quiet` hides the progress status. For `report --dry-run`, progress is written to
+stderr so stdout contains only Markdown.
+
 `report` also accepts:
 
 | Option | What it does |
