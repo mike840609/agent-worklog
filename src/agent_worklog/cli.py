@@ -40,6 +40,7 @@ from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 class Harness(StrEnum):
     OPENCODE = "opencode"
     CLAUDE_CODE = "claude-code"
+    CODEX = "codex"
 
 
 # A module-level singleton, per ruff B008: an Enum-typed `typer.Option(...)` call
@@ -123,16 +124,14 @@ def _require_enabled_harness(settings: AppSettings, harness: Harness) -> None:
     """Refuse a harness its configuration has turned off.
 
     A privacy tool must not advertise an off switch that does nothing: reading
-    `~/.claude/projects` is exactly the kind of thing an operator may need to
-    forbid for a whole machine.
+    `~/.claude/projects` or `~/.codex` is exactly the kind of thing an operator
+    may need to forbid for a whole machine.
+
+    Each enum member's name is the settings field name, so a new harness needs
+    no edit here.
     """
 
-    enabled = (
-        settings.harnesses.claude_code.enabled
-        if harness is Harness.CLAUDE_CODE
-        else settings.harnesses.opencode.enabled
-    )
-    if not enabled:
+    if not getattr(settings.harnesses, harness.name.lower()).enabled:
         variable = f"AGENT_WORKLOG_HARNESSES__{harness.name}__ENABLED"
         raise ConfigurationError(
             f"harness {harness.value} is disabled by configuration; "

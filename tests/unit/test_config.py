@@ -41,3 +41,20 @@ def test_claude_code_projects_directory_is_configurable(
     settings = AppSettings()
 
     assert settings.harnesses.claude_code.projects_directory == Path("/tmp/claude-projects")
+
+
+def test_codex_defaults_to_the_user_codex_home() -> None:
+    settings = AppSettings()
+
+    assert settings.harnesses.codex.enabled is True
+    assert settings.harnesses.codex.home_directory == Path.home() / ".codex"
+
+
+def test_codex_home_directory_is_configurable(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "codex")
+    )
+
+    settings = AppSettings()
+
+    assert settings.harnesses.codex.home_directory == tmp_path / "codex"

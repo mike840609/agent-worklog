@@ -19,7 +19,7 @@ def test_scan_rejects_an_unknown_harness() -> None:
 
     import agent_worklog.cli as cli
 
-    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--harness", "codex"])
+    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--harness", "unknown"])
 
     assert result.exit_code == 2
 
