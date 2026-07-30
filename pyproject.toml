@@ -1,6 +1,6 @@
 [project]
 name = "agent-worklog"
-version = "0.1.0"
+version = "0.1.1"
 description = "Turn coding-agent sessions into repository-based engineering reports"
 readme = "README.md"
 license = { text = "MIT" }

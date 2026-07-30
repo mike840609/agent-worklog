@@ -2,8 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.1.1
 
+- Add a Traditional Chinese README and a status badge row, and declare MIT and
+  Python 3.11–3.13 classifiers so the PyPI project page reports them.
 - Add `--root-only` to `scan` and `report` to exclude child and subagent sessions. Child
   sessions remain included by default and stay attributed to the repository they ran in.
 - List each repository's session titles, session IDs, and working directories in the report.
