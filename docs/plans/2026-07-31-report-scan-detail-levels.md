@@ -1,14 +1,12 @@
 # Report and Scan Detail Levels Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add `report --detail brief|full` so a worklog can be produced as a short bulleted digest, and extend `scan --verbose` to list the sessions it selected.
 
 **Architecture:** Report list truncation moves out of `RuleBasedSummarizer` and into `MarkdownRenderer`, giving one truncation point whose omitted-item counts are always correct. The renderer then takes a detail level that selects the per-section item limit and gates the appendix sections and the Usage block. `scan` gains no option; its existing `--verbose` branch prints one line per session.
 
 **Tech Stack:** Python 3.11+, Typer, Jinja2, Rich, Pydantic, pytest, ruff, pyright, uv.
 
-**Spec:** `docs/superpowers/specs/2026-07-31-report-scan-detail-levels-design.md`
+**Spec:** `docs/report-scan-detail-levels-design.md`
 
 ## Global Constraints
 

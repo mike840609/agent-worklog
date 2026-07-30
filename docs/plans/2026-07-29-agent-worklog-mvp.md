@@ -1,7 +1,5 @@
 # Agent Worklog MVP Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Build a Python CLI that queries OpenCode sessions across all projects for a requested period, assigns each session to a canonical Git repository, extracts safe evidence, and produces a Markdown engineering worklog with optional LLM summarization.
 
 **Architecture:** The MVP uses an OpenCode CLI-first adapter: `opencode db` discovers candidate sessions and `opencode export --sanitize` loads transcripts. Provider output is normalized into canonical models, repository identity is resolved before parent/child relationships are aggregated, evidence retains provenance, and report generation stays independent of OpenCode-specific schemas. Direct SQLite access, JSON output, `inspect`, Codex, and Claude Code are deliberately outside the first release gate.
@@ -2255,4 +2253,3 @@ These items require separate specs and implementation plans after the MVP releas
 6. Claude Code transcript and hook adapters.
 7. Git commit, pull request, and work-item correlation.
 8. Team aggregation, scheduled delivery, Slack, email, and Google Docs output.
-
