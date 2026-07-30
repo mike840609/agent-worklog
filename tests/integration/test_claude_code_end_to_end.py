@@ -64,7 +64,11 @@ def test_claude_code_report_groups_by_repository_and_reports_usage(
     assert "Total             10     200       1,000           50" in content
     assert "Window: the last" not in content  # exact period, no widened-window caveat
     assert "ACCEPTANCE_SECRET_MARKER" not in content
-    assert "Verification passed: pytest -q (inferred)" in content
+    # No exit code exists, so the run is reported without claiming an outcome, and
+    # it lands under In Progress rather than disappearing from the report.
+    assert "Verification passed" not in content
+    in_progress = content.split("#### In Progress")[1]
+    assert "- Ran verification command: pytest -q" in in_progress
 
 
 def test_root_only_excludes_the_subagent_repository(

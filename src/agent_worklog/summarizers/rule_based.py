@@ -51,6 +51,24 @@ def _completed(items: list[EvidenceItem]) -> list[str]:
     ]
 
 
+def _unobserved(items: list[EvidenceItem]) -> list[str]:
+    """Return outcome evidence whose result was never observed.
+
+    A Claude Code verification command has no exit code, so the extractor records
+    that it ran and stops there: MEDIUM confidence, status UNKNOWN. Those items
+    must not appear under Completed, but they are real work and would otherwise
+    disappear from the report entirely, so they are listed as in progress. LOW
+    items — an assistant claiming its own success — stay excluded.
+    """
+
+    return [
+        item.text
+        for item in items
+        if item.status == EvidenceStatus.UNKNOWN
+        and item.confidence == EvidenceConfidence.MEDIUM
+    ]
+
+
 class RuleBasedSummarizer(RepositorySummarizer):
     """Map high-confidence evidence into conservative report sections."""
 
@@ -58,6 +76,7 @@ class RuleBasedSummarizer(RepositorySummarizer):
         completed: list[str] = []
         problems_resolved: list[str] = []
         goals: list[str] = []
+        unobserved: list[str] = []
         key_files: list[str] = []
 
         for session in evidence.sessions:
@@ -68,10 +87,15 @@ class RuleBasedSummarizer(RepositorySummarizer):
                 for item in session.goals
                 if item.status != EvidenceStatus.COMPLETED
             )
+            unobserved.extend(_unobserved(session.outcomes))
             key_files.extend(item.text for item in session.files_changed)
 
         completed_keys = {item.casefold() for item in completed}
-        in_progress = [goal for goal in goals if goal.casefold() not in completed_keys]
+        in_progress = [
+            item
+            for item in (*goals, *unobserved)
+            if item.casefold() not in completed_keys
+        ]
         session_count = len(evidence.sessions)
         summary_text = (
             f"{session_count} session{'s' if session_count != 1 else ''} "

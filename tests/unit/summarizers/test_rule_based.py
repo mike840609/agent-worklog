@@ -75,7 +75,9 @@ def test_rule_summary_limits_each_section_to_twenty_items() -> None:
     assert summary.completed[-1] == "Additional items omitted: 2"
 
 
-def test_medium_confidence_outcomes_are_reported_as_inferred() -> None:
+def test_medium_confidence_completed_evidence_is_marked_inferred() -> None:
+    """An observed outcome reads plainly; an inferred one is labelled as inferred."""
+
     evidence = RepositoryEvidence(
         repository_id="git:github.com/mike/agent-worklog",
         display_name="Agent Worklog",
@@ -85,10 +87,10 @@ def test_medium_confidence_outcomes_are_reported_as_inferred() -> None:
                 repository_id="git:github.com/mike/agent-worklog",
                 outcomes=[
                     EvidenceItem(
-                        text="Verification passed: pytest -q",
+                        text="Coverage threshold met",
                         source_activity_ids=["a-1"],
                         confidence=EvidenceConfidence.MEDIUM,
-                        extraction_method="stderr_heuristic",
+                        extraction_method="test_only_medium_signal",
                         status=EvidenceStatus.COMPLETED,
                     ),
                     EvidenceItem(
@@ -105,12 +107,45 @@ def test_medium_confidence_outcomes_are_reported_as_inferred() -> None:
 
     summary = RuleBasedSummarizer().summarize(evidence)
 
-    assert "Verification passed: pytest -q (inferred)" in summary.completed
+    assert "Coverage threshold met (inferred)" in summary.completed
     assert "Verification passed: ruff check ." in summary.completed
 
 
+def test_unobserved_outcomes_are_listed_in_progress_not_completed() -> None:
+    """A Claude Code verification run has no exit code, so no success is claimed.
+
+    The item must still reach the report: an unobserved outcome belongs under
+    In Progress, never under Completed, and never nowhere.
+    """
+
+    evidence = RepositoryEvidence(
+        repository_id="git:github.com/mike/agent-worklog",
+        display_name="Agent Worklog",
+        sessions=[
+            SessionEvidence(
+                session_id="sess-1",
+                repository_id="git:github.com/mike/agent-worklog",
+                outcomes=[
+                    EvidenceItem(
+                        text="Ran verification command: pytest -q",
+                        source_activity_ids=["a-1"],
+                        confidence=EvidenceConfidence.MEDIUM,
+                        extraction_method="stderr_heuristic",
+                        status=EvidenceStatus.UNKNOWN,
+                    )
+                ],
+            )
+        ],
+    )
+
+    summary = RuleBasedSummarizer().summarize(evidence)
+
+    assert summary.completed == []
+    assert summary.in_progress == ["Ran verification command: pytest -q"]
+
+
 def test_low_confidence_outcomes_are_still_excluded() -> None:
-    """Assistant self-claims stay out of the report; only stderr inference is promoted."""
+    """Assistant self-claims stay out of the report entirely, in every section."""
 
     evidence = RepositoryEvidence(
         repository_id="git:github.com/mike/agent-worklog",
@@ -126,7 +161,14 @@ def test_low_confidence_outcomes_are_still_excluded() -> None:
                         confidence=EvidenceConfidence.LOW,
                         extraction_method="assistant_claim",
                         status=EvidenceStatus.COMPLETED,
-                    )
+                    ),
+                    EvidenceItem(
+                        text="I fixed the flaky test",
+                        source_activity_ids=["a-2"],
+                        confidence=EvidenceConfidence.LOW,
+                        extraction_method="assistant_claim",
+                        status=EvidenceStatus.UNKNOWN,
+                    ),
                 ],
             )
         ],
@@ -135,3 +177,4 @@ def test_low_confidence_outcomes_are_still_excluded() -> None:
     summary = RuleBasedSummarizer().summarize(evidence)
 
     assert summary.completed == []
+    assert summary.in_progress == []

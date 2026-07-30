@@ -96,9 +96,9 @@ one command or path but as much of the full call as fits in that budget.
 Everything else is dropped at that boundary and never reaches a report or an LLM request:
 tool `stdout` and `stderr`, model thinking blocks, hook output, and system reminders. The
 only trace a tool result leaves behind is two derived booleans — whether its `stderr` was
-empty, and whether the call was interrupted — which is also why verification results for
-Claude Code are inferred rather than read from an exit code, and marked `(inferred)` in
-the report.
+empty, and whether the call was interrupted. That is also why a Claude Code report never
+states that a verification command passed: with no exit code and no captured output, the
+report records only that the command ran, under "In Progress".
 
 The same pattern-based secret checks described above still run on top of that reduced set
 of fields, exactly as they do for OpenCode evidence.

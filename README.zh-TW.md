@@ -283,7 +283,7 @@ Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒
 - 較舊的 OpenCode 工作階段若工作資料夾已被刪除，可能會使用備援 ID。
 - Repository 分組使用的是產生報告當下可取得的 Git 資訊。
 - 目前不支援 Codex。
-- Claude Code 工作階段沒有結束代碼（exit code），因此驗證結果是從 stderr 推論而來，並在報告中標記為 `(inferred)`。
+- Claude Code 工作階段沒有結束代碼（exit code），因此 Claude Code 的報告不會聲稱任何測試或 lint 指令通過。stderr 為空的驗證指令會以 `Ran verification command: <command>` 列在「In Progress」底下；若指令自己重導了 stderr（`2>&1`、`2>/dev/null`），則完全不產生任何結果判定，因為這種情況下 stderr 為空並不代表任何事。只有 OpenCode 有真正的 exit code，才會把驗證結果報告為通過。
 - 若一個 Claude Code 工作階段橫跨多個工作目錄，會被歸到最後一個工作目錄底下。
 
 ## 開發檢查

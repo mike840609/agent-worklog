@@ -14,9 +14,17 @@ All notable changes to this project are documented in this file.
   themselves, so it covers the report period exactly. This is narrower than the
   OpenCode `opencode stats` window, which remains a trailing window ending at report
   generation time.
-- Infer command outcomes at MEDIUM confidence from stderr for Claude Code tool results,
-  which carry no exit code, and mark inferred verification text `(inferred)` in the
-  report.
+- Report Claude Code verification commands without claiming an outcome. Claude Code tool
+  results carry no exit code, so a command whose stderr was empty is recorded as `Ran
+  verification command: <command>` at MEDIUM confidence with an unknown status, and
+  appears under "In Progress" rather than "Completed". A command that redirects or
+  discards its stderr (`2>&1`, `2>/dev/null`, `2>`) produces no outcome at all, because
+  its empty stderr is an artefact of the redirection. "Verification passed" remains
+  reserved for the OpenCode path, which observes a real exit code.
+- Cap every evidence item's text at 300 characters for both harnesses, marking the cut
+  with an ellipsis. A Claude Code `input.command` is retained whole, so a heredoc used to
+  write a file previously carried that file's entire body into the report and into
+  optional LLM requests; secret-pattern redaction cannot detect such text.
 - Group a Claude Code session that spans several working directories under the last
   one, and read subagent transcripts alongside root sessions, excluded by `--root-only`
   like OpenCode child sessions.

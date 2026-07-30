@@ -191,7 +191,7 @@ def test_extraction_carries_session_title_and_directory() -> None:
     assert evidence.working_directory == "/repos/agent-worklog"
 
 
-def test_clean_stderr_yields_a_medium_verification_outcome() -> None:
+def test_clean_stderr_records_the_run_without_claiming_success() -> None:
     resolved = ResolvedSession(
         session=AgentSession(
             harness="claude-code",
@@ -220,10 +220,92 @@ def test_clean_stderr_yields_a_medium_verification_outcome() -> None:
 
     assert len(evidence.outcomes) == 1
     outcome = evidence.outcomes[0]
-    assert outcome.text == "Verification passed: pytest -q"
+    assert outcome.text == "Ran verification command: pytest -q"
+    assert "Verification passed" not in outcome.text
     assert outcome.confidence is EvidenceConfidence.MEDIUM
     assert outcome.extraction_method == "stderr_heuristic"
-    assert outcome.status is EvidenceStatus.COMPLETED
+    assert outcome.status is EvidenceStatus.UNKNOWN
+
+
+def test_stderr_redirecting_command_yields_no_outcome() -> None:
+    """`2>&1` makes stderr empty by construction, so it supports no inference."""
+
+    resolved = ResolvedSession(
+        session=AgentSession(
+            harness="claude-code",
+            session_id="sess-1",
+            working_directory="/repo/main",
+            activities=[
+                SessionActivity(
+                    activity_id="a-1",
+                    activity_type=ActivityType.TOOL_CALL,
+                    timestamp=datetime(2026, 7, 21, tzinfo=UTC),
+                    content="pytest -q 2>&1 | tail -5",
+                    tool_name="Bash",
+                    metadata={"stderr_empty": True, "interrupted": False},
+                ),
+                SessionActivity(
+                    activity_id="a-2",
+                    activity_type=ActivityType.TOOL_CALL,
+                    timestamp=datetime(2026, 7, 21, tzinfo=UTC),
+                    content="ruff check . 2>/dev/null",
+                    tool_name="Bash",
+                    metadata={"stderr_empty": True, "interrupted": False},
+                ),
+                SessionActivity(
+                    activity_id="a-3",
+                    activity_type=ActivityType.TOOL_CALL,
+                    timestamp=datetime(2026, 7, 21, tzinfo=UTC),
+                    content="pyright 2>errors.log",
+                    tool_name="Bash",
+                    metadata={"stderr_empty": True, "interrupted": False},
+                ),
+            ],
+        ),
+        repository=RepositoryIdentity(
+            repository_id="git:github.com/mike/agent-worklog",
+            display_name="Agent Worklog",
+            identity_type=RepositoryIdentityType.GIT_REMOTE,
+            resolution_method="git_origin_remote",
+        ),
+    )
+
+    evidence = extract_evidence(resolved)
+
+    assert evidence.outcomes == []
+    assert evidence.errors == []
+    assert len(evidence.commands) == 3  # the commands themselves are still evidence
+
+
+def test_stderr_redirecting_command_yields_no_error_either() -> None:
+    resolved = ResolvedSession(
+        session=AgentSession(
+            harness="claude-code",
+            session_id="sess-1",
+            working_directory="/repo/main",
+            activities=[
+                SessionActivity(
+                    activity_id="a-1",
+                    activity_type=ActivityType.TOOL_CALL,
+                    timestamp=datetime(2026, 7, 21, tzinfo=UTC),
+                    content="ruff check . 2>&1",
+                    tool_name="Bash",
+                    metadata={"stderr_empty": False, "interrupted": False},
+                )
+            ],
+        ),
+        repository=RepositoryIdentity(
+            repository_id="git:github.com/mike/agent-worklog",
+            display_name="Agent Worklog",
+            identity_type=RepositoryIdentityType.GIT_REMOTE,
+            resolution_method="git_origin_remote",
+        ),
+    )
+
+    evidence = extract_evidence(resolved)
+
+    assert evidence.errors == []
+    assert evidence.outcomes == []
 
 
 def test_nonempty_stderr_yields_a_medium_error() -> None:

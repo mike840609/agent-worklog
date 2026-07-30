@@ -30,6 +30,9 @@ EVIDENCE_TEXT_MAX_LENGTH = 300
 _PATH_MAX_LENGTH = 512
 _PATH_REJECTED_CHARACTERS = frozenset("{}[]\"'`<>|*?")
 
+# Shell forms that make stderr empty by construction rather than by success.
+_STDERR_REDIRECTION_MARKERS = ("2>&1", "2>/dev/null", "2>")
+
 
 def _normalize(text: str) -> str:
     return " ".join(text.split()).strip()
@@ -125,6 +128,18 @@ def _append_unique(
         items.append(candidate)
 
 
+def _redirects_stderr(command: str) -> bool:
+    """Detect a command whose empty stderr is an artefact of its own redirection.
+
+    `pytest 2>&1 | tail` and `ruff check . 2>/dev/null` leave stderr empty no
+    matter what happened, so `stderr_empty` carries no information about them.
+    Measured against real transcripts, 96 of 113 inferences came from commands
+    shaped like this.
+    """
+
+    return any(marker in command for marker in _STDERR_REDIRECTION_MARKERS)
+
+
 def _append_stderr_heuristic(
     evidence: SessionEvidence,
     *,
@@ -132,12 +147,17 @@ def _append_stderr_heuristic(
     content: str,
     repository_id: str,
 ) -> None:
-    """Infer command success from stderr when the harness reports no exit code.
+    """Record what a command was, not how it ended, when there is no exit code.
 
-    Claude Code's tool results carry no exit code, so this is the only signal
-    available. It is a guess — pytest writes failures to stdout — so everything
-    it produces is MEDIUM confidence, never HIGH.
+    Claude Code's tool results carry no exit code, so empty stderr is the only
+    signal available — and it is a weak one: pytest writes `FAILED` to stdout and
+    `ruff` reports violations on stdout. Nothing here claims success. A command
+    that redirects stderr is skipped outright, because for it the signal is not
+    weak but absent.
     """
+
+    if _redirects_stderr(content):
+        return
 
     stderr_empty = activity.metadata.get("stderr_empty")
     if stderr_empty is False:
@@ -161,11 +181,11 @@ def _append_stderr_heuristic(
         _append_unique(
             evidence.outcomes,
             _item(
-                text=f"Verification passed: {content}",
+                text=f"Ran verification command: {content}",
                 activity=activity,
                 confidence=EvidenceConfidence.MEDIUM,
                 extraction_method="stderr_heuristic",
-                status=EvidenceStatus.COMPLETED,
+                status=EvidenceStatus.UNKNOWN,
             ),
             repository_id=repository_id,
         )

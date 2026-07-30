@@ -273,32 +273,38 @@ metadata = {
 
 ## 7. Extraction：exit code 缺口
 
-§4.5 說明 Claude Code 沒有 exit code。採用 **stderr heuristic + MEDIUM confidence**：
+§4.5 說明 Claude Code 沒有 exit code。**不能因此改用 stderr 推論「通過」**：實測 113 筆這類
+推論中，96 筆（85%）來自自己重導 stderr 的指令（`2>&1`、`2>/dev/null`），`stderr_empty` 為真
+是它自己造成的，訊號量為零；另有 22 筆（19%）可證明為假，包含 stdout 出現 `FAILED` 的
+`pytest`，以及回報 `E501` 的 `ruff check .`。
 
-在 `extraction/pipeline.py` 的 command 分支加一條路徑——當 `_exit_code()` 回 `None`
-但 `metadata` 有 `stderr_empty` 時：
+因此 `extraction/pipeline.py` 的 command 分支在 `_exit_code()` 回 `None` 且 `metadata` 有
+`stderr_empty` 時，只記錄「指令跑過」，不記錄結果：
 
-| 條件 | 產出 | confidence | `extraction_method` |
-|---|---|---|---|
-| `stderr_empty` 且 `not interrupted` 且 `is_verification_command` | `outcomes`（`Verification passed: <cmd>`，status `COMPLETED`） | `MEDIUM` | `stderr_heuristic` |
-| `not stderr_empty` | `errors`（`<cmd>`，status `BLOCKED`） | `MEDIUM` | `stderr_heuristic` |
+| 條件 | 產出 | status | confidence | `extraction_method` |
+|---|---|---|---|---|
+| 指令含 `2>&1` / `2>/dev/null` / `2>` | **無**（指令本身仍留在 `commands`） | — | — | — |
+| `stderr_empty` 且 `not interrupted` 且 `is_verification_command` | `outcomes`（`Ran verification command: <cmd>`） | `UNKNOWN` | `MEDIUM` | `stderr_heuristic` |
+| `not stderr_empty` | `errors`（`<cmd>`） | `BLOCKED` | `MEDIUM` | `stderr_heuristic` |
 
-`EvidenceConfidence.MEDIUM` 已定義但目前未被任何程式使用；confidence 分級正是為這類推論
-設計的。已知風險：**pytest 失敗時常寫 stdout 而非 stderr**，可能誤判為通過。`MEDIUM` 標記
-與 `stderr_heuristic` 這個 method 名稱就是在向報告讀者揭露這件事。
+「Verification passed」這個字串只保留給 OpenCode 的 exit-code 路徑
+（`successful_verification_command`，`HIGH`），那條路徑觀測到真實的 exit code。
 
-`extraction/rules.py` 的 tool name 集合**不需要修改**。`pipeline.py:121` 已對 `tool_name`
+`extraction/rules.py` 的 tool name 集合**不需要修改**。`pipeline.py` 已對 `tool_name`
 做 `casefold()`，因此 Claude Code 的 `Edit` → `edit`、`Bash` → `bash`、`Write` → `write`
 直接命中現有集合。
 
-### 7.1 `RuleBasedSummarizer` 必須一併放寬（實作計畫階段補上）
+### 7.1 `RuleBasedSummarizer`：未觀測到的結果放在 In Progress
 
-`summarizers/rule_based.py:39-45` 的 `_completed()` 只收
-`confidence == EvidenceConfidence.HIGH`，因此上述 MEDIUM evidence 在 `--no-llm` 報告中會被
-整批丟棄，heuristic 等於死碼。條件放寬為 `{HIGH, MEDIUM}`，並在 MEDIUM 項目後綴
-`" (inferred)"`，讓「觀測到的」與「推論的」在 Markdown 裡仍然分得開。
+`summarizers/rule_based.py` 的 `_completed()` 只收 `status == COMPLETED`，因此上述
+`UNKNOWN` 項目不會（也不該）出現在 `#### Completed`——沒有觀測到的結果不算完成。但它們也
+不能就這樣消失，所以 `_unobserved()` 把 `status == UNKNOWN` 且 `confidence == MEDIUM` 的
+outcome 併入 `in_progress`，在報告中以 `#### In Progress` 呈現。
 
-`LOW`（`assistant_claim`）維持排除。
+`LOW`（`assistant_claim`）在兩個區段都維持排除：模型自稱完成不是證據。
+
+`_completed()` 對 `MEDIUM` 的 `" (inferred)"` 後綴保留，作為 summarizer 對「推論得到的
+COMPLETED evidence」的映射契約；目前沒有 extractor 產生這種組合。
 
 ---
 
@@ -418,8 +424,9 @@ outcome；非空 stderr → MEDIUM error。同時斷言 OpenCode 的 exit-code �
 
 ## 13. 已知限制
 
-1. Claude Code 的 `errors` / `outcomes` 來自 stderr 推論，confidence 為 `MEDIUM`，
-   可能將寫入 stdout 的測試失敗誤判為通過。
+1. Claude Code 的 `errors` / `outcomes` 來自 stderr 推論，confidence 為 `MEDIUM`。
+   `outcomes` 已不再聲稱通過（§7），但 `errors`（非空 stderr → `BLOCKED`）仍可能誤判：
+   只寫 warning 到 stderr 的成功指令會被記為 error。
 2. 跨 cwd 的 session（worktree 情境）只會被歸到最後一個 cwd 對應的 repository。
 3. 單一 session 橫跨多 branch 時，報告顯示的是產生報告當下 `git branch --show-current`
    的結果，而非 session 當時實際的 branch。
