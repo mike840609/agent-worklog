@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## 0.2.0
+
+- Re-release 0.1.1 under a correct semantic version. That release added features, so it
+  belongs in a minor version. The contents are otherwise unchanged; prefer 0.2.0.
+
 ## 0.1.1
 
 - Add a Traditional Chinese README and a status badge row, and declare MIT and
