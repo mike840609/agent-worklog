@@ -32,7 +32,9 @@ SELECT t.id AS id,
 
 # `archived` is deliberately absent from the filter: archiving is a Codex UI
 # state, not a statement that the work did not happen that week.
-_ROOT_ONLY_CLAUSE = " AND t.thread_source != 'subagent'"
+# IS NOT is required instead of != to safely handle NULL: NULL != 'subagent' is
+# NULL (excluded), but NULL IS NOT 'subagent' is TRUE (included).
+_ROOT_ONLY_CLAUSE = " AND t.thread_source IS NOT 'subagent'"
 
 
 def find_state_database(home_directory: Path) -> Path | None:

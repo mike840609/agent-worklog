@@ -119,6 +119,28 @@ def home(tmp_path: Path) -> Path:
                 "user",
                 0,
             ),
+            (
+                "null-source-1",
+                str(rollout),
+                _seconds(datetime(2026, 7, 21, 12, tzinfo=TZ)),
+                _seconds(datetime(2026, 7, 21, 13, tzinfo=TZ)),
+                "/worktrees/agent",
+                "NULL source work",
+                None,
+                None,
+                0,
+            ),
+            (
+                "automation-1",
+                str(rollout),
+                _seconds(datetime(2026, 7, 21, 14, tzinfo=TZ)),
+                _seconds(datetime(2026, 7, 21, 15, tzinfo=TZ)),
+                "/worktrees/agent",
+                "Automation work",
+                None,
+                "automation",
+                0,
+            ),
         ],
         edges=[("root-1", "sub-1", "completed")],
     )
@@ -142,7 +164,7 @@ def test_discovers_sessions_overlapping_the_period(home: Path) -> None:
     )
 
     ids = {descriptor.session_id for descriptor in descriptors}
-    assert ids == {"root-1", "sub-1", "archived-1"}
+    assert ids == {"root-1", "sub-1", "archived-1", "null-source-1", "automation-1"}
 
 
 def test_archived_sessions_are_not_excluded(home: Path) -> None:
@@ -156,7 +178,10 @@ def test_archived_sessions_are_not_excluded(home: Path) -> None:
 def test_root_only_excludes_subagent_threads(home: Path) -> None:
     descriptors = discover_threads(find_state_database(home), PERIOD, root_only=True)
 
-    assert "sub-1" not in {descriptor.session_id for descriptor in descriptors}
+    ids = {descriptor.session_id for descriptor in descriptors}
+    # Should exclude only subagent rows; NULL and other thread_source values survive.
+    assert ids == {"root-1", "archived-1", "null-source-1", "automation-1"}
+    assert "sub-1" not in ids
 
 
 def test_descriptor_carries_metadata_and_parent_edge(home: Path) -> None:
