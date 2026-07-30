@@ -26,6 +26,26 @@ export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS="60"
 agent-worklog doctor
 ```
 
+## Claude Code harness
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED` | `true` | Records whether the harness is enabled. |
+| `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY` | `~/.claude/projects` | Directory containing per-project session transcripts. |
+
+Selecting the harness is a CLI concern, not a settings one: pass `--harness claude-code`
+to `doctor`, `scan`, or `report`. No executable or CLI timeout setting applies, because
+Agent Worklog reads the JSONL transcripts under `projects_directory` directly and never
+launches a Claude Code process.
+
+Example:
+
+```bash
+export AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED="true"
+export AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY="$HOME/.claude/projects"
+agent-worklog doctor --harness claude-code
+```
+
 ## Report settings
 
 | Environment variable | Default | Purpose |
