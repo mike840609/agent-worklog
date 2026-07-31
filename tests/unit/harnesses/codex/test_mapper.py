@@ -396,3 +396,33 @@ def test_reasoning_output_tokens_are_not_counted_twice() -> None:
     )
 
     assert session.activities[0].metadata["usage"] == {"output_tokens": 100}
+
+
+def test_usage_stranded_by_a_model_switch_counts_in_the_total_but_not_the_table() -> None:
+    # Model A's token_count arrives before it has any activity of its own, then
+    # Codex switches to model B before A ever gets one. A's usage has nowhere
+    # safe to land: attaching it to B's activity would misattribute it, so it
+    # is dropped from the per-model table while still reaching the session
+    # grand total. This pins that documented trade-off so a future change
+    # cannot silently start misattributing it instead.
+    session = _map(
+        [
+            _turn_context("2026-07-21T01:00:00.000Z", "gpt-5.6-sol"),
+            _token_count("2026-07-21T01:00:01.000Z", {"output_tokens": 40}),
+            _turn_context("2026-07-21T01:00:02.000Z", "gpt-5.6-terra"),
+            _record(
+                "2026-07-21T01:00:03.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "second model's answer"},
+            ),
+            _token_count("2026-07-21T01:00:04.000Z", {"output_tokens": 65}),
+        ]
+    )
+
+    # The grand total still includes model A's 40 tokens (65 - 40 = 25 for B).
+    assert session.token_usage.output_tokens == 65
+    # But the only activity belongs to model B and carries only B's usage —
+    # model A's tokens reach no activity's metadata at all.
+    assert len(session.activities) == 1
+    assert session.activities[0].metadata["model"] == "gpt-5.6-terra"
+    assert session.activities[0].metadata["usage"] == {"output_tokens": 25}

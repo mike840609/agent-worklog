@@ -192,8 +192,23 @@ class CodexRolloutMapper:
                     activities.append(activity)
 
         # Usage still held when the rollout ends — a session whose last turns
-        # were reasoning-only — joins the last activity that carried the same
-        # model, so the table's total matches the session's own total.
+        # under a given model were reasoning-only — joins the last activity
+        # that carried the same model, so the table's total matches the
+        # session's own total.
+        #
+        # A model can also be stranded rather than merely trailing: its
+        # `token_count` arrives while `activities` is still empty, then Codex
+        # switches to a different model before that first model ever gets an
+        # activity of its own. `attached_usage` has no entry for it, so
+        # `attached` is None and the branch below is skipped — its tokens
+        # already reached `totals` above, so `AgentSession.token_usage` still
+        # counts them, but no `activity.metadata["usage"]` ever will, so the
+        # per-model table omits them. This mirrors the same trade-off
+        # `claude_code/mapper.py`'s drain loop documents: attaching a
+        # stranded model's tokens to an activity that ran under a different
+        # model would misattribute them, which is worse than the table
+        # under-reporting that model, so this loop leaves them out rather
+        # than guessing an owner.
         for pending_model, leftover in pending_usage.items():
             attached = attached_usage.get(pending_model)
             if attached is not None:
