@@ -204,7 +204,6 @@ def test_exec_command_becomes_a_command_activity() -> None:
     assert activity.content == "pytest -q"
     assert activity.tool_name == "exec_command"
     assert activity.tool_call_id == "call-1"
-    assert activity.metadata["workdir"] == "/worktrees/agent"
 
 
 def test_no_outcome_signal_is_ever_recorded() -> None:

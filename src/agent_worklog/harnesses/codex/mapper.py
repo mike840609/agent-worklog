@@ -338,7 +338,8 @@ class CodexRolloutMapper:
             changes = _as_mapping(payload.get("changes"))
             call_id = _text(payload.get("call_id")) or str(record_index)
             activities: list[SessionActivity] = []
-            # Only the keys. Each value holds the whole file body.
+            # Only the keys. Each value holds a unified diff or the whole file
+            # body, plus a rename's destination path in `move_path`.
             for offset, path in enumerate(changes):
                 if not isinstance(path, str) or not path.strip():
                     continue
@@ -369,10 +370,6 @@ class CodexRolloutMapper:
             command = _text(arguments.get("cmd"))
             if command is None:
                 return None
-            metadata: dict[str, object] = {}
-            workdir = _text(arguments.get("workdir"))
-            if workdir is not None:
-                metadata["workdir"] = workdir
             # No `exit_code` and no `stderr_empty`: Codex records exit codes only
             # inside free-form output text, in at least three formats, and a regex
             # over that would fail silently the day Codex changes it. Their absence
@@ -384,7 +381,6 @@ class CodexRolloutMapper:
                 content=command,
                 tool_name=name,
                 tool_call_id=call_id,
-                metadata=metadata,
             )
 
         # Every other tool, `exec` included, is recorded with empty content. The
