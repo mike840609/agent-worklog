@@ -147,5 +147,24 @@ def test_raises_when_no_activity_carries_usage() -> None:
         )
     )
 
-    with pytest.raises(HarnessSourceError, match="claude-code sessions carried no"):
+    with pytest.raises(HarnessSourceError, match="Claude Code sessions carried no"):
         render_activity_usage(scan, harness="claude-code")
+
+
+def test_error_uses_the_codex_display_name_not_the_slug() -> None:
+    """The harness argument is the `Harness.value` slug (e.g. "codex"), but the
+    error text should read as prose, matching what Claude Code got before the
+    usage renderer moved out of the harness package.
+    """
+
+    scan = _scan(
+        SessionActivity(
+            activity_id="a-1",
+            activity_type=ActivityType.ASSISTANT_MESSAGE,
+            timestamp=datetime(2026, 7, 21, tzinfo=TZ),
+            content="no usage metadata",
+        )
+    )
+
+    with pytest.raises(HarnessSourceError, match="Codex sessions carried no"):
+        render_activity_usage(scan, harness="codex")

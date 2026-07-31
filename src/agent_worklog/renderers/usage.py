@@ -17,6 +17,14 @@ _COLUMNS = (
     ("Cache write", "cache_write_tokens"),
 )
 
+# The two harnesses that call this module by their `Harness.value` slug. The
+# error text below should read like prose ("Claude Code", not "claude-code"),
+# so the slug is mapped to a display name rather than title-cased blindly.
+_HARNESS_DISPLAY_NAMES = {
+    "claude-code": "Claude Code",
+    "codex": "Codex",
+}
+
 
 def _totals_by_model(scan: ScanResult) -> dict[str, dict[str, int]]:
     totals: dict[str, dict[str, int]] = {}
@@ -52,7 +60,8 @@ def render_activity_usage(scan: ScanResult, *, harness: str) -> str:
 
     totals = _totals_by_model(scan)
     if not totals:
-        raise HarnessSourceError(f"{harness} sessions carried no token usage")
+        display_name = _HARNESS_DISPLAY_NAMES.get(harness, harness)
+        raise HarnessSourceError(f"{display_name} sessions carried no token usage")
 
     ordered = sorted(
         totals.items(),
