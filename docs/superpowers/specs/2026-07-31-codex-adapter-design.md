@@ -274,8 +274,20 @@ pipeline 自然導出：
 - 落入 `pipeline.py:264` 的 `elif exit_code is None` 分支。
 - `_append_stderr_heuristic` 因 `stderr_empty` 不為 `True` 而不產生任何項目。
 
-**Codex 命令會出現在 Key Commands，但報告不會宣稱任何一條通過或失敗。** 這與 Claude Code
-的處置一致，且更保守（Claude Code 至少有 stderr 啟發式）。`extraction/pipeline.py` 零修改。
+**報告不會宣稱任何一條命令通過或失敗。** 這與 Claude Code 的處置一致，且更保守（Claude Code
+至少有 stderr 啟發式）。`extraction/pipeline.py` 零修改。
+
+**推論出來的一個後果，實作期間才確認：Codex 命令不會出現在報告的任何區段。**
+`templates/worklog.md.j2` 的區段是 Completed、Problems Resolved、In Progress、Key Files、
+Directories、Sessions、Branches、Usage、Warnings — **沒有 Key Commands**。`evidence.commands`
+不被任何 renderer 讀取；`summarizers/rule_based.py` 只讀 `goals`、`outcomes`、`files_changed`。
+命令唯一的去向是 LLM 請求，因為 `openai_compatible.py` 送出整個
+`evidence.model_dump(mode="json")`。
+
+因此 `--no-llm` 的 Codex 報告完全看不到命令，加了 LLM 才可能在敘述中被提及。這與 Claude Code
+有實質差異：Claude Code 的 stderr 啟發式會把驗證命令變成 **outcome**，而 outcome 會渲染在
+「In Progress」底下（`Ran verification command: <command>`）。Codex 兩個訊號都不設，所以連那條
+路徑都不會走到。README 的限制條目必須照這個事實寫，不能宣稱命令會出現在報告裡。
 
 實作結果的唯一結構化訊號是 `patch_apply_end.success`，見 §6.6。
 
