@@ -23,6 +23,10 @@
 - Rich's `console.print` interprets `[...]` as markup. Any string containing
   user or session content must be printed with `markup=False`.
 - Run all commands from the repository root. Tests run with `uv run pytest`.
+- CI's gates are `uv run pytest --cov=agent_worklog --cov-fail-under=80`,
+  `uv run ruff check .`, and `uv run pyright` (`.github/workflows/ci.yml`).
+  `ruff format` is NOT a gate — 24 files in this repo have never been formatted
+  with it, so `ruff format --check .` fails on untouched code and is not a signal.
 
 ## Two Corrections to the Spec
 
@@ -386,7 +390,7 @@ def test_rule_summary_returns_complete_deduplicated_sorted_lists() -> None:
 Run: `uv run pytest`
 Expected: all tests PASS.
 
-Run: `uv run ruff check . && uv run ruff format --check . && uv run pyright`
+Run: `uv run ruff check . && uv run pyright`
 Expected: clean.
 
 If an integration test in `tests/integration/` asserts on a report body that had
@@ -863,7 +867,7 @@ def test_readmes_document_the_report_detail_option() -> None:
 Run: `uv run pytest`
 Expected: all PASS.
 
-Run: `uv run ruff check . && uv run ruff format --check . && uv run pyright`
+Run: `uv run ruff check . && uv run pyright`
 Expected: clean. If pyright reports the `Renderer` protocol is not satisfied,
 the protocol signature in `services/report.py` and `MarkdownRenderer.render` have
 drifted — they must both be keyword-only `detail` with the same default.
@@ -1199,7 +1203,7 @@ def test_readmes_document_the_verbose_scan_session_listing() -> None:
 Run: `uv run pytest`
 Expected: all PASS.
 
-Run: `uv run ruff check . && uv run ruff format --check . && uv run pyright`
+Run: `uv run ruff check . && uv run pyright`
 Expected: clean.
 
 - [ ] **Step 8: Add the CHANGELOG entry**
