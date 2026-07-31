@@ -15,6 +15,7 @@ from agent_worklog.progress import (
     ProgressReporter,
     ProgressStage,
 )
+from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.scan import ScanResult
 
 _STAGE_LABELS = {
@@ -132,3 +133,16 @@ class ConsoleReporter:
         if self.verbose:
             for warning in result.warnings:
                 self.console.print(f"[yellow]Warning:[/yellow] {warning}")
+            for repository_id, sessions in result.sessions_by_repository.items():
+                name = sessions[0].repository.display_name if sessions else repository_id
+                self.console.print(f"\n{name}", markup=False, highlight=False)
+                for resolved in sessions:
+                    session = resolved.session
+                    label = redact_text(session.title or session.session_id)
+                    directory = session.working_directory
+                    location = f" — {redact_text(directory)}" if directory else ""
+                    self.console.print(
+                        f"  • {label}{location}",
+                        markup=False,
+                        highlight=False,
+                    )

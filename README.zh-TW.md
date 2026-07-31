@@ -120,7 +120,7 @@ agent-worklog report --harness claude-code --period last-week --no-llm
 | `--until ISO` | 以指定時間作為期間終點，必須搭配 `--since`。 |
 | `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）或 `claude-code`。 |
 | `--root-only` | 排除 child 與 subagent 工作階段。 |
-| `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。 |
+| `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。用於 `scan` 時，也會列出每個 repository 的工作階段標題與工作目錄。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
 
 `scan` 與 `report` 執行時會顯示暫時性的進度狀態，指出目前所在階段。處理工作階段與

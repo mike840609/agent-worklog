@@ -49,3 +49,11 @@ def test_readmes_document_the_report_detail_option() -> None:
     assert "`--detail brief`" in readme
     assert "`--detail LEVEL`" in readme_zh_tw
     assert "`--detail brief`" in readme_zh_tw
+
+
+def test_readmes_document_the_verbose_scan_session_listing() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    assert "lists each repository's session titles and working folders" in readme
+    assert "列出每個 repository 的工作階段標題與工作目錄" in readme_zh_tw

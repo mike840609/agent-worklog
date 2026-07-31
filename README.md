@@ -124,7 +124,7 @@ agent-worklog report --harness claude-code --period last-week --no-llm
 | `--until ISO` | Ends the period at an exact time. Requires `--since`. |
 | `--harness NAME` | Harness to read sessions from: `opencode` (default) or `claude-code`. |
 | `--root-only` | Leaves out child and subagent sessions. |
-| `--verbose` | Also shows export, fallback, and LLM warnings. |
+| `--verbose` | Also shows export, fallback, and LLM warnings. For `scan`, also lists each repository's session titles and working folders. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
 
 While `scan` and `report` are working, they show a transient progress status with the

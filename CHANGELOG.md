@@ -13,6 +13,10 @@ All notable changes to this project are documented in this file.
   summary and up to five each of Completed, Problems Resolved, and In Progress;
   it leaves out Key Files, Directories, Sessions, Branches, and the usage table.
   Warnings are kept at both levels.
+- List each repository's session titles and working directories under
+  `scan --verbose`, so the selected sessions can be checked without generating a
+  report. Titles and directories are redacted before printing; the Claude Code
+  path has no upstream sanitize step.
 
 ## 0.4.0
 
