@@ -20,25 +20,23 @@ def _session_meta(
     session_id: str,
     timestamp: str,
     *,
+    id: str | None = None,
     cwd: str = "/worktrees/agent",
     thread_source: str = "user",
     parent: str | None = None,
     nickname: str | None = None,
 ) -> str:
-    return json.dumps(
-        {
-            "timestamp": timestamp,
-            "type": "session_meta",
-            "payload": {
-                "session_id": session_id,
-                "timestamp": timestamp,
-                "cwd": cwd,
-                "thread_source": thread_source,
-                "parent_thread_id": parent,
-                "agent_nickname": nickname,
-            },
-        }
-    )
+    payload: dict[str, object] = {
+        "session_id": session_id,
+        "timestamp": timestamp,
+        "cwd": cwd,
+        "thread_source": thread_source,
+        "parent_thread_id": parent,
+        "agent_nickname": nickname,
+    }
+    if id is not None:
+        payload["id"] = id
+    return json.dumps({"timestamp": timestamp, "type": "session_meta", "payload": payload})
 
 
 def _write(path: Path, lines: list[str], mtime: datetime) -> None:
@@ -152,3 +150,49 @@ def test_null_thread_source_survives_root_only_filter(tmp_path: Path) -> None:
     descriptors = discover_rollouts(tmp_path, PERIOD, root_only=True)
     ids = {descriptor.session_id for descriptor in descriptors}
     assert "null-1" in ids
+
+
+def test_prefers_id_over_session_id_for_the_descriptor_session_id(tmp_path: Path) -> None:
+    """`session_id` is the originating/root thread id, not this session's own id.
+
+    Every resumed session and every subagent inherits the same `session_id`, so
+    the descriptor must be built from `id` — the session's own id — whenever it
+    is present.
+    """
+
+    _write(
+        tmp_path / "sessions" / "2026" / "07" / "21" / "rollout-own-id.jsonl",
+        [
+            _session_meta(
+                "thread-root", "2026-07-20T17:00:00.000Z", id="thread-own"
+            )
+        ],
+        mtime=datetime(2026, 7, 22, tzinfo=TZ),
+    )
+
+    descriptors = discover_rollouts(tmp_path, PERIOD, root_only=False)
+
+    assert [descriptor.session_id for descriptor in descriptors] == ["thread-own"]
+
+
+def test_two_sessions_resumed_from_one_root_stay_distinct(tmp_path: Path) -> None:
+    """Two rollouts resumed from the same root thread share `session_id` but each
+    carries its own `id`. Falling back to `session_id` would collapse both
+    descriptors onto the same id.
+    """
+
+    _write(
+        tmp_path / "sessions" / "2026" / "07" / "21" / "rollout-a.jsonl",
+        [_session_meta("thread-root", "2026-07-20T17:00:00.000Z", id="thread-a")],
+        mtime=datetime(2026, 7, 22, tzinfo=TZ),
+    )
+    _write(
+        tmp_path / "sessions" / "2026" / "07" / "21" / "rollout-b.jsonl",
+        [_session_meta("thread-root", "2026-07-21T17:00:00.000Z", id="thread-b")],
+        mtime=datetime(2026, 7, 22, tzinfo=TZ),
+    )
+
+    descriptors = discover_rollouts(tmp_path, PERIOD, root_only=False)
+
+    ids = {descriptor.session_id for descriptor in descriptors}
+    assert ids == {"thread-a", "thread-b"}

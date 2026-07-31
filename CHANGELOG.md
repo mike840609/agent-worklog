@@ -74,6 +74,12 @@ All notable changes to this project are documented in this file.
   rollout files, no `session_meta` payload carried a `title` key, only
   `agent_nickname` (171 of 238), and only the state database's `threads.title` column
   has the real title.
+- Fix the rollout fallback picking the wrong session id. `session_meta.session_id` is the
+  originating/root thread id, inherited by every resumed session and every subagent, not
+  the session's own id; `session_meta.id` is. Measured against a real `~/.codex`, 220
+  rollout files carried 220 distinct `id`s but only 42 distinct `session_id`s, so the
+  fallback path was collapsing 220 real sessions onto 42 report entries. The descriptor
+  now prefers `id`, falling back to `session_id` only when `id` is absent.
 
 ## 0.3.0
 

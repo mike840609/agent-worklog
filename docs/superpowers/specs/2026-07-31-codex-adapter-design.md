@@ -171,8 +171,16 @@ for (const c of (r?.content||[])) { if (c.type==="text") text(c.text); }
 
 ### 4.8 `session_meta`
 
-頂層欄位包含 `session_id`、`parent_thread_id`、`timestamp`、`cwd`、`thread_source`、
+頂層欄位包含 `id`、`session_id`、`parent_thread_id`、`timestamp`、`cwd`、`thread_source`、
 `agent_nickname`、`agent_path`、`git`、`cli_version`、`originator`。
+
+**`id` 與 `session_id` 不是同一個值，且不可互換。** `id` 是這個 session 自己的 id；
+`session_id` 是發起／根 thread 的 id——每一個被 resume 的 session、每一個 subagent，
+都繼承同一個 `session_id`。實測 220 個 rollout 檔案中 `session_id != id` 的有 179
+筆：220 個檔案有 220 個不同的 `id`，但只有 42 個不同的 `session_id`。備援路徑
+（`rollout_catalog.py`）必須優先取 `id`，`session_id` 只能是 `id` 缺席時的退路——
+順序反了會讓 220 個實際存在的 session 在報告裡塌縮成 42 個。
+
 無 sqlite 時，備援路徑所需的一切都在這一筆記錄裡。
 
 ---

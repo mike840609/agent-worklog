@@ -102,7 +102,12 @@ def discover_rollouts(
         if created_at is not None and created_at >= period.until:
             continue
 
-        session_id = _text(meta.get("session_id")) or _text(meta.get("id")) or path.stem
+        # `id` is this session's own id. `session_id` is the originating/root
+        # thread id, which every resumed session and every subagent inherits —
+        # preferring it collapses many distinct sessions onto one id. `id` is
+        # therefore tried first, with `session_id` only as the fallback for a
+        # payload that lacks it.
+        session_id = _text(meta.get("id")) or _text(meta.get("session_id")) or path.stem
         descriptors.append(
             SessionDescriptor(
                 harness=HARNESS_NAME,
