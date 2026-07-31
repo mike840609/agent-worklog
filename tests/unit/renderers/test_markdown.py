@@ -246,6 +246,22 @@ def two_repository_report() -> WorklogReport:
     )
 
 
+def test_string_and_enum_detail_produce_identical_output() -> None:
+    """A library caller may pass a plain string; it must behave like the enum.
+
+    `_SECTION_LIMITS[detail]` already accepts a plain string because StrEnum
+    hashes as `str`, but `detail is DetailLevel.FULL` does not, so an
+    unnormalized `detail` could mix full-size limits with brief-mode gating.
+    """
+
+    report = sample_report()
+
+    from_enum = MarkdownRenderer().render(report, detail=DetailLevel.BRIEF)
+    from_string = MarkdownRenderer().render(report, detail="brief")
+
+    assert from_enum == from_string
+
+
 def test_brief_separates_consecutive_repositories() -> None:
     """Regression guard for the template's brief-mode `{% else %}` branch.
 

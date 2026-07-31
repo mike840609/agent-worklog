@@ -7,7 +7,10 @@ All notable changes to this project are documented in this file.
 - Move report list truncation from the rule-based summarizer into the Markdown
   renderer, so there is one truncation point and the `Additional items omitted`
   count is always the real remainder. LLM-produced lists are now capped at 20
-  items like rule-based ones; they were previously unbounded.
+  items like rule-based ones; they were previously unbounded. The overflow line
+  under `Key Files` is no longer wrapped in backticks — previously the
+  summarizer injected it into the `key_files` list itself, so the template's
+  code-item formatting wrapped it like a filename, which it never was.
 - Add `--detail {full,brief}` to `report`, defaulting to `full`, which is the
   existing output. `--detail brief` keeps the header, and for each repository the
   summary and up to five each of Completed, Problems Resolved, and In Progress;

@@ -18,6 +18,13 @@ from agent_worklog.progress import (
 from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.scan import ScanResult
 
+
+def _collapse_whitespace(value: str) -> str:
+    """Collapse whitespace so a free-text title stays on one console line."""
+
+    return " ".join(value.split())
+
+
 _STAGE_LABELS = {
     ProgressStage.DISCOVERING_SESSIONS: "Finding sessions",
     ProgressStage.EXPORTING_SESSIONS: "Exporting sessions",
@@ -138,7 +145,8 @@ class ConsoleReporter:
                 self.console.print(f"\n{name}", markup=False, highlight=False)
                 for resolved in sessions:
                     session = resolved.session
-                    label = redact_text(session.title or session.session_id)
+                    title = _collapse_whitespace(session.title) if session.title else None
+                    label = redact_text(title or session.session_id)
                     directory = session.working_directory
                     location = f" — {redact_text(directory)}" if directory else ""
                     self.console.print(

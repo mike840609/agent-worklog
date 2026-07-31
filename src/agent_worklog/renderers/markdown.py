@@ -42,6 +42,12 @@ class MarkdownRenderer:
         *,
         detail: DetailLevel = DetailLevel.FULL,
     ) -> str:
+        # `detail` may arrive as a plain string from a library caller. StrEnum
+        # hashes as `str`, so `_SECTION_LIMITS[detail]` below would already
+        # succeed on `"full"`, but `detail is DetailLevel.FULL` would not — an
+        # inconsistent state no CLI invocation can produce. Normalizing here
+        # makes both checks agree and rejects unknown values outright.
+        detail = DetailLevel(detail)
         tzinfo = report.period.since.tzinfo
         timezone = getattr(tzinfo, "key", str(tzinfo))
         output = self._template.render(

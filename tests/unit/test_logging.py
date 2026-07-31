@@ -279,6 +279,34 @@ def test_verbose_scan_redacts_secrets_in_session_titles() -> None:
     assert "[REDACTED]" in output
 
 
+def test_verbose_scan_collapses_a_multi_line_title_to_one_list_item() -> None:
+    """The report path solved this in `_normalized_title`; the console path must too."""
+
+    output_stream = StringIO()
+    reporter = ConsoleReporter(
+        verbose=True,
+        console=forced_console(output_stream, width=200),
+    )
+
+    reporter.scan_result(
+        scan_result_with(
+            [
+                AgentSession(
+                    harness="opencode",
+                    session_id="ses_multiline",
+                    title="Line one\nLine two  with   spaces",
+                )
+            ]
+        )
+    )
+
+    output = output_stream.getvalue()
+    assert "Line one Line two with spaces" in output
+    assert "Line one\nLine two" not in output
+    lines = [line for line in output.splitlines() if "Line one" in line]
+    assert len(lines) == 1
+
+
 def test_verbose_scan_does_not_interpret_a_title_as_rich_markup() -> None:
     """A title is user content; Rich would otherwise eat anything in brackets."""
 
