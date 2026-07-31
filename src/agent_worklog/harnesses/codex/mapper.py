@@ -14,6 +14,8 @@ from agent_worklog.models.session import (
     AgentSession,
     SessionActivity,
     SessionDescriptor,
+    TokenUsage,
+    UsageSemantics,
 )
 
 # The one Codex tool whose arguments name a command as a field. `exec` is a
@@ -24,6 +26,16 @@ from agent_worklog.models.session import (
 _COMMAND_TOOL = "exec_command"
 
 _TOOL_CALL_TYPES = frozenset({"function_call", "custom_tool_call"})
+
+# Canonical name -> Codex `total_token_usage` key. `reasoning_output_tokens` is
+# deliberately absent: it is a subset of `output_tokens`, so counting it would
+# double the reasoning tokens in every row of the usage table.
+_USAGE_FIELDS = {
+    "input_tokens": "input_tokens",
+    "output_tokens": "output_tokens",
+    "cache_read_tokens": "cached_input_tokens",
+    "cache_write_tokens": "cache_write_input_tokens",
+}
 
 
 def _as_mapping(value: object) -> Mapping[str, Any]:
@@ -51,6 +63,53 @@ def _tool_arguments(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     return parsed if isinstance(parsed, Mapping) else {}
 
 
+def _int_value(value: object) -> int | None:
+    # bool is an int subclass; a JSON true would otherwise add 1 to a token total.
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _accumulate(target: dict[str, int], source: Mapping[str, int]) -> dict[str, int]:
+    for key, value in source.items():
+        target[key] = target.get(key, 0) + value
+    return target
+
+
+def _usage_delta(
+    total: Mapping[str, Any],
+    previous: dict[str, int],
+) -> dict[str, int]:
+    """Return one turn's usage from Codex's running totals.
+
+    Summing `last_token_usage` instead over-counts: Codex emits some
+    `token_count` events more than once, which on one measured session inflated
+    the sum to 2,635,327 against Codex's own total of 2,540,568. Differencing the
+    running total reproduces that total exactly, and still attributes the tokens
+    to a point in the session so period filtering can narrow them.
+
+    A total that has gone backwards means Codex reset it — a fork or a context
+    compaction — so the raw value is taken as that turn's usage.
+    """
+
+    values: dict[str, int] = {}
+    reset = False
+    for canonical, source_key in _USAGE_FIELDS.items():
+        value = _int_value(total.get(source_key))
+        if value is None:
+            continue
+        values[canonical] = value
+        if value < previous.get(canonical, 0):
+            reset = True
+
+    delta = {
+        canonical: value if reset else value - previous.get(canonical, 0)
+        for canonical, value in values.items()
+    }
+    previous.update(values)
+    return {canonical: value for canonical, value in delta.items() if value}
+
+
 class CodexRolloutMapper:
     """Convert Codex rollout records to an AgentSession, dropping raw output.
 
@@ -70,6 +129,11 @@ class CodexRolloutMapper:
         working_directory: str | None = None
         first_timestamp: datetime | None = None
         last_timestamp: datetime | None = None
+        totals: dict[str, int] = {}
+        previous_total: dict[str, int] = {}
+        pending_usage: dict[str, dict[str, int]] = {}
+        attached_usage: dict[str, dict[str, int]] = {}
+        model: str | None = None
 
         for index, record in enumerate(records):
             payload = _as_mapping(record.get("payload"))
@@ -86,9 +150,29 @@ class CodexRolloutMapper:
                 # A session can move between worktrees; the last one is where the
                 # work ended, which is what the repository resolver should see.
                 working_directory = _text(payload.get("cwd")) or working_directory
+                # The model changes mid-session — one measured session alternates
+                # between two — so the turn's own context beats the thread's.
+                model = _text(payload.get("model")) or model
                 continue
 
             if record_type == "event_msg":
+                if payload.get("type") == "token_count":
+                    delta = _usage_delta(
+                        _as_mapping(_as_mapping(payload.get("info")).get(
+                            "total_token_usage"
+                        )),
+                        previous_total,
+                    )
+                    if delta:
+                        _accumulate(totals, delta)
+                        self._attach_usage(
+                            delta=delta,
+                            model=model,
+                            activities=activities,
+                            pending_usage=pending_usage,
+                            attached_usage=attached_usage,
+                        )
+                    continue
                 activities.extend(
                     self._event_activities(
                         payload=payload,
@@ -107,6 +191,14 @@ class CodexRolloutMapper:
                 if activity is not None:
                     activities.append(activity)
 
+        # Usage still held when the rollout ends — a session whose last turns
+        # were reasoning-only — joins the last activity that carried the same
+        # model, so the table's total matches the session's own total.
+        for pending_model, leftover in pending_usage.items():
+            attached = attached_usage.get(pending_model)
+            if attached is not None:
+                _accumulate(attached, leftover)
+
         return AgentSession(
             harness=HARNESS_NAME,
             session_id=descriptor.session_id,
@@ -117,7 +209,41 @@ class CodexRolloutMapper:
             working_directory=working_directory or descriptor.working_directory_hint,
             project_id_hint=descriptor.project_id_hint,
             activities=activities,
+            token_usage=TokenUsage(
+                semantics=UsageSemantics.INCREMENTAL,
+                input_tokens=totals.get("input_tokens"),
+                output_tokens=totals.get("output_tokens"),
+                cache_read_tokens=totals.get("cache_read_tokens"),
+                cache_write_tokens=totals.get("cache_write_tokens"),
+            ),
         )
+
+    @staticmethod
+    def _attach_usage(
+        *,
+        delta: dict[str, int],
+        model: str | None,
+        activities: list[SessionActivity],
+        pending_usage: dict[str, dict[str, int]],
+        attached_usage: dict[str, dict[str, int]],
+    ) -> None:
+        """Hang one turn's usage on an activity so period filtering can see it.
+
+        A model that has not been named yet — usage before the first
+        `turn_context` — still reaches `AgentSession.token_usage`, but cannot
+        reach the per-model table, which reads activities.
+        """
+
+        if model is None:
+            return
+        carrier = activities[-1] if activities else None
+        if carrier is not None and "usage" not in carrier.metadata:
+            usage = _accumulate(pending_usage.pop(model, {}), delta)
+            carrier.metadata["model"] = model
+            carrier.metadata["usage"] = usage
+            attached_usage[model] = usage
+            return
+        _accumulate(pending_usage.setdefault(model, {}), delta)
 
     def _event_activities(
         self,

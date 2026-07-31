@@ -223,3 +223,176 @@ def test_torn_records_do_not_stop_the_mapping() -> None:
     )
 
     assert [activity.content for activity in session.activities] == ["still mapped"]
+
+
+def _token_count(timestamp: str, total: dict[str, int]) -> dict[str, Any]:
+    return _record(
+        timestamp,
+        "event_msg",
+        {"type": "token_count", "info": {"total_token_usage": total}},
+    )
+
+
+def _turn_context(timestamp: str, model: str) -> dict[str, Any]:
+    return _record(timestamp, "turn_context", {"turn_id": "t", "model": model})
+
+
+def test_usage_is_the_delta_of_the_running_total() -> None:
+    session = _map(
+        [
+            _turn_context("2026-07-21T01:00:00.000Z", "gpt-5.6-sol"),
+            _record(
+                "2026-07-21T01:00:01.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "first"},
+            ),
+            _token_count(
+                "2026-07-21T01:00:02.000Z",
+                {
+                    "input_tokens": 100,
+                    "output_tokens": 10,
+                    "cached_input_tokens": 40,
+                    "cache_write_input_tokens": 5,
+                },
+            ),
+            _record(
+                "2026-07-21T01:00:03.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "second"},
+            ),
+            _token_count(
+                "2026-07-21T01:00:04.000Z",
+                {
+                    "input_tokens": 250,
+                    "output_tokens": 30,
+                    "cached_input_tokens": 90,
+                    "cache_write_input_tokens": 5,
+                },
+            ),
+        ]
+    )
+
+    first, second = session.activities
+    assert first.metadata["usage"] == {
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "cache_read_tokens": 40,
+        "cache_write_tokens": 5,
+    }
+    # The second turn's delta, not its running total.
+    assert second.metadata["usage"] == {
+        "input_tokens": 150,
+        "output_tokens": 20,
+        "cache_read_tokens": 50,
+    }
+    assert session.token_usage.input_tokens == 250
+    assert session.token_usage.output_tokens == 30
+    assert session.token_usage.cache_read_tokens == 90
+    assert session.token_usage.cache_write_tokens == 5
+
+
+def test_a_reset_running_total_is_taken_at_face_value() -> None:
+    session = _map(
+        [
+            _turn_context("2026-07-21T01:00:00.000Z", "gpt-5.6-sol"),
+            _record(
+                "2026-07-21T01:00:01.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "first"},
+            ),
+            _token_count(
+                "2026-07-21T01:00:02.000Z", {"input_tokens": 500, "output_tokens": 50}
+            ),
+            _record(
+                "2026-07-21T01:00:03.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "after compaction"},
+            ),
+            _token_count(
+                "2026-07-21T01:00:04.000Z", {"input_tokens": 20, "output_tokens": 3}
+            ),
+        ]
+    )
+
+    assert session.activities[1].metadata["usage"] == {
+        "input_tokens": 20,
+        "output_tokens": 3,
+    }
+
+
+def test_usage_follows_the_model_the_turn_context_names() -> None:
+    session = _map(
+        [
+            _turn_context("2026-07-21T01:00:00.000Z", "gpt-5.6-sol"),
+            _record(
+                "2026-07-21T01:00:01.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "first"},
+            ),
+            _token_count("2026-07-21T01:00:02.000Z", {"output_tokens": 10}),
+            _turn_context("2026-07-21T01:00:03.000Z", "gpt-5.6-terra"),
+            _record(
+                "2026-07-21T01:00:04.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "second"},
+            ),
+            _token_count("2026-07-21T01:00:05.000Z", {"output_tokens": 25}),
+        ]
+    )
+
+    assert session.activities[0].metadata["model"] == "gpt-5.6-sol"
+    assert session.activities[1].metadata["model"] == "gpt-5.6-terra"
+
+
+def test_usage_with_no_activity_yet_joins_the_next_one() -> None:
+    session = _map(
+        [
+            _turn_context("2026-07-21T01:00:00.000Z", "gpt-5.6-sol"),
+            _token_count("2026-07-21T01:00:01.000Z", {"output_tokens": 40}),
+            _record(
+                "2026-07-21T01:00:02.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "after the reasoning"},
+            ),
+            _token_count("2026-07-21T01:00:03.000Z", {"output_tokens": 60}),
+        ]
+    )
+
+    assert session.activities[0].metadata["usage"] == {"output_tokens": 60}
+
+
+def test_trailing_usage_joins_the_last_activity_of_that_model() -> None:
+    session = _map(
+        [
+            _turn_context("2026-07-21T01:00:00.000Z", "gpt-5.6-sol"),
+            _record(
+                "2026-07-21T01:00:01.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "answer"},
+            ),
+            _token_count("2026-07-21T01:00:02.000Z", {"output_tokens": 10}),
+            # A trailing reasoning-only turn emits no activity of its own.
+            _token_count("2026-07-21T01:00:03.000Z", {"output_tokens": 18}),
+        ]
+    )
+
+    assert session.activities[0].metadata["usage"] == {"output_tokens": 18}
+
+
+def test_reasoning_output_tokens_are_not_counted_twice() -> None:
+    session = _map(
+        [
+            _turn_context("2026-07-21T01:00:00.000Z", "gpt-5.6-sol"),
+            _record(
+                "2026-07-21T01:00:01.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "answer"},
+            ),
+            _token_count(
+                "2026-07-21T01:00:02.000Z",
+                {"output_tokens": 100, "reasoning_output_tokens": 40},
+            ),
+        ]
+    )
+
+    assert session.activities[0].metadata["usage"] == {"output_tokens": 100}
