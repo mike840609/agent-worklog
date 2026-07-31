@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -341,3 +342,205 @@ def git_only_runner() -> GitOnlyCommandRunner:
             "/worktrees/assets": "git@github.com:mike/assets-tracker.git",
         }
     )
+
+
+def _codex_record(timestamp: str, record_type: str, payload: dict) -> str:
+    return json.dumps({"timestamp": timestamp, "type": record_type, "payload": payload})
+
+
+@pytest.fixture
+def codex_home(tmp_path: Path) -> Path:
+    """A Codex home with a state database, one root session and one subagent."""
+
+    home = tmp_path / "codex"
+    rollouts = home / "sessions" / "2026" / "07" / "21"
+    rollouts.mkdir(parents=True)
+
+    root_path = rollouts / "rollout-root.jsonl"
+    root_path.write_text(
+        "\n".join(
+            [
+                _codex_record(
+                    "2026-07-21T01:00:00.000Z",
+                    "session_meta",
+                    {
+                        "session_id": "thread-root",
+                        "timestamp": "2026-07-21T01:00:00.000Z",
+                        "cwd": "/worktrees/agent-main",
+                        "thread_source": "user",
+                    },
+                ),
+                _codex_record(
+                    "2026-07-21T01:00:01.000Z",
+                    "turn_context",
+                    {"turn_id": "t-1", "cwd": "/worktrees/agent-main",
+                     "model": "gpt-5.6-sol"},
+                ),
+                _codex_record(
+                    "2026-07-21T01:00:02.000Z",
+                    "event_msg",
+                    {"type": "user_message",
+                     "message": "Add retry to the price fetcher"},
+                ),
+                _codex_record(
+                    "2026-07-21T01:00:03.000Z",
+                    "event_msg",
+                    {"type": "agent_message", "message": "I implemented the retry."},
+                ),
+                _codex_record(
+                    "2026-07-21T01:00:04.000Z",
+                    "response_item",
+                    {
+                        "type": "function_call",
+                        "name": "exec_command",
+                        "call_id": "call-1",
+                        "arguments": json.dumps(
+                            {"cmd": "pytest -q", "workdir": "/worktrees/agent-main"}
+                        ),
+                    },
+                ),
+                _codex_record(
+                    "2026-07-21T01:00:05.000Z",
+                    "response_item",
+                    {
+                        "type": "custom_tool_call",
+                        "name": "exec",
+                        "call_id": "call-2",
+                        "input": 'const r = await tools.exec_command('
+                                 '{"cmd":"CODEX_JS_MARKER"}); text(r);',
+                    },
+                ),
+                _codex_record(
+                    "2026-07-21T01:00:06.000Z",
+                    "event_msg",
+                    {
+                        "type": "patch_apply_end",
+                        "call_id": "call-3",
+                        "success": True,
+                        "changes": {
+                            "/worktrees/agent-main/src/fetch.py": {
+                                "type": "update",
+                                "content": "CODEX_FILE_BODY_MARKER",
+                            }
+                        },
+                    },
+                ),
+                _codex_record(
+                    "2026-07-21T01:00:07.000Z",
+                    "event_msg",
+                    {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {
+                                "input_tokens": 1500,
+                                "output_tokens": 300,
+                                "cached_input_tokens": 1000,
+                                "cache_write_input_tokens": 75,
+                                "reasoning_output_tokens": 90,
+                            }
+                        },
+                    },
+                ),
+                # A trailing reasoning-only turn: no activity, tokens still count.
+                _codex_record(
+                    "2026-07-21T01:00:08.000Z",
+                    "event_msg",
+                    {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {
+                                "input_tokens": 1515,
+                                "output_tokens": 400,
+                                "cached_input_tokens": 1500,
+                                "cache_write_input_tokens": 75,
+                            }
+                        },
+                    },
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    sub_path = rollouts / "rollout-sub.jsonl"
+    sub_path.write_text(
+        "\n".join(
+            [
+                _codex_record(
+                    "2026-07-22T01:00:00.000Z",
+                    "session_meta",
+                    {
+                        "session_id": "thread-sub",
+                        "timestamp": "2026-07-22T01:00:00.000Z",
+                        "cwd": "/worktrees/assets",
+                        "thread_source": "subagent",
+                        "parent_thread_id": "thread-root",
+                    },
+                ),
+                _codex_record(
+                    "2026-07-22T01:00:01.000Z",
+                    "event_msg",
+                    {"type": "user_message", "message": "Review the retry helper"},
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    connection = sqlite3.connect(home / "state_5.sqlite")
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE threads (
+                id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL,
+                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                cwd TEXT NOT NULL, title TEXT NOT NULL, agent_nickname TEXT,
+                thread_source TEXT, archived INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE thread_spawn_edges (
+                parent_thread_id TEXT NOT NULL,
+                child_thread_id TEXT NOT NULL PRIMARY KEY,
+                status TEXT NOT NULL
+            );
+            """
+        )
+        connection.executemany(
+            "INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd,"
+            " title, agent_nickname, thread_source, archived)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "thread-root",
+                    str(root_path),
+                    int(datetime(2026, 7, 21, tzinfo=_ACCEPTANCE_TZ).timestamp()),
+                    int(datetime(2026, 7, 21, 2, tzinfo=_ACCEPTANCE_TZ).timestamp()),
+                    "/worktrees/agent-main",
+                    "Retry for the price fetcher",
+                    None,
+                    "user",
+                    0,
+                ),
+                (
+                    "thread-sub",
+                    str(sub_path),
+                    int(datetime(2026, 7, 22, tzinfo=_ACCEPTANCE_TZ).timestamp()),
+                    int(datetime(2026, 7, 22, 1, tzinfo=_ACCEPTANCE_TZ).timestamp()),
+                    "/worktrees/assets",
+                    "",
+                    "Ampere",
+                    "subagent",
+                    0,
+                ),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO thread_spawn_edges"
+            " (parent_thread_id, child_thread_id, status) VALUES (?, ?, ?)",
+            [("thread-root", "thread-sub", "completed")],
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return home
