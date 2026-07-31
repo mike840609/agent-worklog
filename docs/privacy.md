@@ -136,15 +136,18 @@ in Agent Worklog sees it — user and assistant messages, tool names, and one fi
 record type:
 
 - `exec_command`'s `cmd` argument, the one Codex tool whose arguments name a command;
-- `patch_apply_end`'s changed file paths, never the `content` field, which holds the whole
-  file the patch wrote;
+- `patch_apply_end`'s changed file paths, never the change value itself, which holds
+  either a unified diff (`unified_diff`, the majority case, for an update to an existing
+  file) or the whole file (`content`, for a new file);
 - nothing at all for `exec`, whose input is an arbitrary JavaScript program rather than a
   command, and for every other tool call, which is recorded with empty content so its
   token usage is still attributable to an activity.
 
 Two kinds of content are therefore dropped in the mapper rather than downstream: the
-`content` field of every `patch_apply_end` change, and the input of every `exec` call. Only
-the changed file's path and the tool's name survive for those two record types.
+change value of every `patch_apply_end` entry — whichever of `unified_diff` or `content`
+it carries — and the input of every `exec` call. Only the changed file's path and the
+tool's name survive for those two record types. A rename's destination path lives in
+`move_path`, inside that same discarded value, so it never reaches Key Files either.
 
 Everything else is dropped at that boundary and never reaches a report or an LLM request:
 tool `stdout` and `stderr`, and Codex's free-form status text. Codex records exit codes

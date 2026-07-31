@@ -63,9 +63,10 @@ All notable changes to this project are documented in this file.
 - Build the Codex usage table by differencing the running `total_token_usage` rather
   than summing `last_token_usage`, which over-counted by 3.7% on a measured session
   because Codex emits some `token_count` events more than once.
-- Drop the file bodies Codex records in `patch_apply_end.changes` in the mapper. Only
-  the changed paths reach a session, so a patch that writes a whole file no longer
-  carries that file toward the report's 300-character cap.
+- Drop the change values Codex records in `patch_apply_end.changes` in the mapper —
+  a unified diff (`unified_diff`) for the majority `update` case, or a whole file
+  (`content`) for a new one. Only the changed paths reach a session, so neither a
+  diff nor a written file's full body carries toward the report's 300-character cap.
 - Move the per-model usage table out of the Claude Code package. It reads only
   activity metadata, so Claude Code and Codex now share one implementation.
 - Stop naming Claude Code in the missing-prompt warning for sessions from other

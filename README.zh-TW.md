@@ -275,7 +275,7 @@ export AGENT_WORKLOG_LLM__ENABLED="false"
 
 Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒有匯出指令，所以使用 `--harness claude-code` 時，Agent Worklog 會直接讀取 `~/.claude/projects` 底下的逐字紀錄，改為仰賴 mapper 只保留人類提示、助理文字訊息、工具名稱，以及每次工具呼叫（若有的話）的一組指令或路徑。如果一次工具呼叫兩者都沒有——例如 WebFetch 的 `url`、WebSearch 的 `query`、TodoWrite 整份的 `todos` 清單，或一般的 MCP 工具呼叫——就會改成把整個輸入序列化成 JSON，並截斷到 200 個字元。工具原始的 `stdout`／`stderr`、思考內容與 hook 輸出，都會在資料進入報告或 LLM 請求之前被捨棄。
 
-Codex 同樣沒有匯出指令，所以使用 `--harness codex` 時會直接讀取 rollout JSONL 檔案。mapper 會直接捨棄兩種內容，而不是留到後面才處理：每一筆 `patch_apply_end` 變更的 `content` 欄位（裡面裝著該次修補寫入的整份檔案），以及每一次 `exec` 呼叫的輸入（一段任意的 JavaScript 程式）。只有被改動檔案的路徑與工具名稱會保留下來。指令只會從 `exec_command` 保留，因為它的參數會用一個欄位指名該指令。
+Codex 同樣沒有匯出指令，所以使用 `--harness codex` 時會直接讀取 rollout JSONL 檔案。mapper 會直接捨棄兩種內容，而不是留到後面才處理：每一筆 `patch_apply_end` 變更的值本身（裡面裝著一份 unified diff，或者該次修補寫入的整份檔案），以及每一次 `exec` 呼叫的輸入（一段任意的 JavaScript 程式）。只有被改動檔案的路徑與工具名稱會保留下來；重新命名的目的路徑也在這個被捨棄的值裡面，因此同樣不會出現在 Key Files 中。指令只會從 `exec_command` 保留，因為它的參數會用一個欄位指名該指令。
 
 接著，三種 harness 進入報告的每一筆佐證資訊（evidence）都會被截斷到 300 個字元，並在截斷處標上 `…`。這道長度上限的作用，是攔下像 `cat > design.md <<'EOF' … EOF` 這種 heredoc——它把整個檔案內容包在同一個指令字串裡——避免整段內容被複製進報告或 LLM 請求。機密字串樣式檢查做不到這件事：一份設計文件或事件說明裡沒有任何金鑰樣式，只有長度上限能把它移除。
 

@@ -327,10 +327,11 @@ reaches a report or an LLM request.
 
 Codex has no export command either, so `--harness codex` reads the rollout JSONL files
 directly. Two kinds of content are dropped in the mapper rather than downstream: the
-`content` field of every `patch_apply_end` change, which holds the whole file the patch
-wrote, and the input of every `exec` call, which is an arbitrary JavaScript program. Only
-the changed file's path and the tool's name survive. Commands survive only from
-`exec_command`, whose arguments name the command in a field.
+change value of every `patch_apply_end` entry, which holds either a unified diff or the
+whole file the patch wrote, and the input of every `exec` call, which is an arbitrary
+JavaScript program. Only the changed file's path and the tool's name survive; a rename's
+destination path lives inside that discarded value too, so it never reaches Key Files.
+Commands survive only from `exec_command`, whose arguments name the command in a field.
 
 For all three harnesses, every piece of supporting information that reaches a report is
 then capped at 300 characters and marked with a `…` where it was cut. That is what stops a
