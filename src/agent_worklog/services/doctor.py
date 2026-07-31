@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from agent_worklog.config import AppSettings
+from agent_worklog.harnesses.codex.source import describe_discovery
 from agent_worklog.process import CommandResult
 
 
@@ -55,6 +56,19 @@ def run_doctor(
                 ok=readable,
                 detail=str(directory),
             )
+        )
+    elif harness == "codex":
+        directory = settings.harnesses.codex.home_directory
+        readable = directory.is_dir() and os.access(directory, os.R_OK)
+        # Naming the discovery path makes a silent fallback to the slower
+        # directory scan visible before a report takes minutes to produce.
+        detail = (
+            f"{directory} ({describe_discovery(directory)})"
+            if readable
+            else str(directory)
+        )
+        checks.append(
+            DoctorCheck(name="codex home directory", ok=readable, detail=detail)
         )
     else:
         executable = settings.harnesses.opencode.cli.executable

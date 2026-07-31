@@ -22,6 +22,7 @@ from agent_worklog.errors import (
 )
 from agent_worklog.harnesses.base import HarnessSessionSource
 from agent_worklog.harnesses.claude_code.source import ClaudeCodeFileSource
+from agent_worklog.harnesses.codex.source import CodexSource
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
 from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
 from agent_worklog.logging import ConsoleReporter
@@ -156,6 +157,11 @@ def _build_scan_service(
             projects_directory=settings.harnesses.claude_code.projects_directory,
             root_only=root_only,
         )
+    elif harness is Harness.CODEX:
+        source = CodexSource(
+            home_directory=settings.harnesses.codex.home_directory,
+            root_only=root_only,
+        )
     else:
         cli_settings = settings.harnesses.opencode.cli
         source = OpenCodeCliSource(
@@ -179,7 +185,7 @@ def _usage_provider(
 ) -> tuple[Callable[[ScanResult], str], int | None]:
     """Return the harness usage provider and the window it covers, if narrower."""
 
-    if harness is Harness.CLAUDE_CODE:
+    if harness in {Harness.CLAUDE_CODE, Harness.CODEX}:
         # Usage rides on the already-filtered activities, so the window is exact
         # and needs no "wider than the period" caveat.
         return partial(render_activity_usage, harness=harness.value), None
