@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable
 from datetime import datetime
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,7 +22,6 @@ from agent_worklog.errors import (
 )
 from agent_worklog.harnesses.base import HarnessSessionSource
 from agent_worklog.harnesses.claude_code.source import ClaudeCodeFileSource
-from agent_worklog.harnesses.claude_code.usage import render_claude_code_usage
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
 from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
 from agent_worklog.logging import ConsoleReporter
@@ -29,6 +29,7 @@ from agent_worklog.models.time_range import DateRange
 from agent_worklog.process import CommandRunner
 from agent_worklog.progress import ProgressReporter
 from agent_worklog.renderers.markdown import MarkdownRenderer
+from agent_worklog.renderers.usage import render_activity_usage
 from agent_worklog.repositories.resolver import RepositoryResolver
 from agent_worklog.services.doctor import run_doctor
 from agent_worklog.services.report import ReportService
@@ -181,7 +182,7 @@ def _usage_provider(
     if harness is Harness.CLAUDE_CODE:
         # Usage rides on the already-filtered activities, so the window is exact
         # and needs no "wider than the period" caveat.
-        return render_claude_code_usage, None
+        return partial(render_activity_usage, harness=harness.value), None
 
     cli_settings = settings.harnesses.opencode.cli
     stats_runner = CommandRunner(timeout_seconds=cli_settings.timeout_seconds)

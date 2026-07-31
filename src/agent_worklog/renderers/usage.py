@@ -1,4 +1,9 @@
-"""Aggregate Claude Code token usage from mapped session activities."""
+"""Aggregate per-model token usage from mapped session activities.
+
+Harness-agnostic: it reads only `activity.metadata["model"]` and
+`activity.metadata["usage"]`, which the Claude Code and Codex mappers both
+populate. OpenCode does not use this — `opencode stats` reports its own totals.
+"""
 
 from __future__ import annotations
 
@@ -27,26 +32,27 @@ def _totals_by_model(scan: ScanResult) -> dict[str, dict[str, int]]:
                 if isinstance(value, int) and not isinstance(value, bool):
                     row[key] = row.get(key, 0) + value
     # Claude Code writes `model: "<synthetic>"` for local and error placeholders,
-    # which would otherwise add an all-zero row that reports nothing.
+    # and a Codex turn can report a zero delta; either would otherwise add a row
+    # that reports nothing.
     return {model: row for model, row in totals.items() if any(row.values())}
 
 
-def render_claude_code_usage(scan: ScanResult) -> str:
+def render_activity_usage(scan: ScanResult, *, harness: str) -> str:
     """Return an aligned per-model token table for the scanned sessions.
 
     Unlike `opencode stats`, this needs no trailing window: usage rides on the
     activities that `filter_session_to_period` already narrowed, so the table
     covers the report period instead of one ending at generation time.
 
-    It is exact to the activity rather than to the second. Usage from an assistant
-    turn that emitted no activity of its own — a thinking-only turn — is carried by
-    the neighbouring activity from the same model, so a turn sitting on the period
-    boundary can be counted on the other side of it.
+    It is exact to the activity rather than to the second. Usage from a model
+    turn that emitted no activity of its own is carried by a neighbouring
+    activity from the same model, so a turn sitting on the period boundary can
+    be counted on the other side of it.
     """
 
     totals = _totals_by_model(scan)
     if not totals:
-        raise HarnessSourceError("Claude Code sessions carried no token usage")
+        raise HarnessSourceError(f"{harness} sessions carried no token usage")
 
     ordered = sorted(
         totals.items(),

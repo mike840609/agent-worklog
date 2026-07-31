@@ -4,7 +4,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from agent_worklog.errors import HarnessSourceError
-from agent_worklog.harnesses.claude_code.usage import render_claude_code_usage
 from agent_worklog.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -12,6 +11,7 @@ from agent_worklog.models.repository import (
 )
 from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
 from agent_worklog.models.time_range import DateRange
+from agent_worklog.renderers.usage import render_activity_usage
 from agent_worklog.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -79,7 +79,7 @@ def test_renders_one_row_per_model_plus_a_total() -> None:
         ),
     )
 
-    text = render_claude_code_usage(scan)
+    text = render_activity_usage(scan, harness="claude-code")
     lines = text.splitlines()
 
     assert lines[0].startswith("Model")
@@ -99,7 +99,7 @@ def test_orders_models_by_output_tokens_descending() -> None:
         _activity("a-2", "big-model", {"output_tokens": 999}),
     )
 
-    lines = render_claude_code_usage(scan).splitlines()
+    lines = render_activity_usage(scan, harness="claude-code").splitlines()
 
     assert "big-model" in lines[1]
     assert "small-model" in lines[2]
@@ -122,7 +122,7 @@ def test_skips_a_model_whose_totals_are_all_zero() -> None:
         ),
     )
 
-    text = render_claude_code_usage(scan)
+    text = render_activity_usage(scan, harness="claude-code")
 
     assert "<synthetic>" not in text
     assert len(text.splitlines()) == 3  # header, one model, total
@@ -132,7 +132,7 @@ def test_raises_when_every_model_total_is_zero() -> None:
     scan = _scan(_activity("a-1", "<synthetic>", {"input_tokens": 0}))
 
     with pytest.raises(HarnessSourceError):
-        render_claude_code_usage(scan)
+        render_activity_usage(scan, harness="claude-code")
 
 
 def test_raises_when_no_activity_carries_usage() -> None:
@@ -147,5 +147,5 @@ def test_raises_when_no_activity_carries_usage() -> None:
         )
     )
 
-    with pytest.raises(HarnessSourceError):
-        render_claude_code_usage(scan)
+    with pytest.raises(HarnessSourceError, match="claude-code sessions carried no"):
+        render_activity_usage(scan, harness="claude-code")
