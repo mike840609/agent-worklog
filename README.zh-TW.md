@@ -315,6 +315,7 @@ Codex 同樣沒有匯出指令，所以使用 `--harness codex` 時會直接讀�
 - 沒有任何 Codex 報告會聲稱某個指令成功或失敗。Codex 只在自由格式的工具輸出裡記錄結束代碼（exit code），而且格式不只一種，因此只有 `patch_apply_end` 結構化的 `success` 欄位會被採信——而它回報的是檔案變更，不是驗證結果。
 - Codex 的使用量計算的是每一次 API 請求的完整輸入，這也是 Codex 本身回報的數字，並不是相異 token 的數量。
 - 當找不到可讀取的 Codex 狀態資料庫、Agent Worklog 改為掃描 rollout 檔案時，工作階段標題會遺失：rollout 檔案只帶有 `agent_nickname`，從來沒有 `title`，`title` 只存在於狀態資料庫中。
+- 附帶附件送出的 Codex 訊息——瀏覽器上下文、提及的檔案、shell 指令與其輸出、slash 指令、背景工作通知，或是續接摘要——不會產生任何目標（goal）。Agent Worklog 無法在不解析這種未有文件記載的格式的情況下，從整個附件包裹中分辨出真正的請求，因此寧可漏掉這個目標，也不要把它歸錯對象。
 
 ## 開發檢查
 

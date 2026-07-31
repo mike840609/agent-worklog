@@ -80,6 +80,16 @@ All notable changes to this project are documented in this file.
   rollout files carried 220 distinct `id`s but only 42 distinct `session_id`s, so the
   fallback path was collapsing 220 real sessions onto 42 report entries. The descriptor
   now prefers `id`, falling back to `session_id` only when `id` is absent.
+- Stop treating machine-injected `event_msg/user_message` payloads as human goals.
+  Codex writes attached shell input/output, browser context, file-mention envelopes,
+  slash-command records, task notifications, and resume summaries using the same
+  `user_message` record type as a real prompt, and none of them carried a marker the
+  mapper checked for. Measured against real data, 88 of 592 `user_message` payloads
+  were machine-injected, including raw local command output that `docs/privacy.md`
+  promises never reaches a report. The mapper now drops a `user_message` whose text
+  opens with one of a documented set of markers, contributing no goal for it; a message
+  sent with attachments therefore contributes no goal at all rather than a
+  mis-attributed one.
 
 ## 0.3.0
 

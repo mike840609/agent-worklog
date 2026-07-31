@@ -18,6 +18,37 @@ from agent_worklog.models.session import (
     UsageSemantics,
 )
 
+# Codex writes several kinds of machine-generated payload into the transcript
+# as `event_msg/user_message` records — indistinguishable by `type` from a
+# prompt the operator actually typed. Each entry below opens one of them, so
+# a message that starts with it is not a human goal:
+#   - `<bash-input>`, `<bash-stdout>`, `<bash-stderr>`: an attached shell
+#     command and its raw output, injected alongside a real message rather
+#     than typed by a human.
+#   - `<local-command-stdout>`: output from a local slash command.
+#   - `<in-app-browser-context`: an envelope carrying page/browser state
+#     (note: no closing bracket — the tag carries attributes).
+#   - `<command-name>`: a slash-command invocation record.
+#   - `<task-notification>`: a background-task completion notice.
+#   - `# Files mentioned by the user:`: an attachment envelope. It can embed
+#     a genuine request under a nested `## My request for Codex: …` heading,
+#     but the whole envelope is dropped rather than parsed apart — this
+#     project's stance is to lose a goal rather than mis-attribute one out of
+#     an undocumented format.
+#   - `This session is being continued from a previous conversation`: a
+#     resume/compaction summary Codex injects, not an operator prompt.
+_MACHINE_INJECTED_USER_MESSAGE_MARKERS = (
+    "<bash-input>",
+    "<bash-stdout>",
+    "<bash-stderr>",
+    "<local-command-stdout>",
+    "<in-app-browser-context",
+    "<command-name>",
+    "<task-notification>",
+    "# Files mentioned by the user:",
+    "This session is being continued from a previous conversation",
+)
+
 # The one Codex tool whose arguments name a command as a field. `exec` is a
 # general JavaScript sandbox — its input calls MCP tools, drives a browser, or
 # loops over `tools.exec_command` — so it is not a command source. A strict parse
@@ -118,6 +149,13 @@ class CodexRolloutMapper:
     `changes[path].content`. Codex has no `--sanitize` upstream, and the
     300-character evidence cap downstream is a backstop, not a reason to carry
     them this far.
+
+    A third thing never becomes a goal: an `event_msg/user_message` whose text
+    opens with one of `_MACHINE_INJECTED_USER_MESSAGE_MARKERS`. Codex uses that
+    same record type for machine-injected payloads — attached shell output,
+    browser context, resume summaries — and nothing upstream marks them as
+    non-human the way Claude Code's `origin.kind` does, so the mapper is the
+    only place that can tell them apart from a real prompt.
     """
 
     def map(
@@ -272,6 +310,10 @@ class CodexRolloutMapper:
         if event_type in {"user_message", "agent_message"}:
             message = _text(payload.get("message"))
             if message is None:
+                return []
+            if event_type == "user_message" and message.startswith(
+                _MACHINE_INJECTED_USER_MESSAGE_MARKERS
+            ):
                 return []
             activity_type = (
                 ActivityType.USER_MESSAGE

@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Any
 
+import pytest
+
 from agent_worklog.harnesses.codex.mapper import CodexRolloutMapper
 from agent_worklog.models.session import ActivityType, SessionDescriptor
 
@@ -39,6 +41,131 @@ def test_user_messages_become_user_activities() -> None:
     assert session.activities[0].timestamp == datetime.fromisoformat(
         "2026-07-21T01:00:00+00:00"
     )
+
+
+def test_raw_bash_output_user_message_is_dropped_but_a_real_one_survives() -> None:
+    """A `<bash-stdout>` envelope is machine-injected output, not a human goal.
+
+    An absence-only assertion would also pass against a mapper that dropped
+    every user message, so this also asserts the adjacent real prompt still
+    produces its goal.
+    """
+
+    session = _map(
+        [
+            _record(
+                "2026-07-21T01:00:00.000Z",
+                "event_msg",
+                {
+                    "type": "user_message",
+                    "message": "<bash-stdout>\n/tmp/secret-output.txt\n</bash-stdout>",
+                },
+            ),
+            _record(
+                "2026-07-21T01:00:01.000Z",
+                "event_msg",
+                {"type": "user_message", "message": "Add retry to the price fetcher"},
+            ),
+        ]
+    )
+
+    user_messages = [
+        activity
+        for activity in session.activities
+        if activity.activity_type == ActivityType.USER_MESSAGE
+    ]
+    assert [activity.content for activity in user_messages] == [
+        "Add retry to the price fetcher"
+    ]
+    assert "<bash-stdout>" not in str(session.model_dump())
+
+
+def test_attachment_envelope_user_message_is_dropped_but_a_real_one_survives() -> None:
+    """`# Files mentioned by the user:` can embed a genuine request under a nested
+    heading, but the whole envelope is dropped rather than parsed apart — see
+    `_MACHINE_INJECTED_USER_MESSAGE_MARKERS`. The adjacent real prompt must still
+    produce its goal, so this is not an absence-only assertion.
+    """
+
+    session = _map(
+        [
+            _record(
+                "2026-07-21T01:00:00.000Z",
+                "event_msg",
+                {
+                    "type": "user_message",
+                    "message": (
+                        "# Files mentioned by the user:\n"
+                        "/tmp/notes.txt\n\n"
+                        "## My request for Codex: please look at this"
+                    ),
+                },
+            ),
+            _record(
+                "2026-07-21T01:00:01.000Z",
+                "event_msg",
+                {"type": "user_message", "message": "Review the retry helper"},
+            ),
+        ]
+    )
+
+    user_messages = [
+        activity
+        for activity in session.activities
+        if activity.activity_type == ActivityType.USER_MESSAGE
+    ]
+    assert [activity.content for activity in user_messages] == [
+        "Review the retry helper"
+    ]
+    assert "Files mentioned by the user" not in str(session.model_dump())
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "<bash-input>ls -la</bash-input>",
+        "<bash-stdout>total 0</bash-stdout>",
+        "<bash-stderr>permission denied</bash-stderr>",
+        "<local-command-stdout>ok</local-command-stdout>",
+        '<in-app-browser-context url="https://example.com">body</in-app-browser-context>',
+        "<command-name>/compact</command-name>",
+        "<task-notification>build finished</task-notification>",
+        "# Files mentioned by the user:\n/tmp/a.txt",
+        "This session is being continued from a previous conversation, summarized below",
+    ],
+)
+def test_every_machine_injected_marker_produces_no_activity(message: str) -> None:
+    session = _map(
+        [
+            _record(
+                "2026-07-21T01:00:00.000Z",
+                "event_msg",
+                {"type": "user_message", "message": message},
+            )
+        ]
+    )
+
+    assert session.activities == []
+
+
+def test_agent_messages_are_not_filtered_by_the_same_markers() -> None:
+    """The marker filter is specific to `user_message`; an `agent_message` that
+    happens to start with the same text (e.g. quoting a bash block back) is
+    still the assistant's own words and must survive.
+    """
+
+    session = _map(
+        [
+            _record(
+                "2026-07-21T01:00:00.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "<bash-stdout>ok</bash-stdout>"},
+            )
+        ]
+    )
+
+    assert session.activities[0].activity_type == ActivityType.ASSISTANT_MESSAGE
+    assert session.activities[0].content == "<bash-stdout>ok</bash-stdout>"
 
 
 def test_agent_messages_become_assistant_activities() -> None:

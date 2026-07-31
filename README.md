@@ -405,6 +405,11 @@ of creating an empty report.
 - When there is no readable Codex state database and Agent Worklog falls back to scanning
   rollout files, session titles are lost: rollout files carry an `agent_nickname` but never
   a `title`, which lives only in the state database.
+- A Codex message sent with attachments — a browser context, mentioned files, a shell
+  command and its output, a slash command, a background-task notice, or a resume summary —
+  contributes no goal. Agent Worklog cannot tell a genuine request apart from the rest of
+  that envelope without parsing an undocumented format, and it would rather lose the goal
+  than mis-attribute one.
 
 ## Development checks
 
