@@ -58,3 +58,30 @@ def test_codex_home_directory_is_configurable(monkeypatch, tmp_path: Path) -> No
     settings = AppSettings()
 
     assert settings.harnesses.codex.home_directory == tmp_path / "codex"
+
+
+def test_every_harness_enum_member_has_settings_field_with_enabled() -> None:
+    """
+    Verify that every Harness enum member resolves to a settings field on
+    HarnessSettings with an `enabled` attribute.
+
+    This ensures that cli.py's reflective lookup—getattr(settings.harnesses,
+    harness.name.lower()).enabled—will not raise AttributeError. If a new
+    Harness enum member is added without a corresponding HarnessSettings field,
+    this test catches it before a user sees an uncaught traceback.
+    """
+    from agent_worklog.cli import Harness
+
+    settings = AppSettings()
+
+    for harness in Harness:
+        field_name = harness.name.lower()
+        # Verify the field exists on HarnessSettings
+        assert hasattr(settings.harnesses, field_name), (
+            f"HarnessSettings missing field '{field_name}' for Harness.{harness.name}"
+        )
+        # Verify the field has an `enabled` attribute
+        field_value = getattr(settings.harnesses, field_name)
+        assert hasattr(field_value, "enabled"), (
+            f"HarnessSettings.{field_name} missing `enabled` attribute"
+        )
