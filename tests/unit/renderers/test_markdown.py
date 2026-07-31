@@ -218,3 +218,44 @@ def test_brief_caps_sections_at_five_items() -> None:
 
 def test_brief_default_is_full() -> None:
     assert MarkdownRenderer().render(sample_report()) == EXPECTED_FULL_OUTPUT
+
+
+def two_repository_report() -> WorklogReport:
+    return WorklogReport(
+        generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 27, tzinfo=TZ),
+        ),
+        repositories=[
+            RepositorySummary(
+                repository_id="repo-a",
+                display_name="Repo A",
+                summary="Worked on A.",
+                completed=["Did A"],
+                session_count=1,
+            ),
+            RepositorySummary(
+                repository_id="repo-b",
+                display_name="Repo B",
+                summary="Worked on B.",
+                completed=["Did B"],
+                session_count=1,
+            ),
+        ],
+    )
+
+
+def test_brief_separates_consecutive_repositories() -> None:
+    """Regression guard for the template's brief-mode `{% else %}` branch.
+
+    In full mode, the trailing `{{ section("Branches", ...) }}` call (without
+    `-}}`) supplies the blank line between repositories. That section is dropped
+    entirely in brief mode, so without its own separator the last line of one
+    repository's Completed section would run directly into the next repository's
+    heading with no blank line between them.
+    """
+
+    output = MarkdownRenderer().render(two_repository_report(), detail=DetailLevel.BRIEF)
+
+    assert "- Did A\n\n### Repo B" in output
