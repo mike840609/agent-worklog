@@ -73,15 +73,21 @@ def period() -> DateRange:
 class PromptlessSource:
     """A root transcript whose human prompts the mapper could not identify."""
 
-    def __init__(self, *, parent_session_id: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        parent_session_id: str | None = None,
+        harness: str = "claude-code",
+    ) -> None:
         self.parent_session_id = parent_session_id
+        self.harness = harness
 
     def discover(self, period: DateRange) -> list[SessionDescriptor]:
-        return [SessionDescriptor(harness="claude-code", session_id="old-transcript")]
+        return [SessionDescriptor(harness=self.harness, session_id="old-transcript")]
 
     def load(self, descriptor: SessionDescriptor) -> AgentSession:
         return AgentSession(
-            harness="claude-code",
+            harness=self.harness,
             session_id=descriptor.session_id,
             parent_session_id=self.parent_session_id,
             activities=[
@@ -181,3 +187,22 @@ def test_scan_reports_every_discovered_descriptor_as_processed() -> None:
         ("advance", 2),
         ("advance", 3),
     ]
+
+
+def test_promptless_warning_names_claude_code_only_for_claude_code() -> None:
+    """No other harness has the pre-2.1.187 transcript problem to blame."""
+
+    claude = ScanService(
+        source=PromptlessSource(), period=period(), resolver=StaticResolver()
+    ).scan()
+    codex = ScanService(
+        source=PromptlessSource(harness="codex"),
+        period=period(),
+        resolver=StaticResolver(),
+    ).scan()
+
+    claude_warning = next(w for w in claude.warnings if "no user messages" in w)
+    codex_warning = next(w for w in codex.warnings if "no user messages" in w)
+    assert "2.1.187" in claude_warning
+    assert "Claude Code" not in codex_warning
+    assert "2.1.187" not in codex_warning
