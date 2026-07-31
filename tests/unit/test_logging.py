@@ -248,7 +248,10 @@ def test_verbose_scan_redacts_secrets_in_session_titles() -> None:
     """Claude Code transcripts have no upstream sanitize step.
 
     ConsoleReporter's contract is that callers hand it redacted strings, and a
-    scanned title is raw harness data, so the listing must redact it here.
+    scanned title and working directory are both raw harness data, so the
+    listing must redact each independently. The two secrets below are
+    distinct values so that dropping either redaction call is caught by its
+    own assertion, rather than one field's redaction masking the other's.
     """
 
     output_stream = StringIO()
@@ -264,7 +267,7 @@ def test_verbose_scan_redacts_secrets_in_session_titles() -> None:
                     harness="claude-code",
                     session_id="ses_ghi",
                     title="debug with token=hunter2secretvalue",
-                    working_directory="/repos/agent-worklog",
+                    working_directory="/repos/token=dirsecretvalue999",
                 )
             ]
         )
@@ -272,6 +275,7 @@ def test_verbose_scan_redacts_secrets_in_session_titles() -> None:
 
     output = output_stream.getvalue()
     assert "hunter2secretvalue" not in output
+    assert "dirsecretvalue999" not in output
     assert "[REDACTED]" in output
 
 
