@@ -50,6 +50,32 @@ export AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY="$HOME/.claude/p
 agent-worklog doctor --harness claude-code
 ```
 
+## Codex harness
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `AGENT_WORKLOG_HARNESSES__CODEX__ENABLED` | `true` | Set to `false` to make `--harness codex` fail with a configuration error (exit code 3). |
+| `AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY` | `~/.codex` | Directory holding the Codex state database and rollout files. |
+
+One setting covers all three locations Agent Worklog reads — `state_<n>.sqlite`,
+`sessions/`, and `archived_sessions/` are fixed positions under it.
+
+Selecting the harness is a CLI concern, not a settings one: pass `--harness codex` to
+`doctor`, `scan`, or `report`. No executable or CLI timeout setting applies, because Agent
+Worklog reads the state database or the rollout JSONL files under `home_directory`
+directly and never launches a Codex process.
+
+`ENABLED` behaves exactly as it does for Claude Code: setting it to `false` does not
+switch another harness on, it makes `doctor`, `scan`, and `report` refuse the disabled one.
+
+Example:
+
+```bash
+export AGENT_WORKLOG_HARNESSES__CODEX__ENABLED="true"
+export AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY="$HOME/.codex"
+agent-worklog doctor --harness codex
+```
+
 ## Report settings
 
 | Environment variable | Default | Purpose |

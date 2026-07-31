@@ -18,6 +18,19 @@ def test_readme_documents_the_harness_option() -> None:
     assert "Codex and Claude Code are not currently supported." not in readme
 
 
+def test_readme_documents_the_codex_harness() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "codex" in readme
+    assert "Codex is not currently supported" not in readme
+
+
+def test_privacy_documents_the_codex_harness() -> None:
+    privacy = Path("docs/privacy.md").read_text(encoding="utf-8")
+
+    assert "Codex" in privacy
+
+
 def test_privacy_doc_explains_the_claude_code_sanitize_gap() -> None:
     privacy = Path("docs/privacy.md").read_text(encoding="utf-8")
 

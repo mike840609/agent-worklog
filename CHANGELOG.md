@@ -47,6 +47,33 @@ All notable changes to this project are documented in this file.
   with a configuration error (exit code 3) instead of the setting being ignored.
 - Move the shared subprocess runner out of the OpenCode package into
   `agent_worklog.process.CommandRunner` so both harnesses depend on one implementation.
+- Add `codex` to `--harness`. Sessions are discovered from `~/.codex/state_<n>.sqlite`,
+  which already indexes every session with its rollout path, working directory,
+  timestamps, and parent edge, so a period query is one SQL statement instead of
+  opening every rollout file; a scan of `sessions/` and `archived_sessions/` is the
+  fallback when that database is absent or its schema has changed.
+- No Codex report claims that a command passed or failed. Codex records exit codes
+  only inside free-form tool output text, in at least three formats, so a regex over
+  it would fail silently the day Codex changes it. `patch_apply_end`'s `success` flag
+  is the one structured signal used, and it reports a file change.
+- Leave commands run from inside Codex's `exec` tool out of the report. `exec` takes
+  an arbitrary JavaScript program rather than a command — a strict parse for a single
+  wrapped `exec_command` call matched none of 4,963 measured calls — so its input is
+  never put in an activity, which also keeps it out of outbound LLM requests.
+- Build the Codex usage table by differencing the running `total_token_usage` rather
+  than summing `last_token_usage`, which over-counted by 3.7% on a measured session
+  because Codex emits some `token_count` events more than once.
+- Drop the file bodies Codex records in `patch_apply_end.changes` in the mapper. Only
+  the changed paths reach a session, so a patch that writes a whole file no longer
+  carries that file toward the report's 300-character cap.
+- Move the per-model usage table out of the Claude Code package. It reads only
+  activity metadata, so Claude Code and Codex now share one implementation.
+- Stop naming Claude Code in the missing-prompt warning for sessions from other
+  harnesses.
+- Lose Codex session titles when falling back to the rollout scan: across 238 measured
+  rollout files, no `session_meta` payload carried a `title` key, only
+  `agent_nickname` (171 of 238), and only the state database's `threads.title` column
+  has the real title.
 
 ## 0.3.0
 
