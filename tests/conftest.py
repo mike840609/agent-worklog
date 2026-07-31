@@ -1,5 +1,4 @@
 import json
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from agent_worklog.process import CommandResult
+from tests.codex_state_db import seconds, write_database
 
 
 @dataclass
@@ -489,58 +489,32 @@ def codex_home(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
 
-    connection = sqlite3.connect(home / "state_5.sqlite")
-    try:
-        connection.executescript(
-            """
-            CREATE TABLE threads (
-                id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL,
-                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-                cwd TEXT NOT NULL, title TEXT NOT NULL, agent_nickname TEXT,
-                thread_source TEXT, archived INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE thread_spawn_edges (
-                parent_thread_id TEXT NOT NULL,
-                child_thread_id TEXT NOT NULL PRIMARY KEY,
-                status TEXT NOT NULL
-            );
-            """
-        )
-        connection.executemany(
-            "INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd,"
-            " title, agent_nickname, thread_source, archived)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    "thread-root",
-                    str(root_path),
-                    int(datetime(2026, 7, 21, tzinfo=_ACCEPTANCE_TZ).timestamp()),
-                    int(datetime(2026, 7, 21, 2, tzinfo=_ACCEPTANCE_TZ).timestamp()),
-                    "/worktrees/agent-main",
-                    "Retry for the price fetcher",
-                    None,
-                    "user",
-                    0,
-                ),
-                (
-                    "thread-sub",
-                    str(sub_path),
-                    int(datetime(2026, 7, 22, tzinfo=_ACCEPTANCE_TZ).timestamp()),
-                    int(datetime(2026, 7, 22, 1, tzinfo=_ACCEPTANCE_TZ).timestamp()),
-                    "/worktrees/assets",
-                    "",
-                    "Ampere",
-                    "subagent",
-                    0,
-                ),
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO thread_spawn_edges"
-            " (parent_thread_id, child_thread_id, status) VALUES (?, ?, ?)",
-            [("thread-root", "thread-sub", "completed")],
-        )
-        connection.commit()
-    finally:
-        connection.close()
+    write_database(
+        home / "state_5.sqlite",
+        rows=[
+            (
+                "thread-root",
+                str(root_path),
+                seconds(datetime(2026, 7, 21, tzinfo=_ACCEPTANCE_TZ)),
+                seconds(datetime(2026, 7, 21, 2, tzinfo=_ACCEPTANCE_TZ)),
+                "/worktrees/agent-main",
+                "Retry for the price fetcher",
+                None,
+                "user",
+                0,
+            ),
+            (
+                "thread-sub",
+                str(sub_path),
+                seconds(datetime(2026, 7, 22, tzinfo=_ACCEPTANCE_TZ)),
+                seconds(datetime(2026, 7, 22, 1, tzinfo=_ACCEPTANCE_TZ)),
+                "/worktrees/assets",
+                "",
+                "Ampere",
+                "subagent",
+                0,
+            ),
+        ],
+        edges=[("thread-root", "thread-sub", "completed")],
+    )
     return home

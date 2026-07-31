@@ -10,7 +10,7 @@ from agent_worklog.harnesses.codex.thread_catalog import (
     find_state_database,
 )
 from agent_worklog.models.time_range import DateRange
-from tests.unit.harnesses.codex import seconds, write_database
+from tests.codex_state_db import seconds, write_database
 
 TZ = ZoneInfo("Asia/Taipei")
 PERIOD = DateRange(

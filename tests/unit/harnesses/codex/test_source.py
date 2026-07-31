@@ -66,7 +66,7 @@ def test_discovers_from_database_not_rollout(home: Path) -> None:
     file. If discover() incorrectly skipped the database, this test would
     fail because root-1 would be returned instead.
     """
-    from tests.unit.harnesses.codex import seconds, write_database
+    from tests.codex_state_db import seconds, write_database
 
     db_timestamp = seconds(datetime(2026, 7, 22, 12, tzinfo=TZ))
     write_database(

@@ -9,7 +9,14 @@ import agent_worklog.cli as cli
 TZ = ZoneInfo("Asia/Taipei")
 
 
-def _invoke(monkeypatch, codex_home: Path, git_only_runner, output: Path, *extra: str):
+def _invoke(
+    monkeypatch,
+    codex_home: Path,
+    git_only_runner,
+    output: Path | None = None,
+    *extra: str,
+    subcommand: str = "report",
+):
     monkeypatch.setattr(
         cli,
         "_now_in_timezone",
@@ -19,20 +26,12 @@ def _invoke(monkeypatch, codex_home: Path, git_only_runner, output: Path, *extra
     monkeypatch.setenv(
         "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(codex_home)
     )
-    return CliRunner().invoke(
-        cli.app,
-        [
-            "report",
-            "--harness",
-            "codex",
-            "--period",
-            "last-week",
-            "--no-llm",
-            "--output",
-            str(output),
-            *extra,
-        ],
-    )
+    args = [subcommand, "--harness", "codex", "--period", "last-week"]
+    if subcommand == "report":
+        assert output is not None
+        args += ["--no-llm", "--output", str(output)]
+    args.extend(extra)
+    return CliRunner().invoke(cli.app, args)
 
 
 def test_codex_report_groups_by_repository_and_reports_usage(
@@ -123,18 +122,6 @@ def test_report_works_without_the_state_database(
 def test_scan_reports_the_codex_sessions(
     monkeypatch, codex_home: Path, git_only_runner
 ) -> None:
-    monkeypatch.setattr(
-        cli,
-        "_now_in_timezone",
-        lambda timezone: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
-    )
-    monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
-    monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(codex_home)
-    )
-
-    result = CliRunner().invoke(
-        cli.app, ["scan", "--harness", "codex", "--period", "last-week"]
-    )
+    result = _invoke(monkeypatch, codex_home, git_only_runner, subcommand="scan")
 
     assert result.exit_code == 0, result.stdout
