@@ -39,3 +39,21 @@ def test_readmes_document_interactive_progress() -> None:
     assert "`--quiet` hides the progress status" in readme
     assert "暫時性的進度狀態" in readme_zh_tw
     assert "`--quiet` 會隱藏進度狀態" in readme_zh_tw
+
+
+def test_readmes_document_the_report_detail_option() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    assert "`--detail LEVEL`" in readme
+    assert "`--detail brief`" in readme
+    assert "`--detail LEVEL`" in readme_zh_tw
+    assert "`--detail brief`" in readme_zh_tw
+
+
+def test_readmes_document_the_verbose_scan_session_listing() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    assert "lists each repository's session titles and working folders" in readme
+    assert "列出每個 repository 的工作階段標題與工作目錄" in readme_zh_tw

@@ -6,9 +6,15 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from agent_worklog.errors import HarnessSourceError
+from agent_worklog.models.session import (
+    ActivityType,
+    AgentSession,
+    SessionActivity,
+    SessionDescriptor,
+)
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.progress import ProgressReporter, ProgressStage
-from agent_worklog.renderers.markdown import MarkdownRenderer
+from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
 from agent_worklog.services.report import ReportService
 from agent_worklog.services.scan import ScanResult, ScanService
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
@@ -31,6 +37,7 @@ def service(
     *,
     progress: ProgressReporter | None = None,
     usage_provider: Callable[[ScanResult], str] | None = None,
+    detail: DetailLevel = DetailLevel.FULL,
 ) -> ReportService:
     return ReportService(
         scan_service=ScanService(
@@ -46,8 +53,59 @@ def service(
         now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
         usage_provider=usage_provider,
         usage_days=10 if usage_provider is not None else None,
+        detail=detail,
         progress=progress,
     )
+
+
+class CompletedWorkSource:
+    """A single session with a verified command, so the report has real content
+    under Completed and Sessions alike.
+
+    `RuleBasedSummarizer` always populates `sessions` from evidence regardless of
+    detail level, so `#### Sessions` is a reliable differentiator: it renders at
+    `full` and is dropped at `brief`. A verification command with `exit_code: 0`
+    is the only path that produces a `Completed` item (see
+    `extraction/pipeline.py`), giving a positive assertion that cannot pass on an
+    empty report.
+    """
+
+    def discover(self, _period: DateRange) -> list[SessionDescriptor]:
+        return [SessionDescriptor(harness="opencode", session_id="ses-verified")]
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        return AgentSession(
+            harness="opencode",
+            session_id=descriptor.session_id,
+            activities=[
+                SessionActivity(
+                    activity_id=f"{descriptor.session_id}:cmd",
+                    activity_type=ActivityType.COMMAND,
+                    timestamp=datetime(2026, 7, 22, tzinfo=TZ),
+                    content="pytest -q",
+                    metadata={"exit_code": 0},
+                )
+            ],
+        )
+
+
+def test_brief_detail_reaches_the_renderer_and_produces_a_genuinely_brief_report(
+    tmp_path: Path,
+) -> None:
+    """Closes a seam a mutation test found: dropping `detail=self._detail` from
+    the `renderer.render(...)` call in `ReportService.generate` left the full
+    suite green, so `--detail brief` could silently become a no-op end to end.
+    """
+
+    result = service(
+        CompletedWorkSource(),
+        tmp_path / "report.md",
+        detail=DetailLevel.BRIEF,
+    ).generate(force=False)
+
+    assert "#### Sessions" not in result.content
+    assert "## Usage" not in result.content
+    assert "#### Completed" in result.content
 
 
 def test_all_exports_failing_is_an_error(tmp_path: Path) -> None:

@@ -124,7 +124,7 @@ agent-worklog report --harness claude-code --period last-week --no-llm
 | `--until ISO` | Ends the period at an exact time. Requires `--since`. |
 | `--harness NAME` | Harness to read sessions from: `opencode` (default) or `claude-code`. |
 | `--root-only` | Leaves out child and subagent sessions. |
-| `--verbose` | Also shows export, fallback, and LLM warnings. |
+| `--verbose` | Also shows export, fallback, and LLM warnings. For `scan`, also lists each repository's session titles and working folders. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
 
 While `scan` and `report` are working, they show a transient progress status with the
@@ -140,17 +140,26 @@ stderr so stdout contains only Markdown.
 | `--force` | Replaces the output file if it already exists. |
 | `--dry-run` | Prints the Markdown instead of writing a file. |
 | `--no-llm` | Creates the summary without an external LLM. |
+| `--detail LEVEL` | How much detail the report contains: `full` (default) or `brief`. |
 
-`doctor` also accepts `--harness NAME` and `--quiet`. `--quiet` hides the list of checks
-and reports only through the exit code. With `--harness claude-code`, `doctor` checks that
+`--detail brief` produces a short report for a status update: it keeps the
+header, and for each repository the `Repository:` remote line, the session
+counts, and the summary and up to five each of Completed, Problems Resolved,
+and In Progress. It leaves out Key Files, Directories, Sessions, Branches, and
+the usage table. Warnings are always kept, at both detail levels, because they
+report data the tool could not read rather than work you did.
+
+`doctor` also accepts `--harness NAME`, `--quiet`, and `--verbose`. `--quiet` hides the
+list of checks and reports only through the exit code; `--verbose` does not change what
+`doctor` prints. With `--harness claude-code`, `doctor` checks that
 the configured `~/.claude/projects` directory exists and is readable, instead of checking
 for the `opencode` executable and database.
 
-Three rules apply to `scan` and `report`:
+Three rules apply:
 
-- Give exactly one of `--days`, `--period`, or `--since`.
-- Use `--until` only together with `--since`.
-- Do not use `--verbose` and `--quiet` together.
+- Give exactly one of `--days`, `--period`, or `--since` (`scan` and `report`).
+- Use `--until` only together with `--since` (`scan` and `report`).
+- Do not use `--verbose` and `--quiet` together (all three commands).
 
 ## Reporting periods
 

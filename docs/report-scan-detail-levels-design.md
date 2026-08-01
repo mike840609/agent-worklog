@@ -253,9 +253,10 @@ No new failure paths. Specifically:
 ## Acceptance Criteria
 
 1. `report` without `--detail` produces byte-identical output to the current
-   implementation, with one deliberate exception: an LLM-produced list longer
+   implementation, with two deliberate exceptions: an LLM-produced list longer
    than 20 items is now capped like a rule-based one, where it previously
-   rendered in full.
+   rendered in full; and the `Additional items omitted: N` line under Key Files
+   is no longer wrapped in backticks, because the marker is not a filename.
 2. `report --detail brief` produces a report containing only the header, per
    repository the summary and up to five each of Completed, Problems Resolved,
    and In Progress, and the Warnings section.

@@ -49,7 +49,9 @@ def test_rule_summary_separates_completed_and_in_progress() -> None:
     assert summary.session_count == 1
 
 
-def test_rule_summary_limits_each_section_to_twenty_items() -> None:
+def test_rule_summary_returns_complete_deduplicated_sorted_lists() -> None:
+    """Truncation belongs to the renderer, which is the report's only cap."""
+
     evidence = RepositoryEvidence(
         repository_id="repo",
         display_name="Repo",
@@ -64,6 +66,13 @@ def test_rule_summary_limits_each_section_to_twenty_items() -> None:
                         EvidenceConfidence.HIGH,
                     )
                     for index in range(22)
+                ]
+                + [
+                    item(
+                        "Completed 00",
+                        EvidenceStatus.COMPLETED,
+                        EvidenceConfidence.HIGH,
+                    )
                 ],
             )
         ],
@@ -71,8 +80,10 @@ def test_rule_summary_limits_each_section_to_twenty_items() -> None:
 
     summary = RuleBasedSummarizer().summarize(evidence)
 
-    assert len(summary.completed) == 21
-    assert summary.completed[-1] == "Additional items omitted: 2"
+    assert len(summary.completed) == 22
+    assert summary.completed[0] == "Completed 00"
+    assert summary.completed[-1] == "Completed 21"
+    assert not any("Additional items omitted" in text for text in summary.completed)
 
 
 def test_medium_confidence_completed_evidence_is_marked_inferred() -> None:

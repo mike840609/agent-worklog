@@ -120,7 +120,7 @@ agent-worklog report --harness claude-code --period last-week --no-llm
 | `--until ISO` | 以指定時間作為期間終點，必須搭配 `--since`。 |
 | `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）或 `claude-code`。 |
 | `--root-only` | 排除 child 與 subagent 工作階段。 |
-| `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。 |
+| `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。用於 `scan` 時，也會列出每個 repository 的工作階段標題與工作目錄。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
 
 `scan` 與 `report` 執行時會顯示暫時性的進度狀態，指出目前所在階段。處理工作階段與
@@ -135,15 +135,21 @@ repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀�
 | `--force` | 輸出檔案已存在時直接覆寫。 |
 | `--dry-run` | 直接印出 Markdown，不寫入檔案。 |
 | `--no-llm` | 不使用外部 LLM 產生摘要。 |
+| `--detail LEVEL` | 報告的詳細程度：`full`（預設）或 `brief`。 |
 
-`doctor` 也接受 `--harness NAME` 與 `--quiet`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果。
+`--detail brief` 會產生適合貼進週報的簡短報告：保留標頭，每個 repository 保留
+`Repository:` 遠端資訊那一行、工作階段數量，以及摘要與 Completed、Problems Resolved、
+In Progress 各最多五條，不輸出 Key Files、Directories、Sessions、Branches 與用量表格。
+警告在兩種詳細程度下都會保留，因為警告說明的是工具讀不到的資料，而不是你做過的工作。
+
+`doctor` 也接受 `--harness NAME`、`--quiet` 與 `--verbose`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果；`--verbose` 不會改變 `doctor` 的輸出內容。
 使用 `--harness claude-code` 時，`doctor` 會改為檢查設定的 `~/.claude/projects` 資料夾是否存在且可讀，而不是檢查 `opencode` 執行檔與資料庫。
 
-`scan` 與 `report` 有三條規則：
+有三條規則：
 
-- `--days`、`--period`、`--since` 三者只能擇一使用。
-- `--until` 只能搭配 `--since` 使用。
-- `--verbose` 與 `--quiet` 不能同時使用。
+- `--days`、`--period`、`--since` 三者只能擇一使用（`scan` 與 `report`）。
+- `--until` 只能搭配 `--since` 使用（`scan` 與 `report`）。
+- `--verbose` 與 `--quiet` 不能同時使用（三個指令都適用）。
 
 ## 統計期間
 
