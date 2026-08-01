@@ -20,7 +20,12 @@ from agent_worklog.services.scan import ScanResult
 
 
 def _collapse_whitespace(value: str) -> str:
-    """Collapse whitespace so a free-text title stays on one console line."""
+    """Fold embedded newlines and space runs so a title is one logical line.
+
+    Callers pair this with `no_wrap` rendering: collapsing alone does not stop
+    Rich from soft-wrapping a long line, and a wrapped continuation starts in
+    column 0 — where repository names are printed, so it reads as a heading.
+    """
 
     return " ".join(value.split())
 
@@ -150,7 +155,8 @@ class ConsoleReporter:
                     directory = session.working_directory
                     location = f" — {redact_text(directory)}" if directory else ""
                     self.console.print(
-                        f"  • {label}{location}",
-                        markup=False,
+                        Text(f"  • {label}{location}"),
+                        overflow="ellipsis",
+                        no_wrap=True,
                         highlight=False,
                     )

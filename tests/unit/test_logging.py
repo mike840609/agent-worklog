@@ -307,6 +307,44 @@ def test_verbose_scan_collapses_a_multi_line_title_to_one_list_item() -> None:
     assert len(lines) == 1
 
 
+def test_verbose_scan_ellipsizes_a_long_session_line_rather_than_wrapping() -> None:
+    """A soft-wrapped continuation starts in column 0, where repository names are.
+
+    Collapsing whitespace keeps a title on one *logical* line; only `no_wrap`
+    keeps it on one *rendered* line, so a long path cannot read as a heading.
+    """
+
+    output_stream = StringIO()
+    reporter = ConsoleReporter(
+        verbose=True,
+        console=forced_console(output_stream, width=40),
+    )
+
+    reporter.scan_result(
+        scan_result_with(
+            [
+                AgentSession(
+                    harness="opencode",
+                    session_id="ses_long",
+                    title="A session title far too long for this terminal",
+                    working_directory="/repos/some/deeply/nested/checkout",
+                )
+            ]
+        )
+    )
+
+    lines = output_stream.getvalue().splitlines()
+    heading = lines.index("Agent Worklog")
+    listing = [line for line in lines[heading + 1 :] if line.strip()]
+
+    # One session must render as exactly one line: a second entry here is a
+    # wrapped continuation sitting in column 0, indistinguishable from the
+    # repository heading above it.
+    assert len(listing) == 1
+    assert listing[0].startswith("  • ")
+    assert listing[0].endswith("…")
+
+
 def test_verbose_scan_does_not_interpret_a_title_as_rich_markup() -> None:
     """A title is user content; Rich would otherwise eat anything in brackets."""
 
