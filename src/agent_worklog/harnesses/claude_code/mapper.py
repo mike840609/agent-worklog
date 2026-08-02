@@ -120,19 +120,30 @@ def _tool_result_flags(
     Only booleans cross this boundary. `stdout` and `stderr` hold whole file
     contents, environment dumps, and hook output, and Claude Code has no
     `--sanitize` upstream, so they never enter AgentSession.
+
+    `tool_failed` comes from the block's own `is_error`, not from the sibling
+    `toolUseResult`, and is `None` when the record carries no such field.
+    Claude Code reports no exit code, which is why nothing here is called one,
+    but this flag is still an outcome it observed rather than one we inferred.
+
+    A *failed* call records `toolUseResult` as a plain error string rather than
+    an object, so the stderr flags simply do not exist for it. That must not
+    gate `tool_failed`: requiring a mapping first is what silently dropped every
+    observed failure on this harness.
     """
 
     flags: dict[str, dict[str, object]] = {}
     for record in records:
-        result = _as_mapping(record.get("toolUseResult"))
-        if not result:
-            continue
         content = _as_mapping(record.get("message")).get("content")
         if not isinstance(content, list):
             continue
+        result = _as_mapping(record.get("toolUseResult"))
         stderr = result.get("stderr")
         derived = {
-            "stderr_empty": not (stderr.strip() if isinstance(stderr, str) else ""),
+            # No structured result means stderr was never observed, and absent
+            # must not read as empty — that is what the heuristic treats as clean.
+            "stderr_empty": bool(result)
+            and not (stderr.strip() if isinstance(stderr, str) else ""),
             "interrupted": result.get("interrupted") is True,
         }
         for block in content:
@@ -140,7 +151,11 @@ def _tool_result_flags(
                 continue
             tool_use_id = block.get("tool_use_id")
             if isinstance(tool_use_id, str) and tool_use_id:
-                flags[tool_use_id] = dict(derived)
+                is_error = block.get("is_error")
+                flags[tool_use_id] = {
+                    **derived,
+                    "tool_failed": is_error if isinstance(is_error, bool) else None,
+                }
     return flags
 
 
