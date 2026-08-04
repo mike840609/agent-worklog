@@ -11,6 +11,8 @@ TEST_COMMAND_PATTERNS = (
     re.compile(r"(?:^|\s)npm\s+run\s+build(?:\s|$)"),
 )
 
+HEREDOC_PATTERN = re.compile(r"<<-?\s*['\"]?\w+")
+
 ASSISTANT_COMPLETION_PATTERN = re.compile(
     r"\b(?:implemented|completed|fixed|resolved|finished|done|passed)\b",
     re.IGNORECASE,
@@ -36,4 +38,16 @@ def is_meaningful_user_text(text: str) -> bool:
 
 
 def is_verification_command(command: str) -> bool:
+    """Report whether the command *runs* a verification, not whether it mentions one.
+
+    Everything after a heredoc marker is data being written, not a command being
+    run: `gh pr create --body "$(cat <<'EOF' … pytest … EOF)"` runs no tests. On
+    real transcripts that prose accounted for 26 of 378 matches, and once an
+    observed success turns a match into "Verification passed", each one is a
+    false claim in a manager-facing report.
+    """
+
+    heredoc = HEREDOC_PATTERN.search(command)
+    if heredoc is not None:
+        command = command[: heredoc.start()]
     return any(pattern.search(command) for pattern in TEST_COMMAND_PATTERNS)

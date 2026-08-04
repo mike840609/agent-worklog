@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Report Claude Code verification commands as completed when the harness observed
+  them succeed. Claude Code records no exit code, so the extractor treated every
+  command as having an unobservable outcome and `Completed` was empty in every
+  report — measured across 282 real sessions, it fired zero times. Claude Code
+  does record `is_error` on the tool result, which is observed rather than
+  inferred, and the mapper was dropping it: a *failed* call records
+  `toolUseResult` as a plain error string instead of an object, and the mapper
+  required an object before reading anything. On the same 282 sessions this
+  yields 354 completed verifications and 143 observed failures, where both were
+  previously zero. Where a real exit code exists it still wins, being the more
+  precise signal.
+- Stop treating a test command named inside a heredoc as a verification run.
+  `gh pr create --body "$(cat <<'EOF' … pytest … EOF)"` runs no tests; matching
+  the whole command string accounted for 26 of 378 matches on real transcripts.
+  This was harmless while such items were only recorded as having run, but an
+  observed success would have promoted each one to a false "Verification passed"
+  claim in the report.
 - Move report list truncation from the rule-based summarizer into the Markdown
   renderer, so there is one truncation point and the `Additional items omitted`
   count is always the real remainder. LLM-produced lists are now capped at 20

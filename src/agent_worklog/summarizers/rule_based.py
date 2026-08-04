@@ -44,11 +44,12 @@ def _completed(items: list[EvidenceItem]) -> list[str]:
 def _unobserved(items: list[EvidenceItem]) -> list[str]:
     """Return outcome evidence whose result was never observed.
 
-    A Claude Code verification command has no exit code, so the extractor records
-    that it ran and stops there: MEDIUM confidence, status UNKNOWN. Those items
-    must not appear under Completed, but they are real work and would otherwise
-    disappear from the report entirely, so they are listed as in progress. LOW
-    items — an assistant claiming its own success — stay excluded.
+    A verification command whose harness recorded no outcome at all — no exit
+    code and no tool-error flag — is recorded as having run and nothing more:
+    MEDIUM confidence, status UNKNOWN. Those items must not appear under
+    Completed, but they are real work and would otherwise disappear from the
+    report entirely, so they are listed as in progress. LOW items — an assistant
+    claiming its own success — stay excluded.
     """
 
     return [

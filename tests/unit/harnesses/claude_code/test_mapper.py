@@ -82,6 +82,49 @@ def test_maps_tool_calls_with_result_flags(records, descriptor) -> None:
     assert edit.metadata["stderr_empty"] is False
 
 
+def test_carries_the_tool_result_error_flag(records, descriptor) -> None:
+    """`is_error` is the outcome Claude Code actually observes.
+
+    It is not an exit code, but it is not an inference either: the harness
+    records whether the tool call failed. Dropping it is what left every
+    Claude Code verification command with no observable outcome.
+    """
+
+    session = ClaudeCodeJsonlMapper().map(records, descriptor)
+
+    tool_calls = {
+        activity.tool_call_id: activity
+        for activity in session.activities
+        if activity.activity_type == ActivityType.TOOL_CALL
+    }
+
+    assert tool_calls["toolu-1"].metadata["tool_failed"] is False
+    # The record carries no `is_error`, so nothing was observed and nothing is
+    # claimed — distinct from observing a success.
+    assert tool_calls["toolu-2"].metadata["tool_failed"] is None
+
+
+def test_a_failed_tool_call_keeps_its_error_flag(records, descriptor) -> None:
+    """A failed call records `toolUseResult` as a plain error string, not an object.
+
+    The structured stderr flags are unavailable for those records, but the
+    block's own `is_error` still is — and it is the stronger signal. Requiring a
+    mapping before reading it dropped every observed failure on this harness.
+    """
+
+    session = ClaudeCodeJsonlMapper().map(records, descriptor)
+
+    failed = next(
+        activity
+        for activity in session.activities
+        if activity.tool_call_id == "toolu-3"
+    )
+    assert failed.tool_name == "Bash"
+    assert failed.metadata["tool_failed"] is True
+    # A string result carries no stderr field; absent must not read as empty.
+    assert failed.metadata["stderr_empty"] is False
+
+
 def test_uses_last_cwd_and_ai_title(records, descriptor) -> None:
     session = ClaudeCodeJsonlMapper().map(records, descriptor)
 
