@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 
+from agent_worklog import config_store
 from agent_worklog.config import AppSettings
 from agent_worklog.errors import (
     ConfigurationError,
@@ -67,10 +68,21 @@ app = typer.Typer(
 
 
 def _load_settings() -> AppSettings:
+    """Load settings, layering the settings file below the environment.
+
+    pydantic-settings gives environment variables precedence over `_env_file`,
+    which is the order `config set` promises: the file holds defaults, an
+    exported variable overrides them for one shell.
+    """
+
+    path = config_store.config_file_path()
     try:
-        return AppSettings()
+        return AppSettings(_env_file=path)  # type: ignore[call-arg]
     except Exception as exc:  # Pydantic aggregates configuration failures.
-        raise ConfigurationError(str(exc)) from exc
+        # Name the file when there is one: a parse error otherwise says what is
+        # wrong without saying where the value came from.
+        hint = f"; check {path}" if path.exists() else ""
+        raise ConfigurationError(f"{exc}{hint}") from exc
 
 
 def _now_in_timezone(timezone: str) -> datetime:

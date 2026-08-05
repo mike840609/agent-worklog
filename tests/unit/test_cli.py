@@ -123,3 +123,45 @@ def test_report_still_runs_when_the_harness_is_enabled(tmp_path) -> None:
     )
 
     assert result.exit_code == 4  # no sessions in an empty directory, not a config error
+
+
+def test_load_settings_reads_the_settings_file(monkeypatch, tmp_path) -> None:
+    import agent_worklog.cli as cli
+
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+
+    assert cli._load_settings().llm.model == "from-file"
+
+
+def test_the_environment_beats_the_settings_file(monkeypatch, tmp_path) -> None:
+    """The file is a default store, not an override: an exported variable wins."""
+
+    import agent_worklog.cli as cli
+
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("AGENT_WORKLOG_LLM__MODEL", "from-environment")
+
+    assert cli._load_settings().llm.model == "from-environment"
+
+
+def test_load_settings_points_at_the_file_when_it_holds_a_bad_value(
+    monkeypatch, tmp_path
+) -> None:
+    import pytest
+
+    import agent_worklog.cli as cli
+    from agent_worklog.errors import ConfigurationError
+
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__TIMEOUT_SECONDS='abc'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+
+    with pytest.raises(ConfigurationError) as error:
+        cli._load_settings()
+
+    assert str(path) in str(error.value)
