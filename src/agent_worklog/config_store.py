@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import dotenv_values, set_key, unset_key
 from platformdirs import user_config_dir
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
@@ -46,6 +47,17 @@ class SettingKey:
     key: str
     variable: str
     annotation: type
+    default: str
+
+
+@dataclass(frozen=True)
+class SettingRow:
+    """One setting as `config list` shows it."""
+
+    key: str
+    variable: str
+    value: str
+    source: str
     default: str
 
 
@@ -101,3 +113,84 @@ def validate_value(setting: SettingKey, value: str) -> None:
     except ValidationError as exc:
         detail = exc.errors()[0]["msg"]
         raise ConfigurationError(f"invalid value for {setting.key}: {detail}") from exc
+
+
+def _prepare_file(path: Path) -> None:
+    """Create the file owner-only before dotenv writes to it.
+
+    dotenv would create a world-readable file, and what is in the user's config
+    directory is nobody else's business.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(exist_ok=True)
+    if os.name == "posix":
+        path.chmod(0o600)
+
+
+def stored_values(path: Path | None = None) -> dict[str, str]:
+    """Return the variables the settings file defines, ignoring valueless lines."""
+
+    file_path = path or config_file_path()
+    values = dotenv_values(file_path)
+    return {name: value for name, value in values.items() if value is not None}
+
+
+def set_value(key: str, value: str, *, path: Path | None = None) -> SettingKey:
+    """Record one setting, replacing any earlier entry for it."""
+
+    setting = resolve_key(key)
+    # Validate before touching the disk: a rejected value must not leave a file
+    # behind that the user then has to clean up.
+    validate_value(setting, value)
+    file_path = path or config_file_path()
+    _prepare_file(file_path)
+    written, _, _ = set_key(str(file_path), setting.variable, value)
+    if not written:
+        raise ConfigurationError(f"failed to write settings file: {file_path}")
+    return setting
+
+
+def unset_value(key: str, *, path: Path | None = None) -> tuple[SettingKey, bool]:
+    """Remove one setting; report whether the file actually held it."""
+
+    setting = resolve_key(key)
+    file_path = path or config_file_path()
+    if setting.variable not in stored_values(file_path):
+        # Asking dotenv to remove an absent key logs a warning to stderr, and a
+        # no-op is not a warning: the user asked for the default and has it.
+        return setting, False
+    unset_key(str(file_path), setting.variable)
+    return setting, True
+
+
+def describe_settings(path: Path | None = None) -> tuple[SettingRow, ...]:
+    """Report every setting with the value in force and where it comes from.
+
+    Deliberately built from the file and the environment rather than from a
+    loaded `AppSettings`: one bad value must not stop `config list` from showing
+    which value is bad, or `config unset` from removing it.
+    """
+
+    file_path = path or config_file_path()
+    stored = stored_values(file_path)
+    rows = []
+    for setting in setting_keys():
+        environment_value = os.environ.get(setting.variable)
+        file_value = stored.get(setting.variable)
+        if environment_value is not None:
+            value, source = environment_value, "environment"
+        elif file_value is not None:
+            value, source = file_value, "file"
+        else:
+            value, source = setting.default, "default"
+        rows.append(
+            SettingRow(
+                key=setting.key,
+                variable=setting.variable,
+                value=value,
+                source=source,
+                default=setting.default,
+            )
+        )
+    return tuple(rows)

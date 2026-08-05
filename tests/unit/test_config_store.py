@@ -3,9 +3,14 @@ from pathlib import Path
 import pytest
 
 from agent_worklog.config_store import (
+    CONFIG_FILE_VARIABLE,
     config_file_path,
+    describe_settings,
     resolve_key,
+    set_value,
     setting_keys,
+    stored_values,
+    unset_value,
     validate_value,
 )
 from agent_worklog.errors import ConfigurationError
@@ -73,3 +78,109 @@ def test_validate_value_rejects_a_timeout_that_is_not_a_number() -> None:
 def test_validate_value_accepts_the_boolean_spellings_env_settings_use() -> None:
     validate_value(resolve_key("llm.enabled"), "false")
     validate_value(resolve_key("harnesses.codex.enabled"), "true")
+
+
+@pytest.fixture
+def settings_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the store at a throwaway file for the duration of one test."""
+
+    path = tmp_path / "config.env"
+    monkeypatch.setenv(CONFIG_FILE_VARIABLE, str(path))
+    return path
+
+
+def test_set_value_writes_the_environment_variable_form(settings_file: Path) -> None:
+    set_value("llm.model", "gpt-5")
+
+    assert stored_values(settings_file) == {"AGENT_WORKLOG_LLM__MODEL": "gpt-5"}
+
+
+def test_set_value_creates_an_owner_only_file(settings_file: Path) -> None:
+    set_value("llm.model", "gpt-5")
+
+    assert settings_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_set_value_replaces_an_earlier_entry_for_the_same_key(settings_file: Path) -> None:
+    set_value("llm.model", "gpt-5")
+    set_value("llm.model", "gpt-5-mini")
+
+    assert stored_values(settings_file) == {"AGENT_WORKLOG_LLM__MODEL": "gpt-5-mini"}
+
+
+def test_set_value_keeps_a_value_containing_spaces_intact(settings_file: Path) -> None:
+    set_value("report.output_directory", "/tmp/my reports")
+
+    assert stored_values(settings_file) == {
+        "AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY": "/tmp/my reports"
+    }
+
+
+def test_set_value_refuses_a_bad_value_without_creating_the_file(
+    settings_file: Path,
+) -> None:
+    with pytest.raises(ConfigurationError):
+        set_value("llm.timeout_seconds", "abc")
+
+    assert not settings_file.exists()
+
+
+def test_unset_value_removes_the_entry_and_reports_that_it_did(
+    settings_file: Path,
+) -> None:
+    set_value("llm.model", "gpt-5")
+
+    setting, removed = unset_value("llm.model")
+
+    assert (setting.key, removed) == ("llm.model", True)
+    assert stored_values(settings_file) == {}
+
+
+def test_unset_value_on_a_key_that_was_never_set_is_a_quiet_no_op(
+    settings_file: Path,
+) -> None:
+    setting, removed = unset_value("llm.model")
+
+    assert (setting.key, removed) == ("llm.model", False)
+
+
+def test_describe_settings_reports_where_each_value_comes_from(
+    settings_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    set_value("llm.model", "gpt-5")
+    monkeypatch.setenv("AGENT_WORKLOG_REPORT__TIMEZONE", "UTC")
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+
+    rows = {row.key: row for row in describe_settings()}
+
+    assert (rows["llm.model"].value, rows["llm.model"].source) == ("gpt-5", "file")
+    assert rows["llm.model"].default == "gpt-5-mini"
+    assert (rows["report.timezone"].value, rows["report.timezone"].source) == (
+        "UTC",
+        "environment",
+    )
+    assert (rows["llm.provider"].value, rows["llm.provider"].source) == (
+        "openai-compatible",
+        "default",
+    )
+
+
+def test_describe_settings_lets_the_environment_win_over_the_file(
+    settings_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    set_value("llm.model", "from-file")
+    monkeypatch.setenv("AGENT_WORKLOG_LLM__MODEL", "from-environment")
+
+    rows = {row.key: row for row in describe_settings()}
+
+    assert (rows["llm.model"].value, rows["llm.model"].source) == (
+        "from-environment",
+        "environment",
+    )
+
+
+def test_describe_settings_works_without_a_settings_file(settings_file: Path) -> None:
+    rows = {row.key: row for row in describe_settings()}
+
+    assert not settings_file.exists()
+    assert rows["llm.model"].source == "default"
