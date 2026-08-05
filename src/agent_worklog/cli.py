@@ -81,7 +81,7 @@ def _load_settings() -> AppSettings:
     except Exception as exc:  # Pydantic aggregates configuration failures.
         # Name the file when there is one: a parse error otherwise says what is
         # wrong without saying where the value came from.
-        hint = f"; check {path}" if path.exists() else ""
+        hint = f"; settings come from the environment and {path}" if path.exists() else ""
         raise ConfigurationError(f"{exc}{hint}") from exc
 
 
