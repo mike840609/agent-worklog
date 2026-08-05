@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Split the README into a condensed landing page and dedicated published docs. The
+  README now points to three new files in `docs/` that hold the detail it used to
+  carry: `docs/guides.md` (reporting periods, subagents, repository grouping, LLM
+  summaries, and output handling), `docs/usage-statistics.md` (the usage window
+  caveat), and `docs/limitations.md` (the full per-harness limit list). `README.md`
+  drops from 434 to 228 lines and the Traditional Chinese `README.zh-TW.md` is
+  mirrored to the same shape. Documentation links stay absolute so they resolve from
+  PyPI, which renders the README as its long description. The Codex-limit assertions
+  in `tests/unit/test_documentation.py` now read `docs/limitations.md` because the
+  content moved there.
+
 ## 0.5.0
 
 - Add `codex` to `--harness`. Sessions are discovered from `~/.codex/state_<n>.sqlite`,
