@@ -70,11 +70,8 @@ harnesses, it can:
   with `--root-only`.
 - List each repository's session titles and working folders in the report.
 - Summarize model and token usage when the selected harness provides it.
-- Include source activity IDs and confidence levels as supporting information.
 - Check session information for common secret patterns before creating a report or
   sending data to an optional LLM.
-- Continue when one session cannot be read and add a warning to the report.
-- On POSIX systems, write reports with owner-only `0600` permissions.
 
 ## Requirements
 
