@@ -13,8 +13,6 @@ from agent_worklog.summarizers.base import (
     session_refs,
 )
 
-_MAX_ITEMS = 20
-
 
 def _unique_sorted(items: list[str]) -> list[str]:
     seen: set[str] = set()
@@ -26,14 +24,6 @@ def _unique_sorted(items: list[str]) -> list[str]:
             seen.add(key)
             unique.append(normalized)
     return sorted(unique, key=str.casefold)
-
-
-def _limited(items: list[str]) -> list[str]:
-    ordered = _unique_sorted(items)
-    if len(ordered) <= _MAX_ITEMS:
-        return ordered
-    omitted = len(ordered) - _MAX_ITEMS
-    return [*ordered[:_MAX_ITEMS], f"Additional items omitted: {omitted}"]
 
 
 # MEDIUM evidence is inferred rather than observed, so it is labelled in the
@@ -54,11 +44,12 @@ def _completed(items: list[EvidenceItem]) -> list[str]:
 def _unobserved(items: list[EvidenceItem]) -> list[str]:
     """Return outcome evidence whose result was never observed.
 
-    A Claude Code verification command has no exit code, so the extractor records
-    that it ran and stops there: MEDIUM confidence, status UNKNOWN. Those items
-    must not appear under Completed, but they are real work and would otherwise
-    disappear from the report entirely, so they are listed as in progress. LOW
-    items — an assistant claiming its own success — stay excluded.
+    A verification command whose harness recorded no outcome at all — no exit
+    code and no tool-error flag — is recorded as having run and nothing more:
+    MEDIUM confidence, status UNKNOWN. Those items must not appear under
+    Completed, but they are real work and would otherwise disappear from the
+    report entirely, so they are listed as in progress. LOW items — an assistant
+    claiming its own success — stay excluded.
     """
 
     return [
@@ -109,9 +100,9 @@ class RuleBasedSummarizer(RepositorySummarizer):
             display_name=evidence.display_name,
             normalized_remote=evidence.normalized_remote,
             summary=summary_text,
-            completed=_limited(completed),
-            in_progress=_limited(in_progress),
-            key_files=_limited(key_files),
+            completed=_unique_sorted(completed),
+            in_progress=_unique_sorted(in_progress),
+            key_files=_unique_sorted(key_files),
             directories=session_directories(evidence),
             sessions=session_refs(evidence),
             session_count=session_count,

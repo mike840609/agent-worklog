@@ -16,21 +16,18 @@ Agent Worklog 把 coding agent 的工作階段（session）整理成給主管看
 
 ## 功能
 
-Agent Worklog 支援 OpenCode、Claude Code 與 Codex，可以：
+Agent Worklog 支援 OpenCode、Claude Code 與 Codex。無論選用哪一種支援的 coding-agent
+harness，都可以：
 
-- 找出所有專案的 OpenCode 工作階段，不論你現在位於哪個資料夾。
-- 直接從 `~/.claude/projects` 讀取 Claude Code 工作階段，包含 subagent 逐字紀錄。
-- 直接從 `~/.codex` 讀取 Codex 工作階段，若存在 Codex 狀態資料庫則優先使用，否則改為掃描 rollout 檔案。
+- 找出所有專案的 coding-agent 工作階段，不受目前所在資料夾限制。
 - 依照最近幾天、某一個日曆週，或指定的日期區間挑選工作階段。
-- OpenCode 專屬：使用 `opencode export --sanitize` 匯出工作階段。Claude Code 與 Codex 都沒有匯出指令，因此沒有對應的步驟。
 - 把屬於同一個 repository 的 Git worktree 歸為同一組。
-- 讓子工作階段（child session）連結到正確的 repository。
-- 使用 `--root-only` 排除 subagent 工作階段，只保留根工作階段。
+- 讓 child 與 subagent 工作階段連結到正確的 repository，或使用 `--root-only` 排除它們。
 - 在報告中列出每個 repository 的工作階段標題與工作資料夾。
-- 依模型彙整 token 使用量：OpenCode 取自 `opencode stats`，Claude Code 與 Codex 則取自工作階段本身記錄的計數。
+- 在所選 harness 提供資料時，依模型彙整 token 使用量。
 - 附上來源活動 ID 與信心程度作為佐證資訊。
 - 在產生報告或送資料給選用的 LLM 之前，先檢查工作階段資訊中常見的機密字串樣式。
-- 某個工作階段讀取失敗時仍會繼續執行，並在報告中加上警告。
+- 某個工作階段無法讀取時仍繼續執行，並在報告中加上警告。
 - 在 POSIX 系統上，以僅擁有者可讀寫的 `0600` 權限寫出報告。
 
 ## 系統需求
@@ -133,8 +130,8 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `--since ISO` | 以指定時間作為期間起點。 |
 | `--until ISO` | 以指定時間作為期間終點，必須搭配 `--since`。 |
 | `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）、`claude-code` 或 `codex`。 |
-| `--root-only` | 排除 subagent 工作階段。 |
-| `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。 |
+| `--root-only` | 排除 child 與 subagent 工作階段。 |
+| `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。用於 `scan` 時，也會列出每個 repository 的工作階段標題與工作目錄。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
 
 `scan` 與 `report` 執行時會顯示暫時性的進度狀態，指出目前所在階段。處理工作階段與
@@ -149,15 +146,21 @@ repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀�
 | `--force` | 輸出檔案已存在時直接覆寫。 |
 | `--dry-run` | 直接印出 Markdown，不寫入檔案。 |
 | `--no-llm` | 不使用外部 LLM 產生摘要。 |
+| `--detail LEVEL` | 報告的詳細程度：`full`（預設）或 `brief`。 |
 
-`doctor` 也接受 `--harness NAME` 與 `--quiet`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果。
+`--detail brief` 會產生適合貼進週報的簡短報告：保留標頭，每個 repository 保留
+`Repository:` 遠端資訊那一行、工作階段數量，以及摘要與 Completed、Problems Resolved、
+In Progress 各最多五條，不輸出 Key Files、Directories、Sessions、Branches 與用量表格。
+警告在兩種詳細程度下都會保留，因為警告說明的是工具讀不到的資料，而不是你做過的工作。
+
+`doctor` 也接受 `--harness NAME`、`--quiet` 與 `--verbose`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果；`--verbose` 不會改變 `doctor` 的輸出內容。
 使用 `--harness claude-code` 時，`doctor` 會改為檢查設定的 `~/.claude/projects` 資料夾是否存在且可讀，而不是檢查 `opencode` 執行檔與資料庫。使用 `--harness codex` 時，`doctor` 會檢查設定的 `~/.codex` 資料夾是否存在且可讀，並回報將採用哪一種探索方式：依名稱顯示的狀態資料庫，或在資料庫不存在時顯示 `directory scan`。
 
-`scan` 與 `report` 有三條規則：
+有三條規則：
 
-- `--days`、`--period`、`--since` 三者只能擇一使用。
-- `--until` 只能搭配 `--since` 使用。
-- `--verbose` 與 `--quiet` 不能同時使用。
+- `--days`、`--period`、`--since` 三者只能擇一使用（`scan` 與 `report`）。
+- `--until` 只能搭配 `--since` 使用（`scan` 與 `report`）。
+- `--verbose` 與 `--quiet` 不能同時使用（三個指令都適用）。
 
 ## 統計期間
 

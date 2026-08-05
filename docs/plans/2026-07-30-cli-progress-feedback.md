@@ -1,7 +1,5 @@
 # CLI Progress Feedback Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add a transient, single-line, stage-based progress indicator with accurate counts to the interactive `scan` and `report` commands.
 
 **Architecture:** Core services publish semantic progress through an optional, Rich-independent `ProgressReporter`; a no-op implementation preserves existing non-CLI behavior. `ConsoleReporter` owns the Rich adapter and its lifecycle, while one shared reporter flows from each CLI command into `ReportService` and its nested `ScanService`.
@@ -1420,7 +1418,7 @@ git commit -m "docs: explain interactive CLI progress"
 ## Final Verification
 
 Review the implementation against
-`docs/superpowers/specs/2026-07-30-cli-progress-feedback-design.md`, then run:
+`docs/cli-progress-feedback-design.md`, then run:
 
 ```bash
 uv run pytest --cov=agent_worklog --cov-fail-under=80

@@ -370,10 +370,14 @@ class CodexRolloutMapper:
             command = _text(arguments.get("cmd"))
             if command is None:
                 return None
-            # No `exit_code` and no `stderr_empty`: Codex records exit codes only
-            # inside free-form output text, in at least three formats, and a regex
-            # over that would fail silently the day Codex changes it. Their absence
-            # routes every command through `pipeline.py:264`, which claims nothing.
+            # No `exit_code`, no `tool_failed`, no `stderr_empty` — the three
+            # signals `extraction/pipeline.py` reads to decide an outcome. Codex
+            # records exit codes only inside free-form output text, in at least
+            # three formats, and a regex over that would fail silently the day
+            # Codex changes it. With none of the three set, `_observed_failure`
+            # returns None and the stderr heuristic declines, so a Codex command
+            # is reported as what it was, never as passed or failed. Adding any
+            # of the three here is what would break that.
             return SessionActivity(
                 activity_id=call_id,
                 activity_type=ActivityType.COMMAND,

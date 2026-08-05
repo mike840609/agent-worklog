@@ -17,22 +17,16 @@ engineers time.
 
 ## Capabilities
 
-Agent Worklog works with OpenCode, Claude Code, and Codex and can:
+Agent Worklog supports OpenCode, Claude Code, and Codex. Across supported coding-agent
+harnesses, it can:
 
-- Find OpenCode sessions across all projects, no matter which folder you are in.
-- Read Claude Code sessions straight from `~/.claude/projects`, including subagent
-  transcripts.
-- Read Codex sessions from `~/.codex`, using the Codex state database when it is
-  present and scanning the rollout files when it is not.
+- Find coding-agent sessions across all projects, no matter which folder you are in.
 - Select sessions from recent days, a calendar week, or a specific date range.
-- For OpenCode: export sessions with `opencode export --sanitize`. Claude Code and
-  Codex have no export command, so this step has no equivalent there.
 - Group Git worktrees that belong to the same repository.
-- Keep child sessions linked to the correct repository.
-- Leave out subagent sessions with `--root-only` when you only want root sessions.
+- Keep child and subagent sessions linked to the correct repository, or leave them out
+  with `--root-only`.
 - List each repository's session titles and working folders in the report.
-- Summarize token usage per model: from `opencode stats` for OpenCode, and from the
-  counters recorded in the sessions themselves for Claude Code and Codex.
+- Summarize model and token usage when the selected harness provides it.
 - Include source activity IDs and confidence levels as supporting information.
 - Check session information for common secret patterns before creating a report or
   sending data to an optional LLM.
@@ -142,8 +136,8 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `--since ISO` | Starts the period at an exact time. |
 | `--until ISO` | Ends the period at an exact time. Requires `--since`. |
 | `--harness NAME` | Harness to read sessions from: `opencode` (default), `claude-code`, or `codex`. |
-| `--root-only` | Leaves out subagent sessions. |
-| `--verbose` | Also shows export, fallback, and LLM warnings. |
+| `--root-only` | Leaves out child and subagent sessions. |
+| `--verbose` | Also shows export, fallback, and LLM warnings. For `scan`, also lists each repository's session titles and working folders. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
 
 While `scan` and `report` are working, they show a transient progress status with the
@@ -159,19 +153,28 @@ stderr so stdout contains only Markdown.
 | `--force` | Replaces the output file if it already exists. |
 | `--dry-run` | Prints the Markdown instead of writing a file. |
 | `--no-llm` | Creates the summary without an external LLM. |
+| `--detail LEVEL` | How much detail the report contains: `full` (default) or `brief`. |
 
-`doctor` also accepts `--harness NAME` and `--quiet`. `--quiet` hides the list of checks
-and reports only through the exit code. With `--harness claude-code`, `doctor` checks that
+`--detail brief` produces a short report for a status update: it keeps the
+header, and for each repository the `Repository:` remote line, the session
+counts, and the summary and up to five each of Completed, Problems Resolved,
+and In Progress. It leaves out Key Files, Directories, Sessions, Branches, and
+the usage table. Warnings are always kept, at both detail levels, because they
+report data the tool could not read rather than work you did.
+
+`doctor` also accepts `--harness NAME`, `--quiet`, and `--verbose`. `--quiet` hides the
+list of checks and reports only through the exit code; `--verbose` does not change what
+`doctor` prints. With `--harness claude-code`, `doctor` checks that
 the configured `~/.claude/projects` directory exists and is readable, instead of checking
 for the `opencode` executable and database. With `--harness codex`, `doctor` checks that
 the configured `~/.codex` directory exists and is readable, and reports which discovery
 path it will take: the state database by name, or `directory scan` when none is present.
 
-Three rules apply to `scan` and `report`:
+Three rules apply:
 
-- Give exactly one of `--days`, `--period`, or `--since`.
-- Use `--until` only together with `--since`.
-- Do not use `--verbose` and `--quiet` together.
+- Give exactly one of `--days`, `--period`, or `--since` (`scan` and `report`).
+- Use `--until` only together with `--since` (`scan` and `report`).
+- Do not use `--verbose` and `--quiet` together (all three commands).
 
 ## Reporting periods
 

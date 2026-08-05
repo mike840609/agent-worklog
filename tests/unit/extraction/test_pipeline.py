@@ -191,6 +191,109 @@ def test_extraction_carries_session_title_and_directory() -> None:
     assert evidence.working_directory == "/repos/agent-worklog"
 
 
+def command(content: str, **metadata: object) -> SessionActivity:
+    return SessionActivity(
+        activity_id="a-1",
+        activity_type=ActivityType.TOOL_CALL,
+        timestamp=datetime(2026, 7, 21, tzinfo=UTC),
+        content=content,
+        tool_name="Bash",
+        metadata=metadata,
+    )
+
+
+def test_an_observed_tool_success_completes_a_verification_command() -> None:
+    """Claude Code records no exit code, but it does record whether a tool failed.
+
+    That flag is observed, not inferred, so it carries the same weight as
+    OpenCode's exit code and yields the same COMPLETED outcome.
+    """
+
+    evidence = extract_evidence(
+        resolved(command("pytest -q", tool_failed=False, stderr_empty=True))
+    )
+
+    assert len(evidence.outcomes) == 1
+    outcome = evidence.outcomes[0]
+    assert outcome.text == "Verification passed: pytest -q"
+    assert outcome.confidence is EvidenceConfidence.HIGH
+    assert outcome.status is EvidenceStatus.COMPLETED
+    assert evidence.errors == []
+
+
+def test_an_observed_tool_failure_is_recorded_as_blocked() -> None:
+    evidence = extract_evidence(
+        resolved(command("pytest -q", tool_failed=True, stderr_empty=False))
+    )
+
+    assert len(evidence.errors) == 1
+    assert evidence.errors[0].status is EvidenceStatus.BLOCKED
+    assert evidence.errors[0].confidence is EvidenceConfidence.HIGH
+    # A failure is never also an outcome.
+    assert evidence.outcomes == []
+
+
+def test_an_observed_success_on_a_non_verification_command_claims_nothing() -> None:
+    """`git status` succeeding says nothing about whether the work is done."""
+
+    evidence = extract_evidence(
+        resolved(command("git status", tool_failed=False, stderr_empty=True))
+    )
+
+    assert evidence.outcomes == []
+    assert evidence.errors == []
+
+
+def test_an_exit_code_still_wins_over_the_tool_error_flag() -> None:
+    """OpenCode reports a real exit code; it is the more precise signal."""
+
+    evidence = extract_evidence(
+        resolved(command("pytest -q", exit_code=1, tool_failed=False))
+    )
+
+    assert len(evidence.errors) == 1
+    assert evidence.errors[0].status is EvidenceStatus.BLOCKED
+    assert evidence.outcomes == []
+
+
+def test_a_heredoc_body_mentioning_a_test_command_is_not_a_verification() -> None:
+    """`gh pr create --body "$(cat <<EOF ... pytest ... EOF)"` runs no tests.
+
+    Matching the whole command string let prose inside a heredoc masquerade as a
+    verification run. Harmless while such items were only recorded as having
+    run; once an observed success promotes them to Completed, it becomes a
+    false claim in a manager-facing report. Measured at 26 of 378 real items.
+    """
+
+    evidence = extract_evidence(
+        resolved(
+            command(
+                "gh pr create --title x --body \"$(cat <<'EOF' "
+                "Ran pytest and ruff to check this. EOF )\"",
+                tool_failed=False,
+            )
+        )
+    )
+
+    assert evidence.outcomes == []
+
+
+def test_a_real_command_before_a_heredoc_still_verifies() -> None:
+    """Only the heredoc body is discounted, not the command that opened it."""
+
+    evidence = extract_evidence(
+        resolved(
+            command(
+                "uv run pytest -q && cat > notes.md <<'EOF' anything EOF",
+                tool_failed=False,
+            )
+        )
+    )
+
+    assert len(evidence.outcomes) == 1
+    assert evidence.outcomes[0].status is EvidenceStatus.COMPLETED
+
+
 def test_clean_stderr_records_the_run_without_claiming_success() -> None:
     resolved = ResolvedSession(
         session=AgentSession(
@@ -418,3 +521,31 @@ def test_missing_stderr_metadata_leaves_opencode_behavior_untouched() -> None:
 
     assert evidence.outcomes == []
     assert evidence.errors == []
+
+
+def test_session_title_is_capped_at_the_evidence_text_length() -> None:
+    """A harness-recorded title has no length bound of its own.
+
+    Codex's `threads.title` is the verbatim first user message, and one measured
+    on a real machine ran to 1,478 characters. The cap belongs here rather than
+    in the summarizer: `SessionEvidence` is what the LLM request serializes
+    whole, so a cap applied later would protect the rendered report only.
+    """
+
+    session = resolved()
+    session.session.title = "word " * 100
+
+    evidence = extract_evidence(session)
+
+    assert evidence.title is not None
+    assert len(evidence.title) == EVIDENCE_TEXT_MAX_LENGTH
+    assert evidence.title.endswith("…")
+
+
+def test_a_short_session_title_is_left_alone() -> None:
+    session = resolved()
+    session.session.title = "Add retry to the price fetcher"
+
+    evidence = extract_evidence(session)
+
+    assert evidence.title == "Add retry to the price fetcher"

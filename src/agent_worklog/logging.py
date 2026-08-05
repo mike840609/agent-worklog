@@ -15,7 +15,20 @@ from agent_worklog.progress import (
     ProgressReporter,
     ProgressStage,
 )
+from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.scan import ScanResult
+
+
+def _collapse_whitespace(value: str) -> str:
+    """Fold embedded newlines and space runs so a title is one logical line.
+
+    Callers pair this with `no_wrap` rendering: collapsing alone does not stop
+    Rich from soft-wrapping a long line, and a wrapped continuation starts in
+    column 0 — where repository names are printed, so it reads as a heading.
+    """
+
+    return " ".join(value.split())
+
 
 _STAGE_LABELS = {
     ProgressStage.DISCOVERING_SESSIONS: "Finding sessions",
@@ -127,8 +140,23 @@ class ConsoleReporter:
         table.add_column("Sessions", justify="right")
         for repository_id, sessions in result.sessions_by_repository.items():
             name = sessions[0].repository.display_name if sessions else repository_id
-            table.add_row(name, repository_id, str(len(sessions)))
+            table.add_row(Text(redact_text(name)), repository_id, str(len(sessions)))
         self.console.print(table)
         if self.verbose:
             for warning in result.warnings:
                 self.console.print(f"[yellow]Warning:[/yellow] {warning}")
+            for repository_id, sessions in result.sessions_by_repository.items():
+                name = sessions[0].repository.display_name if sessions else repository_id
+                self.console.print(f"\n{redact_text(name)}", markup=False, highlight=False)
+                for resolved in sessions:
+                    session = resolved.session
+                    title = _collapse_whitespace(session.title) if session.title else None
+                    label = redact_text(title or session.session_id)
+                    directory = session.working_directory
+                    location = f" — {redact_text(directory)}" if directory else ""
+                    self.console.print(
+                        Text(f"  • {label}{location}"),
+                        overflow="ellipsis",
+                        no_wrap=True,
+                        highlight=False,
+                    )

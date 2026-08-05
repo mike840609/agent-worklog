@@ -1,7 +1,5 @@
 # Usage Statistics, Session References, and Root-Only Scanning Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Close the three highest-impact gaps against the reference shell script `opencode-weekly-review-git-grouped`: OpenCode usage statistics, per-session references (title + working directory) in the report, and a flag to exclude subagent sessions.
 
 **Architecture:** All three changes extend existing seams rather than adding layers. `--root-only` is a constructor flag on `OpenCodeCliSource` that appends `AND parent_id IS NULL` to the existing SQL. Session titles and directories flow through the models that already exist (`SessionDescriptor` → `AgentSession` → `SessionEvidence` → `RepositorySummary`), so they inherit the existing redaction pass for free. Usage statistics are a new one-function module invoked by `ReportService` through an injected callable, so a `opencode stats` failure degrades into a report warning instead of an exit code.

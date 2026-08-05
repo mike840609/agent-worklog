@@ -275,15 +275,19 @@ Codex 的命令結果確實含 exit code，但格式散落在自由文字輸出�
 `{"exit_code":1,"output":"..."}`、`Process exited with code 1`、`#656 exit=0`。以 regex 從輸出
 文字反推執行結果，會在 Codex 改變輸出格式時無聲失準。
 
-因此 mapper **一律不設定** `activity.metadata["exit_code"]` 與 `["stderr_empty"]`。其結果由既有
-pipeline 自然導出：
+因此 mapper **一律不設定** `activity.metadata` 的 `exit_code`、`tool_failed`、`stderr_empty` —
+`extraction/pipeline.py` 用來判定結果的三個訊號。其結果由既有 pipeline 自然導出：
 
-- `pipeline.py:239` 的 `_exit_code()` 回傳 `None`。
-- 落入 `pipeline.py:264` 的 `elif exit_code is None` 分支。
+- `_observed_failure()` 先看 `exit_code`，再看 `tool_failed`，兩者皆無則回傳 `None`。
+- 落入 `failed is None` 分支，交給 `_append_stderr_heuristic`。
 - `_append_stderr_heuristic` 因 `stderr_empty` 不為 `True` 而不產生任何項目。
 
-**報告不會宣稱任何一條命令通過或失敗。** 這與 Claude Code 的處置一致，且更保守（Claude Code
-至少有 stderr 啟發式）。`extraction/pipeline.py` 零修改。
+**報告不會宣稱任何一條命令通過或失敗。** 這與 Claude Code 的處置一致，且更保守：Claude Code
+除了 stderr 啟發式，還有 `tool_failed`（來自工具結果的 `is_error`）這個真實觀測訊號。
+`extraction/pipeline.py` 零修改。
+
+> `tool_failed` 是 main 在本 adapter 開發期間新增的（`53b5ffd`）。它不影響 Codex 的結論 —
+> mapper 沒設它 — 但它是第三個必須繼續避開的訊號，日後修改 mapper 時要一併記得。
 
 **推論出來的一個後果，實作期間才確認：Codex 命令不會出現在報告的任何區段。**
 `templates/worklog.md.j2` 的區段是 Completed、Problems Resolved、In Progress、Key Files、
@@ -293,9 +297,9 @@ Directories、Sessions、Branches、Usage、Warnings — **沒有 Key Commands**
 `evidence.model_dump(mode="json")`。
 
 因此 `--no-llm` 的 Codex 報告完全看不到命令，加了 LLM 才可能在敘述中被提及。這與 Claude Code
-有實質差異：Claude Code 的 stderr 啟發式會把驗證命令變成 **outcome**，而 outcome 會渲染在
-「In Progress」底下（`Ran verification command: <command>`）。Codex 兩個訊號都不設，所以連那條
-路徑都不會走到。README 的限制條目必須照這個事實寫，不能宣稱命令會出現在報告裡。
+有實質差異：Claude Code 的 stderr 啟發式與 `tool_failed` 都會把驗證命令變成 **outcome**，而
+outcome 會渲染在「Completed」或「In Progress」底下。Codex 三個訊號都不設，所以連那條路徑都
+不會走到。README 的限制條目必須照這個事實寫，不能宣稱命令會出現在報告裡。
 
 實作結果的唯一結構化訊號是 `patch_apply_end.success`，見 §6.6。
 
@@ -304,7 +308,7 @@ Directories、Sessions、Branches、Usage、Warnings — **沒有 Key Commands**
 `exec` 是通用 JS sandbox（§4.4），其 input 不是命令。mapper 發出 `TOOL_CALL` activity 但
 `content` 為空字串，因此：
 
-- `pipeline.py:228` 的 `if is_command and content` 短路，不產生 command evidence。
+- `extract_evidence` 的 `if is_command and content` 短路，不產生 command evidence。
 - 該段 JavaScript 不會進入報告，也不會進入 LLM 請求。
 
 仍然發出 activity，因為 usage 需要依附於 activity（§6.5），純 `exec` 的 turn 否則會在 usage

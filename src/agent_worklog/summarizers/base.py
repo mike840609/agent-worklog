@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 
-from agent_worklog.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH
 from agent_worklog.models.evidence import RepositoryEvidence
 from agent_worklog.models.report import RepositorySummary, SessionRef
 
@@ -14,24 +13,16 @@ class RepositorySummarizer(ABC):
 
 
 def _normalized_title(title: str | None) -> str | None:
-    """Collapse whitespace and cap length, matching the evidence text cap.
+    """Collapse whitespace so free-text titles stay on one Markdown list item.
 
-    A harness-recorded title has no length bound of its own — Codex's
-    `threads.title` is the verbatim first user message, and the longest
-    observed on a real machine is 1,478 characters. Titles reach both the
-    rendered report and the outbound LLM request, so the same 300-character
-    budget `extraction/pipeline.py` enforces for evidence text applies here,
-    with the same trailing `…` marking the cut.
+    Length is not this function's job: `extract_evidence` caps the title when it
+    enters the evidence, which is the only point that also covers the outbound
+    LLM request.
     """
 
     if title is None:
         return None
-    collapsed = " ".join(title.split())
-    if not collapsed:
-        return None
-    if len(collapsed) <= EVIDENCE_TEXT_MAX_LENGTH:
-        return collapsed
-    return collapsed[: EVIDENCE_TEXT_MAX_LENGTH - 1].rstrip() + "…"
+    return " ".join(title.split()) or None
 
 
 def session_refs(evidence: RepositoryEvidence) -> list[SessionRef]:

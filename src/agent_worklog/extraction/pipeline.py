@@ -87,6 +87,25 @@ def _exit_code(activity: SessionActivity) -> int | None:
     return None
 
 
+def _observed_failure(activity: SessionActivity) -> bool | None:
+    """Return whether the command was observed to fail, or None if unobserved.
+
+    Two harnesses record two different real signals. OpenCode reports a process
+    exit code. Claude Code reports no exit code, but it does set `is_error` on
+    the tool result, which for a shell tool is the same observation under
+    another name. Neither is inferred, so both support the same conclusions.
+
+    Where both exist the exit code wins: it distinguishes *how* a command
+    failed, which `is_error` flattens to a boolean.
+    """
+
+    exit_code = _exit_code(activity)
+    if exit_code is not None:
+        return exit_code != 0
+    failed = activity.metadata.get("tool_failed")
+    return failed if isinstance(failed, bool) else None
+
+
 def _file_path(activity: SessionActivity) -> str | None:
     for source in (
         activity.metadata,
@@ -155,19 +174,19 @@ def _append_stderr_heuristic(
     content: str,
     repository_id: str,
 ) -> None:
-    """Record what a command was, not how it ended, when there is no exit code.
+    """Record what a command was, not how it ended, when nothing was observed.
 
-    Claude Code's tool results carry no exit code, so empty stderr is the only
-    signal available — and it is a weak one: pytest writes `FAILED` to stdout and
-    `ruff` reports violations on stdout. Nothing here claims success. A command
-    that redirects stderr is skipped outright, because for it the signal is not
-    weak but absent.
+    This is the last resort, reached only when neither harness signal is
+    present: no exit code and no `is_error`. Empty stderr is then all that is
+    left, and it is weak — pytest writes `FAILED` to stdout and `ruff` reports
+    violations on stdout. Nothing here claims success. A command that redirects
+    stderr is skipped outright, because for it the signal is not weak but absent.
 
     Non-empty stderr is deliberately *not* treated as failure. `git` writes to
     stderr on success constantly, so it produced 31 items of `git stash` and
     `cd … && uv sync` noise against real transcripts — none of which the report
     renders, while all of them travelled in the outbound LLM request. Only an
-    observed exit code makes a failure worth recording.
+    observed outcome makes a failure worth recording.
     """
 
     if _redirects_stderr(content):
@@ -197,7 +216,14 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
     evidence = SessionEvidence(
         session_id=resolved.session.session_id,
         repository_id=resolved.repository.repository_id,
-        title=resolved.session.title,
+        # A harness-recorded title has no length bound of its own: Codex's
+        # `threads.title` is the verbatim first user message, and the longest on
+        # a real machine is 1,478 characters. Capping here rather than in the
+        # summarizer is what also covers the outbound LLM request, which sends
+        # this whole model.
+        title=_truncate(_normalize(resolved.session.title))
+        if resolved.session.title
+        else None,
         working_directory=resolved.session.working_directory,
     )
     repository_id = resolved.repository.repository_id
@@ -236,20 +262,20 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                 ),
                 repository_id=repository_id,
             )
-            exit_code = _exit_code(activity)
-            if exit_code is not None and exit_code != 0:
+            failed = _observed_failure(activity)
+            if failed is True:
                 _append_unique(
                     evidence.errors,
                     _item(
                         text=content,
                         activity=activity,
                         confidence=EvidenceConfidence.HIGH,
-                        extraction_method="nonzero_exit_code",
+                        extraction_method="observed_command_failure",
                         status=EvidenceStatus.BLOCKED,
                     ),
                     repository_id=repository_id,
                 )
-            elif exit_code == 0 and is_verification_command(content):
+            elif failed is False and is_verification_command(content):
                 _append_unique(
                     evidence.outcomes,
                     _item(
@@ -261,7 +287,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                     ),
                     repository_id=repository_id,
                 )
-            elif exit_code is None:
+            elif failed is None:
                 _append_stderr_heuristic(
                     evidence,
                     activity=activity,

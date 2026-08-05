@@ -29,7 +29,7 @@ from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.process import CommandRunner
 from agent_worklog.progress import ProgressReporter
-from agent_worklog.renderers.markdown import MarkdownRenderer
+from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
 from agent_worklog.renderers.usage import render_activity_usage
 from agent_worklog.repositories.resolver import RepositoryResolver
 from agent_worklog.services.doctor import run_doctor
@@ -52,6 +52,12 @@ _HARNESS_OPTION = typer.Option(
     Harness.OPENCODE,
     "--harness",
     help="Coding-agent harness to read sessions from.",
+)
+
+_DETAIL_OPTION = typer.Option(
+    DetailLevel.FULL,
+    "--detail",
+    help="How much detail the report contains: full (default) or brief.",
 )
 
 app = typer.Typer(
@@ -213,6 +219,7 @@ def _build_report_service(
     *,
     now: datetime,
     harness: Harness = Harness.OPENCODE,
+    detail: DetailLevel = DetailLevel.FULL,
     progress: ProgressReporter | None = None,
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
@@ -245,6 +252,7 @@ def _build_report_service(
         now_factory=lambda: now,
         usage_provider=usage_provider,
         usage_days=days,
+        detail=detail,
         progress=progress,
     )
 
@@ -355,6 +363,7 @@ def report(
     no_llm: bool = typer.Option(False, "--no-llm"),
     force: bool = typer.Option(False, "--force"),
     harness: Harness = _HARNESS_OPTION,
+    detail: DetailLevel = _DETAIL_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
 ) -> None:
@@ -383,6 +392,7 @@ def report(
                 root_only,
                 now=now,
                 harness=harness,
+                detail=detail,
                 progress=progress,
             )
             result = service.generate(force=force, dry_run=dry_run)

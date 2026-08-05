@@ -1,4 +1,3 @@
-from agent_worklog.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH
 from agent_worklog.models.evidence import RepositoryEvidence, SessionEvidence
 from agent_worklog.models.report import SessionRef
 from agent_worklog.summarizers.base import session_directories, session_refs
@@ -38,25 +37,6 @@ def test_session_refs_normalizes_free_text_titles_to_one_line() -> None:
         SessionRef(session_id="s1", title="Fix the exporter ``` - injected list item"),
         SessionRef(session_id="s2", title=None),
     ]
-
-
-def test_session_refs_caps_titles_at_the_evidence_text_length() -> None:
-    """A harness-recorded title has no length bound of its own — Codex's
-    `threads.title` is the verbatim first user message, and one measured on a
-    real machine ran to 1,478 characters. It must not bypass the 300-character
-    budget that applies to every other piece of evidence text.
-    """
-
-    long_title = "word " * 100  # far past EVIDENCE_TEXT_MAX_LENGTH once collapsed
-    evidence = _evidence(
-        SessionEvidence(session_id="s1", repository_id="repo", title=long_title)
-    )
-
-    [ref] = session_refs(evidence)
-
-    assert ref.title is not None
-    assert len(ref.title) == EVIDENCE_TEXT_MAX_LENGTH
-    assert ref.title.endswith("…")
 
 
 def test_session_directories_deduplicates_sorts_and_skips_blank() -> None:

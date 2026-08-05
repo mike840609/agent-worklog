@@ -50,6 +50,38 @@ def test_build_scan_service_selects_the_claude_code_source(tmp_path) -> None:
     assert isinstance(service._source, ClaudeCodeFileSource)
 
 
+def test_build_report_service_carries_the_detail_level(tmp_path) -> None:
+    """Closes a seam a mutation test found: deleting `detail=detail,` from the
+    `ReportService(...)` call in `_build_report_service` left the full suite
+    green, so `--detail brief` could silently become a no-op end to end.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import agent_worklog.cli as cli
+    from agent_worklog.config import AppSettings
+    from agent_worklog.models.time_range import DateRange
+    from agent_worklog.renderers.markdown import DetailLevel
+
+    tz = ZoneInfo("Asia/Taipei")
+    settings = AppSettings()
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=tz),
+        until=datetime(2026, 7, 27, tzinfo=tz),
+    )
+
+    service = cli._build_report_service(
+        settings,
+        period,
+        tmp_path / "report.md",
+        no_llm=True,
+        now=datetime(2026, 7, 29, 20, 0, tzinfo=tz),
+        detail=DetailLevel.BRIEF,
+    )
+
+    assert service._detail is DetailLevel.BRIEF
+
+
 def test_a_disabled_harness_is_refused_with_a_configuration_error(tmp_path) -> None:
     """An off switch a privacy tool advertises has to actually turn something off."""
 

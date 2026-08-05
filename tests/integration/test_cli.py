@@ -70,6 +70,7 @@ def test_report_refuses_overwrite_without_force(
         now,
         harness=cli.Harness.OPENCODE,
         progress=None,
+        detail=cli.DetailLevel.FULL,
     ):
         return StubReportService(output_path, period)
 
@@ -100,6 +101,7 @@ def test_report_supports_previous_calendar_week(
         now,
         harness=cli.Harness.OPENCODE,
         progress=None,
+        detail=cli.DetailLevel.FULL,
     ):
         captured["period"] = period
         return StubReportService(output_path, period)
@@ -242,6 +244,7 @@ def test_report_passes_root_only_to_the_report_service(
         now,
         harness=cli.Harness.OPENCODE,
         progress=None,
+        detail=cli.DetailLevel.FULL,
     ):
         captured["root_only"] = root_only
         captured["progress"] = progress
@@ -368,6 +371,7 @@ def test_dry_run_keeps_progress_out_of_stdout(
         now,
         harness=cli.Harness.OPENCODE,
         progress=None,
+        detail=cli.DetailLevel.FULL,
     ):
         return ProgressReportService(output_path, period, progress)
 
@@ -399,3 +403,93 @@ def test_disabled_codex_harness_is_refused(monkeypatch) -> None:
 
     assert result.exit_code == 3
     assert "AGENT_WORKLOG_HARNESSES__CODEX__ENABLED" in result.stdout
+def test_report_passes_the_detail_level_to_the_report_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def build(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness=cli.Harness.OPENCODE,
+        progress=None,
+        detail=cli.DetailLevel.FULL,
+    ):
+        captured["detail"] = detail
+        return StubReportService(output_path, period)
+
+    monkeypatch.setattr(cli, "_build_report_service", build)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "report",
+            "--days",
+            "7",
+            "--detail",
+            "brief",
+            "--dry-run",
+            "--output",
+            str(tmp_path / "report.md"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert captured["detail"] is cli.DetailLevel.BRIEF
+
+
+def test_report_defaults_to_full_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def build(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness=cli.Harness.OPENCODE,
+        progress=None,
+        detail=cli.DetailLevel.FULL,
+    ):
+        captured["detail"] = detail
+        return StubReportService(output_path, period)
+
+    monkeypatch.setattr(cli, "_build_report_service", build)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "report",
+            "--days",
+            "7",
+            "--dry-run",
+            "--output",
+            str(tmp_path / "report.md"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert captured["detail"] is cli.DetailLevel.FULL
+
+
+def test_report_rejects_an_unknown_detail_level(tmp_path: Path) -> None:
+    output_path = tmp_path / "report.md"
+
+    result = runner.invoke(
+        cli.app,
+        ["report", "--days", "7", "--detail", "medium", "--output", str(output_path)],
+    )
+
+    assert result.exit_code == 2
+    assert not output_path.exists()
