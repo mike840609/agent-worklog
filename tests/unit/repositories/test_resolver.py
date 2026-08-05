@@ -79,3 +79,39 @@ def test_missing_all_hints_uses_per_session_unknown(fake_git_runner) -> None:
 
     assert identity.repository_id == "unknown:opencode:s1"
     assert identity.identity_type == RepositoryIdentityType.UNKNOWN
+
+
+def test_git_remote_short_circuits_common_dir(fake_git_runner) -> None:
+    fake_git_runner.set_output("remote get-url origin", "git@github.com:mike/repo.git")
+    fake_git_runner.set_output("branch --show-current", "feature/test")
+    resolver = RepositoryResolver(runner=fake_git_runner)
+
+    identity = resolver.resolve(
+        AgentSession(harness="opencode", session_id="s1", working_directory="/worktree/a")
+    )
+
+    assert identity.identity_type == RepositoryIdentityType.GIT_REMOTE
+    assert identity.branch == "feature/test"
+    git_calls = [call for call in fake_git_runner.calls if call[0] == "git"]
+    assert ["git", "-C", "/worktree/a", "rev-parse", "--git-common-dir"] not in git_calls
+
+
+def test_same_cwd_memoizes_git_lookups_across_sessions(fake_git_runner) -> None:
+    fake_git_runner.set_output("remote get-url origin", "git@github.com:mike/repo.git")
+    fake_git_runner.set_output("branch --show-current", "feature/test")
+    resolver = RepositoryResolver(runner=fake_git_runner)
+
+    first = resolver.resolve(
+        AgentSession(harness="opencode", session_id="s1", working_directory="/worktree/a")
+    )
+    second = resolver.resolve(
+        AgentSession(harness="opencode", session_id="s2", working_directory="/worktree/a")
+    )
+
+    assert first.repository_id == second.repository_id
+    git_calls = [call for call in fake_git_runner.calls if call[0] == "git"]
+    assert len(git_calls) == 2
+    assert git_calls == [
+        ["git", "-C", "/worktree/a", "remote", "get-url", "origin"],
+        ["git", "-C", "/worktree/a", "branch", "--show-current"],
+    ]
