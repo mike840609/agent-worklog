@@ -18,14 +18,14 @@ def test_readme_documents_the_harness_option() -> None:
     assert "Codex and Claude Code are not currently supported." not in readme
 
 
-def test_readme_documents_the_codex_limits() -> None:
+def test_limitations_documents_the_codex_limits() -> None:
     """Pin the three Codex-specific limits, not just that the word appears."""
 
-    readme = Path("README.md").read_text(encoding="utf-8")
+    limitations = Path("docs/limitations.md").read_text(encoding="utf-8")
 
-    assert "Codex report claims that a command passed or failed" in readme
-    assert "Commands run from inside Codex's `exec` tool are not recorded" in readme
-    assert "session titles are lost" in readme
+    assert "Codex report claims that a command passed or failed" in limitations
+    assert "Commands run from inside Codex's `exec` tool are not recorded" in limitations
+    assert "session titles are lost" in limitations
 
 
 def test_privacy_documents_the_codex_limits() -> None:
