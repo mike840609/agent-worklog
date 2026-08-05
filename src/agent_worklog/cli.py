@@ -33,6 +33,7 @@ from agent_worklog.progress import ProgressReporter
 from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
 from agent_worklog.renderers.usage import render_activity_usage
 from agent_worklog.repositories.resolver import RepositoryResolver
+from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.doctor import run_doctor
 from agent_worklog.services.report import ReportService
 from agent_worklog.services.scan import ScanResult, ScanService
@@ -82,7 +83,11 @@ def _load_settings() -> AppSettings:
         # Name the file when there is one: a parse error otherwise says what is
         # wrong without saying where the value came from.
         hint = f"; settings come from the environment and {path}" if path.exists() else ""
-        raise ConfigurationError(f"{exc}{hint}") from exc
+        # Pydantic's validation errors echo the offending input verbatim (e.g.
+        # `input_value='sk-proj-...'`), so a bad value in a setting the model
+        # DOES own — a base URL with an embedded password, an API key typed
+        # into the wrong field — must not reach stdout unredacted.
+        raise ConfigurationError(redact_text(f"{exc}{hint}")) from exc
 
 
 def _now_in_timezone(timezone: str) -> datetime:
