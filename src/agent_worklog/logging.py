@@ -1,6 +1,6 @@
 """Rich console helpers for already-redacted user-facing messages."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -10,6 +10,7 @@ from rich.status import Status
 from rich.table import Table
 from rich.text import Text
 
+from agent_worklog.config_store import SettingRow
 from agent_worklog.progress import (
     NullProgressReporter,
     ProgressReporter,
@@ -129,6 +130,28 @@ class ConsoleReporter:
             return
         status = "[green]OK[/green]" if ok else "[red]ERROR[/red]"
         self.console.print(f"[{status}] {name}: {detail}")
+
+    def settings_table(self, rows: Sequence[SettingRow], *, path: Path) -> None:
+        """Render every setting with the value in force and where it came from.
+
+        Values are wrapped in `Text` rather than redacted: these are the user's
+        own settings, printed at their own request, and `redact_text` would
+        mangle a legitimate value that happens to look like a secret.
+        """
+
+        table = Table(title="Agent Worklog Settings")
+        table.add_column("Setting")
+        table.add_column("Value")
+        table.add_column("From")
+        table.add_column("Default")
+        for row in rows:
+            table.add_row(row.key, Text(row.value), row.source, Text(row.default))
+        self.console.print(table)
+        self.console.print(f"Settings file: {path}")
+        self.console.print(
+            "Every setting is optional. Leave one out — or set it to an empty "
+            "value — to fall back to the default in the last column."
+        )
 
     def scan_result(self, result: ScanResult) -> None:
         if self.quiet:

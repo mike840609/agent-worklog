@@ -493,3 +493,37 @@ def test_report_rejects_an_unknown_detail_level(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert not output_path.exists()
+
+
+def test_config_path_prints_the_settings_file(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+
+    result = CliRunner().invoke(cli.app, ["config", "path"])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == str(tmp_path / "config.env")
+
+
+def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    # Rich wraps to 80 columns when stdout is not a terminal, which would split
+    # the longer settings across lines and break these substring assertions.
+    monkeypatch.setenv("COLUMNS", "200")
+
+    result = CliRunner().invoke(cli.app, ["config", "list"])
+
+    assert result.exit_code == 0
+    assert "llm.model" in result.stdout
+    assert "from-file" in result.stdout
+    assert "gpt-5-mini" in result.stdout
+    assert "Every setting is optional" in result.stdout
+
+
+def test_help_lists_the_config_command() -> None:
+    result = CliRunner().invoke(cli.app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "config" in result.stdout

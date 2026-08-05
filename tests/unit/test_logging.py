@@ -453,3 +453,40 @@ def test_verbose_scan_does_not_interpret_a_title_as_rich_markup() -> None:
     )
 
     assert "[bold]not markup[/bold]" in output_stream.getvalue()
+
+
+def test_settings_table_shows_values_sources_and_defaults() -> None:
+    from pathlib import Path
+
+    from agent_worklog.config_store import SettingRow
+
+    output_stream = StringIO()
+    reporter = ConsoleReporter(console=forced_console(output_stream, width=120))
+
+    reporter.settings_table(
+        [
+            SettingRow(
+                key="llm.model",
+                variable="AGENT_WORKLOG_LLM__MODEL",
+                value="gpt-5",
+                source="file",
+                default="gpt-5-mini",
+            ),
+            SettingRow(
+                key="report.timezone",
+                variable="AGENT_WORKLOG_REPORT__TIMEZONE",
+                value="Asia/Taipei",
+                source="default",
+                default="Asia/Taipei",
+            ),
+        ],
+        path=Path("/home/dev/.config/agent-worklog/config.env"),
+    )
+    output = output_stream.getvalue()
+
+    assert "llm.model" in output
+    assert "gpt-5-mini" in output
+    assert "file" in output
+    assert "/home/dev/.config/agent-worklog/config.env" in output
+    # The point of the footer: nothing here is required.
+    assert "Every setting is optional" in output

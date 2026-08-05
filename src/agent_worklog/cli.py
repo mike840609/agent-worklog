@@ -434,3 +434,25 @@ def report(
         if verbose:
             for warning in result.report.warnings:
                 reporter.message(f"Warning: {warning}")
+
+
+config_app = typer.Typer(
+    no_args_is_help=True,
+    help="Show and edit the settings file.",
+)
+app.add_typer(config_app, name="config")
+
+
+@config_app.command("path")
+def config_path() -> None:
+    """Print the settings file location."""
+
+    typer.echo(str(config_store.config_file_path()))
+
+
+@config_app.command("list")
+def config_list() -> None:
+    """Show every setting, the value in force, and where it comes from."""
+
+    path = config_store.config_file_path()
+    ConsoleReporter().settings_table(config_store.describe_settings(path), path=path)
