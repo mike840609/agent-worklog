@@ -21,24 +21,36 @@ With `--harness claude-code`:
    it — is read into memory before the mapper described in "Claude Code has no sanitize
    step" below runs.
 
-Both harnesses then continue:
+With `--harness codex`:
+
+1. Agent Worklog finds the newest `state_<n>.sqlite` under the configured
+   `home_directory` (default `~/.codex`) and queries it for threads whose activity
+   overlaps the period, or, when that database is absent or its schema cannot be read,
+   scans the `sessions/` and `archived_sessions/` rollout files under the same directory
+   instead.
+2. It reads each session's rollout JSONL file directly from disk. Codex provides no
+   export command either, so the raw JSONL — with whatever tool output, file contents,
+   and free-form status text Codex wrote to it — is read into memory before the mapper
+   described in "Codex has no sanitize step" below runs.
+
+All three harnesses then continue:
 
 3. Transcript data is parsed in memory and filtered to the requested activity range.
 4. Structured evidence is recursively redacted.
 5. `report` builds a usage section: for OpenCode, by requesting aggregate counters with
    `opencode stats` over a trailing window that contains the report period; for Claude
-   Code, from token counters already attached to each mapped activity, which cover the
-   report period rather than a window ending now. Either way the usage output holds model,
-   token, and tool totals rather than session content, and it is redacted before it
-   reaches the report.
+   Code and Codex, from token counters already attached to each mapped activity, which
+   cover the report period rather than a window ending now. Either way the usage output
+   holds model, token, and tool totals rather than session content, and it is redacted
+   before it reaches the report.
 6. The redacted evidence is rendered locally or optionally sent to an OpenAI-compatible
    endpoint.
 7. Markdown is written with an atomic replacement and owner-only `0600` permissions on
    POSIX systems.
 
-Agent Worklog does not persist raw OpenCode exports or raw Claude Code transcripts beyond
-the in-memory read above. The secure writer may create a short-lived sibling file during
-atomic report replacement; it is removed after completion or failure.
+Agent Worklog does not persist raw OpenCode exports or raw Claude Code or Codex
+transcripts beyond the in-memory read above. The secure writer may create a short-lived
+sibling file during atomic report replacement; it is removed after completion or failure.
 
 ## Redaction boundary
 
@@ -53,10 +65,10 @@ The redactor covers common patterns including:
 - JWT-like tokens;
 - private-key blocks.
 
-Redaction is applied recursively to evidence metadata, to OpenCode and Claude Code usage
-output, before rendering, before verbose warnings are written to reports, and before
-optional LLM requests. For Claude Code, redaction runs after the mapper minimization
-described below, on the fields that minimization leaves behind.
+Redaction is applied recursively to evidence metadata, to OpenCode, Claude Code, and Codex
+usage output, before rendering, before verbose warnings are written to reports, and before
+optional LLM requests. For Claude Code and Codex, redaction runs after the mapper
+minimization described below, on the fields that minimization leaves behind.
 
 Pattern-based redaction is not a proof that every secret has been removed. New credential
 formats, arbitrary customer identifiers, source code, internal hostnames, filenames,
@@ -112,6 +124,49 @@ secret. Reports built from Claude Code sessions may still contain prompts, comma
 paths, and full working-directory paths, exactly as reports built from OpenCode sessions
 do.
 
+## Codex has no sanitize step
+
+Codex has no export command either, so `--harness codex` reads the rollout JSONL files
+directly, and those files contain full tool output, whole file contents, and free-form
+status text exactly as Codex wrote them to disk.
+
+What replaces the missing sanitize step is the same kind of boundary as Claude Code's: the
+rollout mapper deliberately keeps only a narrow slice of each record before anything else
+in Agent Worklog sees it — user and assistant messages, tool names, and one field per
+record type:
+
+- `exec_command`'s `cmd` argument, the one Codex tool whose arguments name a command;
+- `patch_apply_end`'s changed file paths, never the change value itself, which holds
+  either a unified diff (`unified_diff`, the majority case, for an update to an existing
+  file) or the whole file (`content`, for a new file);
+- nothing at all for `exec`, whose input is an arbitrary JavaScript program rather than a
+  command, and for every other tool call, which is recorded with empty content so its
+  token usage is still attributable to an activity.
+
+Two kinds of content are therefore dropped in the mapper rather than downstream: the
+change value of every `patch_apply_end` entry — whichever of `unified_diff` or `content`
+it carries — and the input of every `exec` call. Only the changed file's path and the
+tool's name survive for those two record types. A rename's destination path lives in
+`move_path`, inside that same discarded value, so it never reaches Key Files either.
+
+Everything else is dropped at that boundary and never reaches a report or an LLM request:
+tool `stdout` and `stderr`, and Codex's free-form status text. Codex records exit codes
+only inside that free-form text, in several formats, so Agent Worklog does not parse it —
+the mapper stores no `exit_code` and no `stderr_empty` for a Codex command, which is why no
+Codex report claims a command passed or failed. The one structured outcome signal Codex
+does provide is `patch_apply_end`'s `success` flag, used to decide whether a patch's paths
+are worth reporting at all — and even then it reports a file change, not a verification
+result.
+
+The same pattern-based secret checks described above still run on top of that reduced set
+of fields, exactly as they do for OpenCode and Claude Code evidence.
+
+This is a description of a deliberate design choice about what Agent Worklog retains, not
+a guarantee about what Codex itself writes to disk, and not a claim that the retained
+fields are free of secrets. Reports built from Codex sessions may still contain prompts,
+commands, file paths, and full working-directory paths, exactly as reports built from the
+other two harnesses do.
+
 ## The 300-character evidence budget
 
 The mapper alone does not bound how much text a single retained field can hold. A Bash
@@ -120,7 +175,7 @@ inside that one command string — as far as length goes, `cat > design.md <<'EO
 `gh pr create --body-file - <<'EOF' … EOF` is a file, not a command. The 200-character
 truncation described above applies only to the JSON fallback, which is the rare path.
 
-The bound that does apply to a report is in the extraction layer, and it covers both
+The bound that does apply to a report is in the extraction layer, and it covers all three
 harnesses: **every evidence item's text is capped at 300 characters**
 (`EVIDENCE_TEXT_MAX_LENGTH` in `extraction/pipeline.py`), with a trailing `…` marking the
 cut so a reader can tell that text was removed. 300 characters identify any real command
@@ -182,8 +237,8 @@ are reported using session IDs and redacted error text.
 
 ## Operator responsibilities
 
-- Keep the OpenCode storage (or, for Claude Code, `~/.claude/projects`) and generated
-  reports protected by appropriate filesystem permissions.
+- Keep the OpenCode storage (or, for Claude Code, `~/.claude/projects`; or, for Codex,
+  `~/.codex`) and generated reports protected by appropriate filesystem permissions.
 - Do not enable an external LLM endpoint unless company policy permits it.
 - Review generated content before distribution.
 - Rotate any credential that appears unredacted and report the pattern so the redactor can

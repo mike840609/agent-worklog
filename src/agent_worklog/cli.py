@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable
 from datetime import datetime
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,7 +22,7 @@ from agent_worklog.errors import (
 )
 from agent_worklog.harnesses.base import HarnessSessionSource
 from agent_worklog.harnesses.claude_code.source import ClaudeCodeFileSource
-from agent_worklog.harnesses.claude_code.usage import render_claude_code_usage
+from agent_worklog.harnesses.codex.source import CodexSource
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
 from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
 from agent_worklog.logging import ConsoleReporter
@@ -29,6 +30,7 @@ from agent_worklog.models.time_range import DateRange
 from agent_worklog.process import CommandRunner
 from agent_worklog.progress import ProgressReporter
 from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
+from agent_worklog.renderers.usage import render_activity_usage
 from agent_worklog.repositories.resolver import RepositoryResolver
 from agent_worklog.services.doctor import run_doctor
 from agent_worklog.services.report import ReportService
@@ -40,6 +42,7 @@ from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 class Harness(StrEnum):
     OPENCODE = "opencode"
     CLAUDE_CODE = "claude-code"
+    CODEX = "codex"
 
 
 # A module-level singleton, per ruff B008: an Enum-typed `typer.Option(...)` call
@@ -129,16 +132,14 @@ def _require_enabled_harness(settings: AppSettings, harness: Harness) -> None:
     """Refuse a harness its configuration has turned off.
 
     A privacy tool must not advertise an off switch that does nothing: reading
-    `~/.claude/projects` is exactly the kind of thing an operator may need to
-    forbid for a whole machine.
+    `~/.claude/projects` or `~/.codex` is exactly the kind of thing an operator
+    may need to forbid for a whole machine.
+
+    Each enum member's name is the settings field name, so a new harness needs
+    no edit here.
     """
 
-    enabled = (
-        settings.harnesses.claude_code.enabled
-        if harness is Harness.CLAUDE_CODE
-        else settings.harnesses.opencode.enabled
-    )
-    if not enabled:
+    if not getattr(settings.harnesses, harness.name.lower()).enabled:
         variable = f"AGENT_WORKLOG_HARNESSES__{harness.name}__ENABLED"
         raise ConfigurationError(
             f"harness {harness.value} is disabled by configuration; "
@@ -160,6 +161,11 @@ def _build_scan_service(
     if harness is Harness.CLAUDE_CODE:
         source = ClaudeCodeFileSource(
             projects_directory=settings.harnesses.claude_code.projects_directory,
+            root_only=root_only,
+        )
+    elif harness is Harness.CODEX:
+        source = CodexSource(
+            home_directory=settings.harnesses.codex.home_directory,
             root_only=root_only,
         )
     else:
@@ -185,10 +191,10 @@ def _usage_provider(
 ) -> tuple[Callable[[ScanResult], str], int | None]:
     """Return the harness usage provider and the window it covers, if narrower."""
 
-    if harness is Harness.CLAUDE_CODE:
+    if harness in {Harness.CLAUDE_CODE, Harness.CODEX}:
         # Usage rides on the already-filtered activities, so the window is exact
         # and needs no "wider than the period" caveat.
-        return render_claude_code_usage, None
+        return partial(render_activity_usage, harness=harness.value), None
 
     cli_settings = settings.harnesses.opencode.cli
     stats_runner = CommandRunner(timeout_seconds=cli_settings.timeout_seconds)

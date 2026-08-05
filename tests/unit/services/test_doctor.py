@@ -78,3 +78,33 @@ def test_doctor_fails_when_the_projects_directory_is_missing(tmp_path) -> None:
     result = run_doctor(settings, runner=GitOnlyRunner(), harness="claude-code")
 
     assert not result.ok
+
+
+def test_codex_doctor_reports_the_home_directory_and_discovery_path(
+    tmp_path, monkeypatch, fake_runner
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path)
+    )
+    (tmp_path / "state_5.sqlite").write_text("", encoding="utf-8")
+    settings = AppSettings()
+
+    result = run_doctor(settings, runner=fake_runner, harness="codex")
+
+    check = result.checks[0]
+    assert check.name == "codex home directory"
+    assert check.ok is True
+    assert check.detail == f"{tmp_path} (state_5.sqlite)"
+
+
+def test_codex_doctor_fails_on_a_missing_home_directory(
+    tmp_path, monkeypatch, fake_runner
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent")
+    )
+    settings = AppSettings()
+
+    result = run_doctor(settings, runner=fake_runner, harness="codex")
+
+    assert result.checks[0].ok is False

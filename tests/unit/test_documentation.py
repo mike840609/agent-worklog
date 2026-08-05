@@ -18,6 +18,26 @@ def test_readme_documents_the_harness_option() -> None:
     assert "Codex and Claude Code are not currently supported." not in readme
 
 
+def test_readme_documents_the_codex_limits() -> None:
+    """Pin the three Codex-specific limits, not just that the word appears."""
+
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "Codex report claims that a command passed or failed" in readme
+    assert "Commands run from inside Codex's `exec` tool are not recorded" in readme
+    assert "session titles are lost" in readme
+
+
+def test_privacy_documents_the_codex_limits() -> None:
+    """Pin the substance of the Codex privacy boundary, not just the word "Codex"."""
+
+    privacy = Path("docs/privacy.md").read_text(encoding="utf-8")
+
+    assert "Codex report claims a command passed or failed" in privacy
+    assert "arbitrary JavaScript program" in privacy
+    assert "no `exit_code` and no `stderr_empty` for a Codex command" in privacy
+
+
 def test_privacy_doc_explains_the_claude_code_sanitize_gap() -> None:
     privacy = Path("docs/privacy.md").read_text(encoding="utf-8")
 

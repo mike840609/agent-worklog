@@ -33,11 +33,23 @@ class ClaudeCodeSettings(BaseModel):
     )
 
 
+class CodexSettings(BaseModel):
+    """Codex harness settings."""
+
+    # `false` makes `--harness codex` fail with a configuration error, so an
+    # operator can forbid reading `~/.codex` on a whole machine.
+    enabled: bool = True
+    # One setting, not three: the state database, `sessions/` and
+    # `archived_sessions/` are all fixed positions under this directory.
+    home_directory: Path = Field(default_factory=lambda: Path.home() / ".codex")
+
+
 class HarnessSettings(BaseModel):
     """Configured coding-agent harnesses."""
 
     opencode: OpenCodeSettings = Field(default_factory=OpenCodeSettings)
     claude_code: ClaudeCodeSettings = Field(default_factory=ClaudeCodeSettings)
+    codex: CodexSettings = Field(default_factory=CodexSettings)
 
 
 class ReportSettings(BaseModel):

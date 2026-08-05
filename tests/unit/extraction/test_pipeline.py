@@ -521,3 +521,31 @@ def test_missing_stderr_metadata_leaves_opencode_behavior_untouched() -> None:
 
     assert evidence.outcomes == []
     assert evidence.errors == []
+
+
+def test_session_title_is_capped_at_the_evidence_text_length() -> None:
+    """A harness-recorded title has no length bound of its own.
+
+    Codex's `threads.title` is the verbatim first user message, and one measured
+    on a real machine ran to 1,478 characters. The cap belongs here rather than
+    in the summarizer: `SessionEvidence` is what the LLM request serializes
+    whole, so a cap applied later would protect the rendered report only.
+    """
+
+    session = resolved()
+    session.session.title = "word " * 100
+
+    evidence = extract_evidence(session)
+
+    assert evidence.title is not None
+    assert len(evidence.title) == EVIDENCE_TEXT_MAX_LENGTH
+    assert evidence.title.endswith("…")
+
+
+def test_a_short_session_title_is_left_alone() -> None:
+    session = resolved()
+    session.session.title = "Add retry to the price fetcher"
+
+    evidence = extract_evidence(session)
+
+    assert evidence.title == "Add retry to the price fetcher"

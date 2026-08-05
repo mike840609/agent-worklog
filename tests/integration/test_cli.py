@@ -396,6 +396,13 @@ def test_dry_run_keeps_progress_out_of_stdout(
     assert "Rendering report" in result.stderr
 
 
+def test_disabled_codex_harness_is_refused(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_HARNESSES__CODEX__ENABLED", "false")
+
+    result = CliRunner().invoke(cli.app, ["doctor", "--harness", "codex"])
+
+    assert result.exit_code == 3
+    assert "AGENT_WORKLOG_HARNESSES__CODEX__ENABLED" in result.stdout
 def test_report_passes_the_detail_level_to_the_report_service(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

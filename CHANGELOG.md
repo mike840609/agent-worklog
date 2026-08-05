@@ -4,6 +4,51 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Add `codex` to `--harness`. Sessions are discovered from `~/.codex/state_<n>.sqlite`,
+  which already indexes every session with its rollout path, working directory,
+  timestamps, and parent edge, so a period query is one SQL statement instead of
+  opening every rollout file; a scan of `sessions/` and `archived_sessions/` is the
+  fallback when that database is absent or its schema has changed.
+- No Codex report claims that a command passed or failed. Codex records exit codes
+  only inside free-form tool output text, in at least three formats, so a regex over
+  it would fail silently the day Codex changes it. `patch_apply_end`'s `success` flag
+  is the one structured signal used, and it reports a file change.
+- Leave commands run from inside Codex's `exec` tool out of the report. `exec` takes
+  an arbitrary JavaScript program rather than a command — a strict parse for a single
+  wrapped `exec_command` call matched none of 4,963 measured calls — so its input is
+  never put in an activity, which also keeps it out of outbound LLM requests.
+- Build the Codex usage table by differencing the running `total_token_usage` rather
+  than summing `last_token_usage`, which over-counted by 3.7% on a measured session
+  because Codex emits some `token_count` events more than once.
+- Drop the change values Codex records in `patch_apply_end.changes` in the mapper —
+  a unified diff (`unified_diff`) for the majority `update` case, or a whole file
+  (`content`) for a new one. Only the changed paths reach a session, so neither a
+  diff nor a written file's full body carries toward the report's 300-character cap.
+- Move the per-model usage table out of the Claude Code package. It reads only
+  activity metadata, so Claude Code and Codex now share one implementation.
+- Stop naming Claude Code in the missing-prompt warning for sessions from other
+  harnesses.
+- Lose Codex session titles when falling back to the rollout scan: across 238 measured
+  rollout files, no `session_meta` payload carried a `title` key, only
+  `agent_nickname` (171 of 238), and only the state database's `threads.title` column
+  has the real title.
+- Fix the rollout fallback picking the wrong session id. `session_meta.session_id` is the
+  originating/root thread id, inherited by every resumed session and every subagent, not
+  the session's own id; `session_meta.id` is. Measured against a real `~/.codex`, 220
+  rollout files carried 220 distinct `id`s but only 42 distinct `session_id`s, so the
+  fallback path was collapsing 220 real sessions onto 42 report entries. The descriptor
+  now prefers `id`, falling back to `session_id` only when `id` is absent.
+- Stop treating machine-injected `event_msg/user_message` payloads as human goals.
+  Codex writes attached shell input/output, browser context, file-mention envelopes,
+  slash-command records, task notifications, and resume summaries using the same
+  `user_message` record type as a real prompt, and none of them carried a marker the
+  mapper checked for. Measured against real data, 88 of 592 `user_message` payloads
+  were machine-injected, including raw local command output that `docs/privacy.md`
+  promises never reaches a report. The mapper now drops a `user_message` whose text
+  opens with one of a documented set of markers, contributing no goal for it; a message
+  sent with attachments therefore contributes no goal at all rather than a
+  mis-attributed one.
+
 ## 0.4.1
 
 - Redact the repository name in `scan`'s table and in `scan --verbose`'s
@@ -94,7 +139,6 @@ All notable changes to this project are documented in this file.
   with a configuration error (exit code 3) instead of the setting being ignored.
 - Move the shared subprocess runner out of the OpenCode package into
   `agent_worklog.process.CommandRunner` so both harnesses depend on one implementation.
-
 ## 0.3.0
 
 - Add a transient, single-line progress status to `scan` and `report`, showing the

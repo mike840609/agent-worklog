@@ -16,7 +16,7 @@ Agent Worklog 把 coding agent 的工作階段（session）整理成給主管看
 
 ## 功能
 
-Agent Worklog 支援 OpenCode 與 Claude Code。無論選用哪一種支援的 coding-agent
+Agent Worklog 支援 OpenCode、Claude Code 與 Codex。無論選用哪一種支援的 coding-agent
 harness，都可以：
 
 - 找出所有專案的 coding-agent 工作階段，不受目前所在資料夾限制。
@@ -47,6 +47,15 @@ harness，都可以：
   `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY` 設定的資料夾）
 
 不需要安裝 Claude Code 命令列工具；Agent Worklog 會直接讀取工作階段的逐字紀錄檔案。
+
+使用 `--harness codex` 時：
+
+- Python 3.11 以上
+- 可以用 `git` 執行的 Git
+- 一個可讀取的 `~/.codex` 資料夾（或由
+  `AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY` 設定的資料夾）
+
+不需要安裝 Codex 命令列工具；Agent Worklog 會直接讀取狀態資料庫或 rollout 檔案。
 
 `opencode stats` 是選用的。沒有它時，Agent Worklog 會略過使用量區塊，仍然會產生報告。
 
@@ -94,12 +103,14 @@ agent-worklog report --period last-week --no-llm
 
 預設輸出會寫到 `reports/` 底下。
 
-上面三個指令預設都是 `--harness opencode`。要用 Claude Code 的話，各自加上 `--harness
-claude-code` 即可，不需要安裝 OpenCode：
+上面三個指令預設都是 `--harness opencode`。要用 Claude Code 或 Codex 的話，各自加上
+`--harness claude-code` 或 `--harness codex` 即可，不需要安裝 OpenCode：
 
 ```bash
 agent-worklog doctor --harness claude-code
 agent-worklog report --harness claude-code --period last-week --no-llm
+agent-worklog doctor --harness codex
+agent-worklog report --harness codex --period last-week --no-llm
 ```
 
 ## 指令參考
@@ -118,7 +129,7 @@ agent-worklog report --harness claude-code --period last-week --no-llm
 | `--period last-week` | 統計上一個完整的日曆週。`last-week` 是唯一可用的值。 |
 | `--since ISO` | 以指定時間作為期間起點。 |
 | `--until ISO` | 以指定時間作為期間終點，必須搭配 `--since`。 |
-| `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）或 `claude-code`。 |
+| `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）、`claude-code` 或 `codex`。 |
 | `--root-only` | 排除 child 與 subagent 工作階段。 |
 | `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。用於 `scan` 時，也會列出每個 repository 的工作階段標題與工作目錄。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
@@ -143,7 +154,7 @@ In Progress 各最多五條，不輸出 Key Files、Directories、Sessions、Bra
 警告在兩種詳細程度下都會保留，因為警告說明的是工具讀不到的資料，而不是你做過的工作。
 
 `doctor` 也接受 `--harness NAME`、`--quiet` 與 `--verbose`。`--quiet` 會隱藏檢查清單，只用結束代碼回報結果；`--verbose` 不會改變 `doctor` 的輸出內容。
-使用 `--harness claude-code` 時，`doctor` 會改為檢查設定的 `~/.claude/projects` 資料夾是否存在且可讀，而不是檢查 `opencode` 執行檔與資料庫。
+使用 `--harness claude-code` 時，`doctor` 會改為檢查設定的 `~/.claude/projects` 資料夾是否存在且可讀，而不是檢查 `opencode` 執行檔與資料庫。使用 `--harness codex` 時，`doctor` 會檢查設定的 `~/.codex` 資料夾是否存在且可讀，並回報將採用哪一種探索方式：依名稱顯示的狀態資料庫，或在資料庫不存在時顯示 `directory scan`。
 
 有三條規則：
 
@@ -220,7 +231,7 @@ LLM 請求包含的是挑選過的工作資訊，而不是完整逐字紀錄。A
 
 使用 `--harness opencode` 時，每份報告都包含一個由 `opencode stats` 產生的使用量區塊，涵蓋模型、token 與工具。OpenCode 只回報「結束於現在」的期間，因此報告中顯示的期間會從報告期間的起點開始，一路延伸到報告產生的時間；它涵蓋報告期間，但範圍比較寬。如果沒有 `opencode stats`，Agent Worklog 會略過這個區塊，並在報告中加上警告。
 
-使用 `--harness claude-code` 時，使用量區塊是根據工作階段本身記錄的 token 計數產生的，因此涵蓋的是報告期間，而不是一段結束於報告產生時間的窗口；上述「範圍比較寬」的但書並不適用。期間內的每一個模型 turn 都會被計入，包含只產生內部推理（thinking）的 turn，它們的 token 由相鄰那筆有記錄的活動一併帶入。這也是它唯一的誤差來源：正好落在期間邊界上的 turn，可能會被算到邊界的另一側。
+使用 `--harness claude-code` 或 `--harness codex` 時，使用量區塊是根據工作階段本身記錄的 token 計數產生的，因此涵蓋的是報告期間，而不是一段結束於報告產生時間的窗口；上述「範圍比較寬」的但書並不適用。期間內的每一個模型 turn 都會被計入，包含只產生內部推理（thinking）的 turn，它們的 token 由相鄰那筆有記錄的活動一併帶入。這也是它唯一的誤差來源：正好落在期間邊界上的 turn，可能會被算到邊界的另一側。就 Codex 而言，這個計數本身就是 Codex 針對每次 API 請求的完整輸入所回報的數字，而不是相異 token 的數量。
 
 ## 輸出與檔案處理
 
@@ -267,9 +278,11 @@ export AGENT_WORKLOG_LLM__ENABLED="false"
 
 Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒有匯出指令，所以使用 `--harness claude-code` 時，Agent Worklog 會直接讀取 `~/.claude/projects` 底下的逐字紀錄，改為仰賴 mapper 只保留人類提示、助理文字訊息、工具名稱，以及每次工具呼叫（若有的話）的一組指令或路徑。如果一次工具呼叫兩者都沒有——例如 WebFetch 的 `url`、WebSearch 的 `query`、TodoWrite 整份的 `todos` 清單，或一般的 MCP 工具呼叫——就會改成把整個輸入序列化成 JSON，並截斷到 200 個字元。工具原始的 `stdout`／`stderr`、思考內容與 hook 輸出，都會在資料進入報告或 LLM 請求之前被捨棄。
 
-接著，兩種 harness 進入報告的每一筆佐證資訊（evidence）都會被截斷到 300 個字元，並在截斷處標上 `…`。這道長度上限的作用，是攔下像 `cat > design.md <<'EOF' … EOF` 這種 heredoc——它把整個檔案內容包在同一個指令字串裡——避免整段內容被複製進報告或 LLM 請求。機密字串樣式檢查做不到這件事：一份設計文件或事件說明裡沒有任何金鑰樣式，只有長度上限能把它移除。
+Codex 同樣沒有匯出指令，所以使用 `--harness codex` 時會直接讀取 rollout JSONL 檔案。mapper 會直接捨棄兩種內容，而不是留到後面才處理：每一筆 `patch_apply_end` 變更的值本身（裡面裝著一份 unified diff，或者該次修補寫入的整份檔案），以及每一次 `exec` 呼叫的輸入（一段任意的 JavaScript 程式）。只有被改動檔案的路徑與工具名稱會保留下來；重新命名的目的路徑也在這個被捨棄的值裡面，因此同樣不會出現在 Key Files 中。指令只會從 `exec_command` 保留，因為它的參數會用一個欄位指名該指令。
 
-兩種 harness 都會在產生報告或發出選用的 LLM 請求之前，經過常見的機密字串樣式檢查。樣式檢查無法找出所有可能的機密資料。
+接著，三種 harness 進入報告的每一筆佐證資訊（evidence）都會被截斷到 300 個字元，並在截斷處標上 `…`。這道長度上限的作用，是攔下像 `cat > design.md <<'EOF' … EOF` 這種 heredoc——它把整個檔案內容包在同一個指令字串裡——避免整段內容被複製進報告或 LLM 請求。機密字串樣式檢查做不到這件事：一份設計文件或事件說明裡沒有任何金鑰樣式，只有長度上限能把它移除。
+
+三種 harness 都會在產生報告或發出選用的 LLM 請求之前，經過常見的機密字串樣式檢查。樣式檢查無法找出所有可能的機密資料。
 
 報告中仍可能包含私人的目標、檔名、指令、工作描述，以及工作資料夾的完整路徑。這些路徑常常包含你的使用者名稱，以及客戶或雇主的名稱；機密字串檢查刻意保留它們，好讓報告能說明工作發生在哪裡。分享報告前請務必先檢查內容。
 
@@ -278,7 +291,7 @@ Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒
 
 ## 失敗處理與結束代碼
 
-如果某個工作階段無法讀取，Agent Worklog 會略過它並在報告中加上警告——OpenCode 是 `opencode export` 失敗，Claude Code 則是逐字紀錄檔案無法讀取。如果所有工作階段都無法讀取，指令會直接以錯誤結束，而不會產生空白報告。
+如果某個工作階段無法讀取，Agent Worklog 會略過它並在報告中加上警告——OpenCode 是 `opencode export` 失敗，Claude Code 或 Codex 則是逐字紀錄檔案無法讀取。如果所有工作階段都無法讀取，指令會直接以錯誤結束，而不會產生空白報告。
 
 | 代碼 | 意義 |
 |---:|---|
@@ -291,16 +304,21 @@ Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料。Claude Code 沒
 
 ## 目前支援範圍與限制
 
-- 目前支援的 coding agent 工具是 OpenCode 與 Claude Code；用 `--harness` 挑選其中一個。
+- 目前支援的 coding agent 工具是 OpenCode、Claude Code 與 Codex；用 `--harness` 挑選其中一個。
 - 使用 `--harness opencode` 時，Agent Worklog 透過 OpenCode 命令列工具取得工作階段資料，不會直接讀取 SQLite 資料庫。
 - 報告格式只有 Markdown。
-- 使用量的期間但書只適用於 OpenCode：`opencode stats` 涵蓋的期間結束於報告產生的時間，範圍比報告期間寬。Claude Code 的使用量是根據工作階段本身產生的，涵蓋的就是報告期間，誤差不超過期間兩端各一個模型 turn。
+- 使用量的期間但書只適用於 OpenCode：`opencode stats` 涵蓋的期間結束於報告產生的時間，範圍比報告期間寬。Claude Code 與 Codex 的使用量都是根據工作階段本身產生的，涵蓋的就是報告期間，誤差不超過期間兩端各一個模型 turn。
 - Agent Worklog 不會在多次執行之間保留快取，也沒有提供 `inspect` 指令。
 - 較舊的 OpenCode 工作階段若工作資料夾已被刪除，可能會使用備援 ID。
 - Repository 分組使用的是產生報告當下可取得的 Git 資訊。
-- 目前不支援 Codex。
-- Claude Code 工作階段沒有結束代碼（exit code），因此 Claude Code 的報告不會聲稱任何測試或 lint 指令通過或失敗。stderr 為空的驗證指令會以 `Ran verification command: <command>` 列在「In Progress」底下；若指令自己重導了 stderr（`2>`、`&>`、`|&`），則完全不產生任何結果判定，因為這種情況下 stderr 為空並不代表任何事。stderr 非空同樣不視為失敗——Git 成功時也會往 stderr 寫東西。只有 OpenCode 有真正的 exit code，才會把驗證結果報告為通過。
+- Claude Code 工作階段沒有結束代碼（exit code），因此 Claude Code 的報告不會聲稱任何測試或 lint 指令通過或失敗。stderr 為空的驗證指令會以 `Ran verification command: <command>` 列在「In Progress」底下；若指令自己重導了 stderr（`2>`、`&>`、`|&`），則完全不產生任何結果判定，因為這種情況下 stderr 為空並不代表任何事。stderr 非空同樣不視為失敗——Git 成功時也會往 stderr 寫東西。只有 OpenCode 有真正的 exit code，才會把驗證結果報告為通過。Codex 既沒有設定 exit code，也沒有這個 stderr 訊號，因此同樣不會套用這項推論規則。
 - 若一個 Claude Code 工作階段橫跨多個工作目錄，會被歸到最後一個工作目錄底下。
+- Codex 的報告會顯示目標、變更過的檔案與 token 使用量，但不會列出指令。透過 `exec_command` 記錄的指令只會進入選用的 LLM 摘要，不會出現在報告的其他地方；使用 `--no-llm` 時，報告裡完全不會有它的蹤跡。
+- 從 Codex 的 `exec` 工具內執行的指令，甚至連這一步都不會被記錄下來。`exec` 接受的是一段 JavaScript 程式，而不是指令，因此沒有指令可以記錄。
+- 沒有任何 Codex 報告會聲稱某個指令成功或失敗。Codex 只在自由格式的工具輸出裡記錄結束代碼（exit code），而且格式不只一種，因此只有 `patch_apply_end` 結構化的 `success` 欄位會被採信——而它回報的是檔案變更，不是驗證結果。
+- Codex 的使用量計算的是每一次 API 請求的完整輸入，這也是 Codex 本身回報的數字，並不是相異 token 的數量。
+- 當找不到可讀取的 Codex 狀態資料庫、Agent Worklog 改為掃描 rollout 檔案時，工作階段標題會遺失：rollout 檔案只帶有 `agent_nickname`，從來沒有 `title`，`title` 只存在於狀態資料庫中。
+- 附帶附件送出的 Codex 訊息——瀏覽器上下文、提及的檔案、shell 指令與其輸出、slash 指令、背景工作通知，或是續接摘要——不會產生任何目標（goal）。Agent Worklog 無法在不解析這種未有文件記載的格式的情況下，從整個附件包裹中分辨出真正的請求，因此寧可漏掉這個目標，也不要把它歸錯對象。
 
 ## 開發檢查
 

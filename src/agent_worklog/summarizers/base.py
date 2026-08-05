@@ -13,7 +13,12 @@ class RepositorySummarizer(ABC):
 
 
 def _normalized_title(title: str | None) -> str | None:
-    """Collapse whitespace so free-text titles stay on one Markdown list item."""
+    """Collapse whitespace so free-text titles stay on one Markdown list item.
+
+    Length is not this function's job: `extract_evidence` caps the title when it
+    enters the evidence, which is the only point that also covers the outbound
+    LLM request.
+    """
 
     if title is None:
         return None

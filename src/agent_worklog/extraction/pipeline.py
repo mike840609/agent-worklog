@@ -216,7 +216,14 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
     evidence = SessionEvidence(
         session_id=resolved.session.session_id,
         repository_id=resolved.repository.repository_id,
-        title=resolved.session.title,
+        # A harness-recorded title has no length bound of its own: Codex's
+        # `threads.title` is the verbatim first user message, and the longest on
+        # a real machine is 1,478 characters. Capping here rather than in the
+        # summarizer is what also covers the outbound LLM request, which sends
+        # this whole model.
+        title=_truncate(_normalize(resolved.session.title))
+        if resolved.session.title
+        else None,
         working_directory=resolved.session.working_directory,
     )
     repository_id = resolved.repository.repository_id

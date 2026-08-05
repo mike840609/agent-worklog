@@ -28,14 +28,15 @@ class Resolver(Protocol):
 
 
 def _has_assistant_work_but_no_prompt(session: AgentSession) -> bool:
-    """Detect a root session whose user prompts were all filtered out of the mapping.
+    """Detect a root session whose prompts were filtered out or that never had any.
 
     A Claude Code transcript written before roughly version 2.1.187 carries no
     `origin` key, so the mapper's `origin.kind == "human"` filter — which exists to
     keep hook output and system reminders out of the report's goals — drops every
-    user message in that file. 10 of 72 recent root sessions are affected, one of
-    them with 188 assistant records. Loosening the filter would readmit the noise
-    it was written to block, so the loss is reported instead of guessed at.
+    user message in that file. This is an example: 10 of 72 recent Claude Code root
+    sessions are affected, one of them with 188 assistant records. Loosening the
+    filter would readmit the noise it was written to block, so the loss is reported
+    instead of guessed at.
 
     Child and subagent sessions are exempt. A subagent is spawned with a prompt its
     parent wrote, not one a human typed, so it holds no human prompt by design:
@@ -49,6 +50,26 @@ def _has_assistant_work_but_no_prompt(session: AgentSession) -> bool:
     return bool(types & _ASSISTANT_ACTIVITY_TYPES) and (
         ActivityType.USER_MESSAGE not in types
     )
+
+
+def _missing_prompt_warning(session: AgentSession) -> str:
+    """Explain a session that recorded work but no prompts, per harness.
+
+    The Claude Code case has a known cause worth naming. No other harness does,
+    so the generic sentence stops the report from blaming a Claude Code version
+    for a Codex or OpenCode session.
+    """
+
+    base = (
+        f"Session {session.session_id} recorded assistant work but no user "
+        "messages, so it contributes no goals"
+    )
+    if session.harness == "claude-code":
+        return (
+            f"{base}; a Claude Code transcript written before version 2.1.187 "
+            "does not mark human prompts"
+        )
+    return base
 
 
 @dataclass(frozen=True)
@@ -110,12 +131,7 @@ class ScanService:
                         "timestamp-less activities that were excluded"
                     )
                 if _has_assistant_work_but_no_prompt(session):
-                    warnings.append(
-                        f"Session {session.session_id} recorded assistant work but no "
-                        "user messages, so it contributes no goals; a Claude Code "
-                        "transcript written before version 2.1.187 does not mark "
-                        "human prompts"
-                    )
+                    warnings.append(_missing_prompt_warning(session))
                 filtered = filter_session_to_period(session, self._period)
                 if filtered is None:
                     continue
