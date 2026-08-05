@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Redact the repository name in `scan`'s table and in `scan --verbose`'s
+  repository heading, and stop the table from interpreting that name as Rich
+  markup. Both call sites now match the session listing's existing handling, so
+  the same repository's name can no longer read differently across the two
+  views of one `scan` run.
 - Report Claude Code verification commands as completed when the harness observed
   them succeed. Claude Code records no exit code, so the extractor treated every
   command as having an unobservable outcome and `Completed` was empty in every

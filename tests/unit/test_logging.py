@@ -244,6 +244,92 @@ def test_quiet_scan_still_prints_only_the_count() -> None:
     assert output_stream.getvalue().strip() == "1"
 
 
+def scan_result_with_display_name(display_name: str) -> ScanResult:
+    """A repository whose display name itself carries the content under test.
+
+    `scan_result_with` always uses the fixed name "Agent Worklog"; these two
+    call sites are about the name itself, so they need one they control.
+    """
+
+    identity = RepositoryIdentity(
+        repository_id="git:github.com/mike/agent-worklog",
+        display_name=display_name,
+        identity_type=RepositoryIdentityType.GIT_REMOTE,
+        normalized_remote="github.com/mike/agent-worklog",
+        resolution_method="test",
+    )
+    session = AgentSession(harness="opencode", session_id="ses_abc")
+    resolved = [ResolvedSession(session=session, repository=identity)]
+    return ScanResult(
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=SCAN_TZ),
+            until=datetime(2026, 7, 27, tzinfo=SCAN_TZ),
+        ),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=resolved,
+        sessions_by_repository={"git:github.com/mike/agent-worklog": resolved},
+    )
+
+
+def test_scan_table_redacts_a_secret_in_the_repository_name() -> None:
+    """The table is the only place in `scan_result` that skips redaction.
+
+    A path-fallback identity embeds the working directory in `display_name`,
+    so a secret-bearing path reaches the table unredacted today.
+    """
+
+    output_stream = StringIO()
+    reporter = ConsoleReporter(console=forced_console(output_stream, width=200))
+
+    reporter.scan_result(
+        scan_result_with_display_name("token=tablesecretvalue999")
+    )
+
+    output = output_stream.getvalue()
+    assert "tablesecretvalue999" not in output
+    assert "[REDACTED]" in output
+
+
+def test_scan_table_does_not_interpret_a_repository_name_as_rich_markup() -> None:
+    """The verbose listing already disables markup; the table must match it.
+
+    A `[bold]...[/bold]` name prints correctly in the listing and is silently
+    eaten by the table today — the same repository's name disagreeing with
+    itself between two views of the same `scan` run.
+    """
+
+    output_stream = StringIO()
+    reporter = ConsoleReporter(console=forced_console(output_stream, width=200))
+
+    reporter.scan_result(
+        scan_result_with_display_name("[bold]not markup[/bold]")
+    )
+
+    assert "[bold]not markup[/bold]" in output_stream.getvalue()
+
+
+def test_verbose_scan_redacts_a_secret_in_the_repository_heading() -> None:
+    """The verbose listing's repository heading is the one string in that
+    block that skips `redact_text` today, unlike `label` and `location`.
+    """
+
+    output_stream = StringIO()
+    reporter = ConsoleReporter(
+        verbose=True,
+        console=forced_console(output_stream, width=200),
+    )
+
+    reporter.scan_result(
+        scan_result_with_display_name("token=headingsecretvalue999")
+    )
+
+    output = output_stream.getvalue()
+    assert "headingsecretvalue999" not in output
+    assert "[REDACTED]" in output
+
+
 def test_verbose_scan_redacts_secrets_in_session_titles() -> None:
     """Claude Code transcripts have no upstream sanitize step.
 
