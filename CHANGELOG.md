@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 0.5.0
+
 - Add `codex` to `--harness`. Sessions are discovered from `~/.codex/state_<n>.sqlite`,
   which already indexes every session with its rollout path, working directory,
   timestamps, and parent edge, so a period query is one SQL statement instead of
