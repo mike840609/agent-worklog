@@ -77,3 +77,38 @@ def test_readmes_document_the_verbose_scan_session_listing() -> None:
 
     assert "lists each repository's session titles and working folders" in readme
     assert "列出每個 repository 的工作階段標題與工作目錄" in readme_zh_tw
+
+
+def test_readmes_document_the_config_command() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        assert "agent-worklog config set llm.model gpt-5" in text
+        assert "agent-worklog config list" in text
+        assert "agent-worklog config unset" in text
+
+
+def test_configuration_doc_explains_the_file_and_its_precedence() -> None:
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "config.env" in configuration
+    assert "AGENT_WORKLOG_CONFIG_FILE" in configuration
+    assert "agent-worklog config path" in configuration
+    # The order is the whole contract of the file.
+    assert "environment variable, then the settings file, then the default" in configuration
+
+
+def test_every_variable_in_the_configuration_doc_is_a_real_setting() -> None:
+    """Catch a documented setting the model dropped or renamed."""
+
+    import re
+
+    from agent_worklog.config_store import setting_keys
+
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+    documented = set(re.findall(r"AGENT_WORKLOG_[A-Z0-9_]+", configuration))
+    known = {setting.variable for setting in setting_keys()}
+    known.add("AGENT_WORKLOG_CONFIG_FILE")
+
+    assert documented <= known, f"documented but not settable: {documented - known}"

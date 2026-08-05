@@ -126,6 +126,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `doctor` | Checks that the selected harness and `git` are ready to use. |
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
+| `config` | Shows and edits the settings file: `path`, `list`, `set`, `unset`. |
 
 `scan` and `report` share these options:
 
@@ -301,15 +302,35 @@ output path after a successful report.
 
 ## Configuration
 
-Agent Worklog uses environment variables for its settings. Variable names start with
-`AGENT_WORKLOG_`. Use `__` between parts of a setting name. For example:
+Agent Worklog reads every setting from an environment variable, and reads a settings
+file for the ones the environment does not set. For each setting it takes the
+environment variable, then the settings file, then the default.
+
+Set a value once, in the settings file:
+
+```bash
+agent-worklog config set llm.model gpt-5
+agent-worklog config set report.timezone Europe/Berlin
+agent-worklog config list
+```
+
+`config list` shows every setting with its current value, whether that value came from
+the environment, the file, or the default, and what the default is. Every setting is
+optional: an empty value restores the default, and so does `unset`.
+
+```bash
+agent-worklog config set llm.model ""
+agent-worklog config unset report.timezone
+```
+
+`agent-worklog config path` prints the file location. Set `AGENT_WORKLOG_CONFIG_FILE`
+to use a different file.
+
+Variable names start with `AGENT_WORKLOG_`, with `__` between parts of a setting name.
+An exported variable overrides the file for that shell:
 
 ```bash
 export AGENT_WORKLOG_REPORT__TIMEZONE="Asia/Taipei"
-export AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY="reports"
-export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE="opencode"
-export AGENT_WORKLOG_LLM__MODEL="gpt-5-mini"
-export AGENT_WORKLOG_LLM__BASE_URL="https://api.openai.com/v1/"
 export AGENT_WORKLOG_LLM__ENABLED="false"
 ```
 

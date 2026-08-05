@@ -1,13 +1,47 @@
 # Configuration
 
-Agent Worklog 0.1 reads configuration from environment variables through
-`pydantic-settings`.
+Agent Worklog reads every setting from an environment variable, and reads a settings
+file for the ones the environment does not set. For each setting it takes the
+environment variable, then the settings file, then the default.
 
 - Prefix: `AGENT_WORKLOG_`
 - Nested delimiter: `__`
 - Boolean values: `true` or `false`
 
-No YAML configuration file is loaded in the MVP.
+Every setting is optional. Leaving one out — or setting it to an empty value — uses
+the default listed in the tables below.
+
+## The settings file
+
+`agent-worklog config` reads and writes a settings file so that a value survives the
+shell it was set in:
+
+```bash
+agent-worklog config path                        # where the file is
+agent-worklog config list                        # every setting, value, and source
+agent-worklog config set llm.model gpt-5         # write one setting
+agent-worklog config set llm.model ""            # empty value: back to the default
+agent-worklog config unset llm.model             # same thing, spelled out
+```
+
+Keys are the lowercase, dot-separated form of the variable name, so
+`AGENT_WORKLOG_LLM__MODEL` is `llm.model` and
+`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` is
+`harnesses.opencode.cli.executable`. `config list` shows both forms of every setting
+with its current value, whether that value came from the environment, the file, or the
+default, and what the default is.
+
+The file is a `config.env` in the user configuration directory — run
+`agent-worklog config path` to see the exact location, which differs by platform. Set
+`AGENT_WORKLOG_CONFIG_FILE` to use a different file, such as one checked into a
+project. The file is created readable and writable only by its owner.
+
+An exported variable always beats the file, so `AGENT_WORKLOG_LLM__ENABLED=false
+agent-worklog report --period last-week` still works with a file that enables the LLM.
+`config set` says so when the setting it just wrote is already exported.
+
+`config set` refuses an unknown key and a value the settings would reject, so a typo
+fails at the moment you make it rather than on the next report. Both exit with code 3.
 
 ## OpenCode harness
 
@@ -120,7 +154,8 @@ To disable it for one command:
 agent-worklog report --period last-week --no-llm
 ```
 
-## CLI precedence
+## Precedence
 
-CLI period and output options apply to the current invocation. Environment settings
-provide defaults for harness execution, timezone, output directory, and LLM behavior.
+For each setting, Agent Worklog takes the environment variable, then the settings file,
+then the default. CLI period and output options apply to the current invocation only and
+override the settings that back them.
