@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 0.4.1
+
 - Redact the repository name in `scan`'s table and in `scan --verbose`'s
   repository heading, and stop the table from interpreting that name as Rich
   markup. Both call sites now match the session listing's existing handling, so
