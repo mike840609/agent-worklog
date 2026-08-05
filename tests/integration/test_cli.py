@@ -506,7 +506,7 @@ def test_config_path_prints_the_settings_file(monkeypatch, tmp_path) -> None:
 
 def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
-    path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='stored-model'\n", encoding="utf-8")
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
     monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
     # A second setting, set through the environment rather than the file, so the
@@ -524,7 +524,7 @@ def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_pa
     assert "Every setting is optional" in result.stdout
 
     llm_row = next(line for line in result.stdout.splitlines() if "llm.model" in line)
-    assert "from-file" in llm_row
+    assert "stored-model" in llm_row
     assert "file" in llm_row
     assert "gpt-5-mini" in llm_row
 
