@@ -15,6 +15,49 @@ engineers time.
 
 ![Agent sessions are grouped into weekly engineering reports](https://github.com/mike840609/agent-worklog/raw/refs/heads/main/docs/assets/agent-worklog-overview.png)
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Sources["Session sources"]
+        OC["OpenCode<br/>(opencode db + export)"]
+        CC["Claude Code<br/>(~/.claude/projects transcripts)"]
+        CX["Codex<br/>(~/.codex state DB or rollouts)"]
+    end
+
+    subgraph Pipeline["Scan pipeline"]
+        SC["ScanService<br/>discover → load → filter"]
+        RV["RepositoryResolver<br/>origin → common dir → harness → path"]
+    end
+
+    subgraph Report["Report pipeline"]
+        EX["Extraction<br/>evidence + 300-char cap"]
+        RD["Redaction<br/>secret patterns"]
+        SU["Summarizer<br/>rule-based or LLM"]
+        US["Usage stats<br/>opencode stats or session tokens"]
+        RE["MarkdownRenderer"]
+        WR["Atomic write<br/>0600 on POSIX"]
+    end
+
+    CLI["doctor / scan / report"] --> OC
+    CLI --> CC
+    CLI --> CX
+    OC --> SC
+    CC --> SC
+    CX --> SC
+    SC --> RV
+    RV --> EX
+    EX --> RD
+    RD --> SU
+    US --> RE
+    SU --> RE
+    RE --> WR
+```
+
+Agent Worklog runs one of three sources per harness, loads only the sessions that overlap
+the requested period, groups them by repository, redacts and summarizes the evidence, and
+writes the Markdown report atomically with owner-only permissions.
+
 ## Capabilities
 
 Agent Worklog supports OpenCode, Claude Code, and Codex. Across supported coding-agent
