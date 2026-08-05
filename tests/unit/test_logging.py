@@ -467,14 +467,17 @@ def test_settings_table_shows_values_sources_and_defaults() -> None:
         [
             SettingRow(
                 key="llm.model",
-                variable="AGENT_WORKLOG_LLM__MODEL",
-                value="gpt-5",
+                # Deliberately shares no substring with the default below: an
+                # earlier version of this test used "gpt-5" here against a
+                # default of "gpt-5-mini", so blanking the Value column
+                # entirely still passed (the default cell contains "gpt-5" as
+                # a substring). "gpt-4o" cannot pass that way.
+                value="gpt-4o",
                 source="file",
                 default="gpt-5-mini",
             ),
             SettingRow(
                 key="report.timezone",
-                variable="AGENT_WORKLOG_REPORT__TIMEZONE",
                 value="Asia/Taipei",
                 source="default",
                 default="Asia/Taipei",
@@ -494,9 +497,45 @@ def test_settings_table_shows_values_sources_and_defaults() -> None:
     # whole-output `assert "file" in output` would pass even with the source
     # column left blank, so the source must be pinned to its own row.
     llm_row = next(line for line in output.splitlines() if "llm.model" in line)
-    assert "gpt-5" in llm_row
+    assert "gpt-4o" in llm_row
     assert "file" in llm_row
     assert "gpt-5-mini" in llm_row
 
     timezone_row = next(line for line in output.splitlines() if "report.timezone" in line)
     assert "default" in timezone_row
+
+
+def test_settings_table_fully_renders_a_long_key_at_80_columns() -> None:
+    """`config list`'s job is teaching key names; it must work at the default width.
+
+    At COLUMNS=80, Rich's default truncation ellipsizes most keys down to an
+    identical "harnesses.opencode.…" prefix. Folding wraps a key across lines
+    inside the table borders instead, so the assertion strips borders and
+    whitespace before checking that the full key text — not just a prefix —
+    is present in the output.
+    """
+    from pathlib import Path
+
+    from agent_worklog.config_store import SettingRow
+
+    output_stream = StringIO()
+    reporter = ConsoleReporter(console=forced_console(output_stream, width=80))
+
+    reporter.settings_table(
+        [
+            SettingRow(
+                key="harnesses.opencode.cli.timeout_seconds",
+                value="30.0",
+                source="default",
+                default="30.0",
+            ),
+        ],
+        path=Path("/home/dev/.config/agent-worklog/config.env"),
+    )
+    output = output_stream.getvalue()
+
+    border_chars = "│┃┏┓┗┛┡┩┢┪┣┫┳┻╇╈╆╅╄╃╂┄─"
+    collapsed = "".join(char for char in output if char not in border_chars and not char.isspace())
+
+    assert "harnesses.opencode.cli.timeout_seconds" in collapsed
+    assert "…" not in output

@@ -140,10 +140,15 @@ class ConsoleReporter:
         """
 
         table = Table(title="Agent Worklog Settings")
-        table.add_column("Setting")
-        table.add_column("Value")
+        # `config list`'s whole job is teaching the user the key names they
+        # type into `config set`; at the default 80-column terminal, Rich's
+        # default ellipsis truncation cuts most keys down to an identical
+        # "harnesses.opencode.…" prefix. Folding wraps instead, so the full
+        # key, value, and default are always readable regardless of width.
+        table.add_column("Setting", overflow="fold")
+        table.add_column("Value", overflow="fold")
         table.add_column("From")
-        table.add_column("Default")
+        table.add_column("Default", overflow="fold")
         for row in rows:
             table.add_row(row.key, Text(row.value), row.source, Text(row.default))
         self.console.print(table)
