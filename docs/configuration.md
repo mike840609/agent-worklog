@@ -27,18 +27,28 @@ agent-worklog config unset llm.model             # same thing, spelled out
 Keys are the lowercase, dot-separated form of the variable name, so
 `AGENT_WORKLOG_LLM__MODEL` is `llm.model` and
 `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` is
-`harnesses.opencode.cli.executable`. `config list` shows both forms of every setting
-with its current value, whether that value came from the environment, the file, or the
-default, and what the default is.
+`harnesses.opencode.cli.executable`. `config list` shows every setting's key, its
+current value, whether that value came from the environment, the file, or the default,
+and what the default is.
 
 The file is a `config.env` in the user configuration directory — run
 `agent-worklog config path` to see the exact location, which differs by platform. Set
-`AGENT_WORKLOG_CONFIG_FILE` to use a different file, such as one checked into a
-project. The file is created readable and writable only by its owner.
+`AGENT_WORKLOG_CONFIG_FILE` to use a different file — for example a dedicated
+`agent-worklog.env` for one project, not a general project `.env` file, which invites
+foreign variables and secrets that have nothing to do with Agent Worklog into the same
+file. The file is created readable and writable only by its owner on macOS and Linux.
+
+The settings file is not a place for secrets: like any environment variable,
+`AGENT_WORKLOG_LLM__API_KEY_ENV` names an environment variable that holds a key rather
+than holding the key itself (see the LLM settings section below), and the same applies
+to every other setting. `config list` prints every value — including whatever you put
+in the file — unredacted, by design: these are your own settings, shown at your own
+request.
 
 An exported variable always beats the file, so `AGENT_WORKLOG_LLM__ENABLED=false
 agent-worklog report --period last-week` still works with a file that enables the LLM.
-`config set` says so when the setting it just wrote is already exported.
+`config set` and `config unset` say so when the setting they just touched is already
+exported.
 
 `config set` refuses an unknown key and a value the settings would reject, so a typo
 fails at the moment you make it rather than on the next report. Both exit with code 3.
