@@ -540,3 +540,91 @@ def test_help_lists_the_config_command() -> None:
 
     assert result.exit_code == 0
     assert "config" in result.stdout
+
+
+def test_config_set_writes_the_value_and_the_next_load_reads_it(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    assert result.exit_code == 0
+    assert cli._load_settings().llm.model == "gpt-5"
+
+
+def test_config_set_rejects_an_unknown_key(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.mdoel", "gpt-5"])
+
+    assert result.exit_code == 3
+    assert "did you mean llm.model" in result.stdout
+
+
+def test_config_set_rejects_a_value_the_settings_model_would_reject(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "llm.timeout_seconds", "abc"]
+    )
+
+    assert result.exit_code == 3
+    assert "invalid value for llm.timeout_seconds" in result.stdout
+    assert not path.exists()
+
+
+def test_config_set_with_an_empty_value_restores_the_default(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", ""])
+
+    assert result.exit_code == 0
+    assert "gpt-5-mini" in result.stdout
+    assert cli._load_settings().llm.model == "gpt-5-mini"
+
+
+def test_config_unset_restores_the_default(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    result = CliRunner().invoke(cli.app, ["config", "unset", "llm.model"])
+
+    assert result.exit_code == 0
+    assert cli._load_settings().llm.model == "gpt-5-mini"
+
+
+def test_config_unset_of_an_unset_key_says_the_default_is_already_in_use(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("COLUMNS", "200")
+
+    result = CliRunner().invoke(cli.app, ["config", "unset", "llm.model"])
+
+    assert result.exit_code == 0
+    assert "already using default" in result.stdout
+
+
+def test_config_set_warns_when_the_environment_overrides_the_write(
+    monkeypatch, tmp_path
+) -> None:
+    """Without this note the write is a silent no-op for the whole shell."""
+
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("AGENT_WORKLOG_LLM__MODEL", "from-environment")
+    monkeypatch.setenv("COLUMNS", "200")
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    assert result.exit_code == 0
+    assert "AGENT_WORKLOG_LLM__MODEL" in result.stdout
+    assert "takes precedence" in result.stdout

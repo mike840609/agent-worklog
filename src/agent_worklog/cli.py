@@ -456,3 +456,61 @@ def config_list() -> None:
 
     path = config_store.config_file_path()
     ConsoleReporter().settings_table(config_store.describe_settings(path), path=path)
+
+
+def _default_restored(setting: config_store.SettingKey, removed: bool) -> str:
+    if removed:
+        return f"Removed {setting.key}; using default: {setting.default}"
+    return f"{setting.key} was not set; already using default: {setting.default}"
+
+
+def _warn_if_shadowed(
+    reporter: ConsoleReporter, setting: config_store.SettingKey
+) -> None:
+    """Say so when an exported variable overrides what was just written.
+
+    The environment wins over the file, so without this the command reports
+    success on a change the next run will ignore.
+    """
+
+    if os.environ.get(setting.variable) is not None:
+        reporter.message(
+            f"Note: {setting.variable} is set in the environment "
+            "and takes precedence."
+        )
+
+
+@config_app.command("set")
+def config_set(key: str, value: str) -> None:
+    """Set one setting. An empty value restores its default."""
+
+    reporter = ConsoleReporter()
+    path = config_store.config_file_path()
+    try:
+        if value == "":
+            # Every setting is optional, so "no value" is a real answer: drop
+            # the entry rather than storing an empty string the model would
+            # then have to interpret.
+            setting, removed = config_store.unset_value(key, path=path)
+            reporter.message(_default_restored(setting, removed))
+        else:
+            setting = config_store.set_value(key, value, path=path)
+            reporter.message(f"{setting.key} = {value} ({path})")
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+    _warn_if_shadowed(reporter, setting)
+
+
+@config_app.command("unset")
+def config_unset(key: str) -> None:
+    """Remove one setting so its default applies again."""
+
+    reporter = ConsoleReporter()
+    try:
+        setting, removed = config_store.unset_value(key)
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+    reporter.message(_default_restored(setting, removed))
+    _warn_if_shadowed(reporter, setting)
