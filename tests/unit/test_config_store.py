@@ -1,3 +1,5 @@
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,17 @@ from agent_worklog.config_store import (
     validate_value,
 )
 from agent_worklog.errors import ConfigurationError
+
+# chmod-based permission denial does not bite on Windows, and root ignores
+# file-permission bits entirely, so both would make these tests spuriously
+# fail to reproduce the OSError they exist to catch.
+_PERMISSIONS_DO_NOT_APPLY = sys.platform.startswith("win") or (
+    hasattr(os, "geteuid") and os.geteuid() == 0
+)
+skip_unless_permissions_enforced = pytest.mark.skipif(
+    _PERMISSIONS_DO_NOT_APPLY,
+    reason="chmod-based permission denial does not apply on Windows or as root",
+)
 
 
 def test_setting_keys_cover_the_leaves_of_the_settings_tree() -> None:
@@ -184,3 +197,66 @@ def test_describe_settings_works_without_a_settings_file(settings_file: Path) ->
 
     assert not settings_file.exists()
     assert rows["llm.model"].source == "default"
+
+
+# --- IMPORTANT 2: filesystem errors must raise ConfigurationError, not a raw
+# OSError, so they exit with code 3 like every other settings failure instead
+# of dumping a traceback.
+
+
+@skip_unless_permissions_enforced
+def test_set_value_raises_configuration_error_on_an_unwritable_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = tmp_path / "unwritable"
+    directory.mkdir()
+    path = directory / "config.env"
+    monkeypatch.setenv(CONFIG_FILE_VARIABLE, str(path))
+    directory.chmod(0o500)  # read + execute only: no write, no create
+    try:
+        with pytest.raises(ConfigurationError):
+            set_value("llm.model", "gpt-5")
+    finally:
+        directory.chmod(0o700)  # restore so pytest can clean up tmp_path
+
+
+@skip_unless_permissions_enforced
+def test_describe_settings_raises_configuration_error_on_an_unreadable_file(
+    settings_file: Path,
+) -> None:
+    set_value("llm.model", "gpt-5")
+    settings_file.chmod(0o000)
+    try:
+        with pytest.raises(ConfigurationError):
+            describe_settings()
+    finally:
+        settings_file.chmod(0o600)  # restore so pytest can clean up tmp_path
+
+
+# --- IMPORTANT 5: `_prepare_file` must not silently reset the mode of a file
+# it did not create.
+
+
+def test_set_value_keeps_the_mode_of_a_preexisting_file(settings_file: Path) -> None:
+    settings_file.write_text("", encoding="utf-8")
+    settings_file.chmod(0o644)
+
+    set_value("llm.model", "gpt-5")
+
+    assert settings_file.stat().st_mode & 0o777 == 0o644
+
+
+# --- MINOR: no existing test exercises `_prepare_file`'s `parent.mkdir`
+# branch, because the `settings_file` fixture's directory (`tmp_path`) always
+# already exists — but a missing config directory is the real first-run path.
+
+
+def test_set_value_creates_a_missing_config_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "nested" / "config.env"
+    monkeypatch.setenv(CONFIG_FILE_VARIABLE, str(path))
+
+    set_value("llm.model", "gpt-5")
+
+    assert stored_values(path) == {"AGENT_WORKLOG_LLM__MODEL": "gpt-5"}

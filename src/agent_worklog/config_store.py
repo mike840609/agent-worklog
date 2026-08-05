@@ -55,7 +55,6 @@ class SettingRow:
     """One setting as `config list` shows it."""
 
     key: str
-    variable: str
     value: str
     source: str
     default: str
@@ -73,6 +72,12 @@ def _walk(model: type[BaseModel], prefix: tuple[str, ...]) -> Iterator[SettingKe
         yield SettingKey(
             key=dotted,
             variable=ENV_PREFIX + dotted.upper().replace(".", "__"),
+            # `field.annotation` is typed as `type[Any] | None` by pydantic, so
+            # non-class annotations (e.g. a `TypeAdapter`-unfriendly generic)
+            # fall back to `str` purely to satisfy the type checker here — no
+            # field in `config.py` currently takes this path, so if one does,
+            # `validate_value` below is not actually validating that field's
+            # real type and needs a second look.
             annotation=annotation if isinstance(annotation, type) else str,
             default=_as_text(default),
         )
@@ -115,24 +120,47 @@ def validate_value(setting: SettingKey, value: str) -> None:
         raise ConfigurationError(f"invalid value for {setting.key}: {detail}") from exc
 
 
-def _prepare_file(path: Path) -> None:
-    """Create the file owner-only before dotenv writes to it.
+def _resolve_path(path: Path | None) -> Path:
+    """The one place the "explicit path, else the resolved default" idiom lives."""
 
-    dotenv would create a world-readable file, and what is in the user's config
-    directory is nobody else's business.
+    return path or config_file_path()
+
+
+def _prepare_file(path: Path) -> None:
+    """Create the file the first time only, owner-only, before dotenv writes to it.
+
+    The mode is set only on a file this call creates: a pre-existing file —
+    for instance one `AGENT_WORKLOG_CONFIG_FILE` points at that some other
+    tool or teammate already owns — must keep whatever mode it already has,
+    not silently become 0600 on the first `config set`. `O_EXCL` makes
+    "create if absent" atomic instead of a check-then-act race.
     """
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch(exist_ok=True)
-    if os.name == "posix":
-        path.chmod(0o600)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            return
+        try:
+            # The mode above is masked by umask; fchmod pins the exact bits,
+            # mirroring secure_files.py's atomic_secure_write.
+            if os.name == "posix":
+                os.fchmod(descriptor, 0o600)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise ConfigurationError(f"cannot prepare settings file: {path}: {exc}") from exc
 
 
 def stored_values(path: Path | None = None) -> dict[str, str]:
     """Return the variables the settings file defines, ignoring valueless lines."""
 
-    file_path = path or config_file_path()
-    values = dotenv_values(file_path)
+    file_path = _resolve_path(path)
+    try:
+        values = dotenv_values(file_path)
+    except OSError as exc:
+        raise ConfigurationError(f"cannot read settings file: {file_path}: {exc}") from exc
     return {name: value for name, value in values.items() if value is not None}
 
 
@@ -143,9 +171,12 @@ def set_value(key: str, value: str, *, path: Path | None = None) -> SettingKey:
     # Validate before touching the disk: a rejected value must not leave a file
     # behind that the user then has to clean up.
     validate_value(setting, value)
-    file_path = path or config_file_path()
+    file_path = _resolve_path(path)
     _prepare_file(file_path)
-    written, _, _ = set_key(str(file_path), setting.variable, value)
+    try:
+        written, _, _ = set_key(str(file_path), setting.variable, value)
+    except OSError as exc:
+        raise ConfigurationError(f"cannot write settings file: {file_path}: {exc}") from exc
     if not written:
         raise ConfigurationError(f"failed to write settings file: {file_path}")
     return setting
@@ -155,12 +186,20 @@ def unset_value(key: str, *, path: Path | None = None) -> tuple[SettingKey, bool
     """Remove one setting; report whether the file actually held it."""
 
     setting = resolve_key(key)
-    file_path = path or config_file_path()
+    file_path = _resolve_path(path)
     if setting.variable not in stored_values(file_path):
         # Asking dotenv to remove an absent key logs a warning to stderr, and a
         # no-op is not a warning: the user asked for the default and has it.
         return setting, False
-    unset_key(str(file_path), setting.variable)
+    try:
+        removed, _ = unset_key(str(file_path), setting.variable)
+    except OSError as exc:
+        raise ConfigurationError(f"cannot write settings file: {file_path}: {exc}") from exc
+    # Symmetric with set_value's check of set_key's return value: the key was
+    # confirmed present just above, so a falsy result here means the write
+    # itself failed, not that there was nothing to remove.
+    if not removed:
+        raise ConfigurationError(f"failed to write settings file: {file_path}")
     return setting, True
 
 
@@ -172,7 +211,7 @@ def describe_settings(path: Path | None = None) -> tuple[SettingRow, ...]:
     which value is bad, or `config unset` from removing it.
     """
 
-    file_path = path or config_file_path()
+    file_path = _resolve_path(path)
     stored = stored_values(file_path)
     rows = []
     for setting in setting_keys():
@@ -187,7 +226,6 @@ def describe_settings(path: Path | None = None) -> tuple[SettingRow, ...]:
         rows.append(
             SettingRow(
                 key=setting.key,
-                variable=setting.variable,
                 value=value,
                 source=source,
                 default=setting.default,

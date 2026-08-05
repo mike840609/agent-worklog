@@ -460,7 +460,12 @@ def config_list() -> None:
     """Show every setting, the value in force, and where it comes from."""
 
     path = config_store.config_file_path()
-    ConsoleReporter().settings_table(config_store.describe_settings(path), path=path)
+    try:
+        rows = config_store.describe_settings(path)
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+    ConsoleReporter().settings_table(rows, path=path)
 
 
 def _default_restored(setting: config_store.SettingKey, removed: bool) -> str:

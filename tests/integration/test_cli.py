@@ -1,3 +1,4 @@
+import os
 import sys
 from datetime import datetime, timedelta
 from itertools import count
@@ -628,3 +629,48 @@ def test_config_set_warns_when_the_environment_overrides_the_write(
     assert result.exit_code == 0
     assert "AGENT_WORKLOG_LLM__MODEL" in result.stdout
     assert "takes precedence" in result.stdout
+
+
+# chmod-based permission denial does not bite on Windows, and root ignores file
+# permission bits entirely, so both would make these tests spuriously fail to
+# reproduce the OSError-turned-exit-3 behavior they exist to catch.
+skip_unless_permissions_enforced = pytest.mark.skipif(
+    sys.platform.startswith("win") or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="chmod-based permission denial does not apply on Windows or as root",
+)
+
+
+@skip_unless_permissions_enforced
+def test_config_set_exits_3_instead_of_a_traceback_on_an_unwritable_directory(
+    monkeypatch, tmp_path
+) -> None:
+    """Filesystem errors must honor the exit-3 contract, not dump a traceback."""
+
+    directory = tmp_path / "unwritable"
+    directory.mkdir()
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(directory / "config.env"))
+    directory.chmod(0o500)
+    try:
+        result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+    finally:
+        directory.chmod(0o700)  # restore so pytest can clean up tmp_path
+
+    assert result.exit_code == 3
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+@skip_unless_permissions_enforced
+def test_config_list_exits_3_instead_of_a_traceback_on_an_unreadable_file(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='gpt-5'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    path.chmod(0o000)
+    try:
+        result = CliRunner().invoke(cli.app, ["config", "list"])
+    finally:
+        path.chmod(0o600)  # restore so pytest can clean up tmp_path
+
+    assert result.exit_code == 3
+    assert result.exception is None or isinstance(result.exception, SystemExit)
