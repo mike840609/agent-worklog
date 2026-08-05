@@ -2,8 +2,8 @@
 
 **Status:** Approved
 **Date:** 2026-07-31
-**Depends on:** [MVP Design](../../mvp-design.md) §9 Harness Source Abstraction,
-[Claude Code Adapter](../../claude-code-adapter-design.md)
+**Depends on:** [MVP Design](mvp-design.md) §9 Harness Source Abstraction,
+[Claude Code Adapter](claude-code-adapter-design.md)
 **Adds harness:** Codex (`codex`)
 
 ---

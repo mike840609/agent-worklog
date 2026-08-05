@@ -1,14 +1,12 @@
 # Codex Adapter Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add Codex as a third harness so `agent-worklog doctor|scan|report --harness codex` produces the same repository-grouped Markdown report the OpenCode and Claude Code harnesses already produce.
 
 **Architecture:** A new `harnesses/codex/` package implements `HarnessSessionSource`. Discovery prefers `~/.codex/state_<n>.sqlite`, which already indexes every session with its rollout path, cwd, timestamps and parent edge, and falls back to scanning the rollout JSONL files when that database is absent or its schema has drifted. A mapper turns one rollout file into a canonical `AgentSession`. The shared extraction pipeline, repository resolver, redactor, summarizers and renderers are not modified.
 
 **Tech Stack:** Python 3.11+, pydantic v2 / pydantic-settings, Typer, pytest, stdlib `sqlite3`, `uv` for dependency and task running.
 
-Spec: `docs/superpowers/specs/2026-07-31-codex-adapter-design.md`
+Spec: `docs/codex-adapter-design.md`
 
 ## Global Constraints
 
