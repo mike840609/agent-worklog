@@ -484,9 +484,19 @@ def test_settings_table_shows_values_sources_and_defaults() -> None:
     )
     output = output_stream.getvalue()
 
-    assert "llm.model" in output
-    assert "gpt-5-mini" in output
-    assert "file" in output
     assert "/home/dev/.config/agent-worklog/config.env" in output
     # The point of the footer: nothing here is required.
     assert "Every setting is optional" in output
+
+    # Scoped to the row itself: `settings_table` unconditionally prints
+    # "Settings file: ..." on its own line, and that line contains the
+    # substring "file" regardless of what the source column renders. A
+    # whole-output `assert "file" in output` would pass even with the source
+    # column left blank, so the source must be pinned to its own row.
+    llm_row = next(line for line in output.splitlines() if "llm.model" in line)
+    assert "gpt-5" in llm_row
+    assert "file" in llm_row
+    assert "gpt-5-mini" in llm_row
+
+    timezone_row = next(line for line in output.splitlines() if "report.timezone" in line)
+    assert "default" in timezone_row

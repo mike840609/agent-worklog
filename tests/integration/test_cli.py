@@ -509,6 +509,11 @@ def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_pa
     path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
     monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    # A second setting, set through the environment rather than the file, so the
+    # source column is pinned independently: "environment" collides with nothing
+    # else in the output, unlike "file" which also appears in the footer's
+    # "Settings file: ..." line.
+    monkeypatch.setenv("AGENT_WORKLOG_REPORT__TIMEZONE", "UTC")
     # Rich wraps to 80 columns when stdout is not a terminal, which would split
     # the longer settings across lines and break these substring assertions.
     monkeypatch.setenv("COLUMNS", "200")
@@ -516,10 +521,18 @@ def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_pa
     result = CliRunner().invoke(cli.app, ["config", "list"])
 
     assert result.exit_code == 0
-    assert "llm.model" in result.stdout
-    assert "from-file" in result.stdout
-    assert "gpt-5-mini" in result.stdout
     assert "Every setting is optional" in result.stdout
+
+    llm_row = next(line for line in result.stdout.splitlines() if "llm.model" in line)
+    assert "from-file" in llm_row
+    assert "file" in llm_row
+    assert "gpt-5-mini" in llm_row
+
+    timezone_row = next(
+        line for line in result.stdout.splitlines() if "report.timezone" in line
+    )
+    assert "UTC" in timezone_row
+    assert "environment" in timezone_row
 
 
 def test_help_lists_the_config_command() -> None:
