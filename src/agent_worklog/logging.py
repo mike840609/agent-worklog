@@ -140,14 +140,14 @@ class ConsoleReporter:
         table.add_column("Sessions", justify="right")
         for repository_id, sessions in result.sessions_by_repository.items():
             name = sessions[0].repository.display_name if sessions else repository_id
-            table.add_row(name, repository_id, str(len(sessions)))
+            table.add_row(Text(redact_text(name)), repository_id, str(len(sessions)))
         self.console.print(table)
         if self.verbose:
             for warning in result.warnings:
                 self.console.print(f"[yellow]Warning:[/yellow] {warning}")
             for repository_id, sessions in result.sessions_by_repository.items():
                 name = sessions[0].repository.display_name if sessions else repository_id
-                self.console.print(f"\n{name}", markup=False, highlight=False)
+                self.console.print(f"\n{redact_text(name)}", markup=False, highlight=False)
                 for resolved in sessions:
                     session = resolved.session
                     title = _collapse_whitespace(session.title) if session.title else None
