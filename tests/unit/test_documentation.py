@@ -84,7 +84,7 @@ def test_readmes_document_the_config_command() -> None:
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
     for text in (readme, readme_zh_tw):
-        assert "agent-worklog config set llm.model gpt-5" in text
+        assert "agent-worklog config set opencode.cli.model deepseek-r1" in text
         assert "agent-worklog config list" in text
         assert "agent-worklog config unset" in text
 

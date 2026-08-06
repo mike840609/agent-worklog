@@ -105,7 +105,7 @@ Use `--dry-run` to preview the Markdown without writing a file:
 agent-worklog report --period last-week --no-llm --dry-run
 ```
 
-Use `--verbose` to show export and LLM fallback warnings. Use `--quiet` to show only the
+Use `--verbose` to show export and narrative fallback warnings. Use `--quiet` to show only the
 output path after a successful report.
 
 ## OpenCode privacy modes

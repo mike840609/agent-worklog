@@ -40,7 +40,7 @@ harnesses, it can:
 - List each repository's session titles and working folders in the report.
 - Summarize model and token usage when the selected harness provides it.
 - Check session information for common secret patterns before creating a report or
-  sending data to an optional LLM.
+  invoking the local narrative `opencode run`.
 
 ## Requirements
 
@@ -133,7 +133,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `--harness NAME` | Harness to read sessions from: `opencode` (default), `claude-code`, or `codex`. |
 | `--root-only` | Leaves out child and subagent sessions. |
 | `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |
-| `--verbose` | Also shows export, fallback, and LLM warnings. For `scan`, also lists each repository's session titles and working folders. |
+| `--verbose` | Also shows export, fallback, and narrative warnings. For `scan`, also lists each repository's session titles and working folders. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
 
 While `scan` and `report` are working, they show a transient progress status with the
@@ -181,7 +181,7 @@ environment variable, then the settings file, then the default.
 Set a value once, in the settings file:
 
 ```bash
-agent-worklog config set llm.model gpt-5
+agent-worklog config set opencode.cli.model deepseek-r1
 agent-worklog config set report.timezone Europe/Berlin
 agent-worklog config list
 ```
@@ -191,7 +191,7 @@ the environment, the file, or the default, and what the default is. Every settin
 optional: an empty value restores the default, and so does `unset`.
 
 ```bash
-agent-worklog config set llm.model ""
+agent-worklog config set opencode.cli.model ""
 agent-worklog config unset report.timezone
 ```
 
@@ -249,7 +249,7 @@ OpenCode, Claude Code, and Codex are the supported tools, selected with `--harne
 Markdown is the only report format, and Agent Worklog keeps no cache between runs.
 
 - [Usage guides](https://github.com/mike840609/agent-worklog/blob/main/docs/guides.md) — reporting periods, subagents, repository grouping,
-  LLM summaries, output handling.
+  narrative and structured reports, output handling.
 - [Usage statistics](https://github.com/mike840609/agent-worklog/blob/main/docs/usage-statistics.md) — how the usage section is built and the
   window caveat.
 - [Current support and limits](https://github.com/mike840609/agent-worklog/blob/main/docs/limitations.md) — the full per-harness caveat list.

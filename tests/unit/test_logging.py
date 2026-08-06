@@ -466,21 +466,21 @@ def test_settings_table_shows_values_sources_and_defaults() -> None:
     reporter.settings_table(
         [
             SettingRow(
-                key="llm.model",
+                key="report.timezone",
                 # Deliberately shares no substring with the default below: an
                 # earlier version of this test used "gpt-5" here against a
                 # default of "gpt-5-mini", so blanking the Value column
                 # entirely still passed (the default cell contains "gpt-5" as
-                # a substring). "gpt-4o" cannot pass that way.
-                value="gpt-4o",
+                # a substring). "America/New_York" cannot pass that way.
+                value="America/New_York",
                 source="file",
-                default="gpt-5-mini",
+                default="Asia/Taipei",
             ),
             SettingRow(
-                key="report.timezone",
-                value="Asia/Taipei",
+                key="harnesses.opencode.cli.timeout_seconds",
+                value="30.0",
                 source="default",
-                default="Asia/Taipei",
+                default="30.0",
             ),
         ],
         path=Path("/home/dev/.config/agent-worklog/config.env"),
@@ -496,13 +496,17 @@ def test_settings_table_shows_values_sources_and_defaults() -> None:
     # substring "file" regardless of what the source column renders. A
     # whole-output `assert "file" in output` would pass even with the source
     # column left blank, so the source must be pinned to its own row.
-    llm_row = next(line for line in output.splitlines() if "llm.model" in line)
-    assert "gpt-4o" in llm_row
-    assert "file" in llm_row
-    assert "gpt-5-mini" in llm_row
+    timezone_row = next(
+        line for line in output.splitlines() if "report.timezone" in line
+    )
+    assert "America/New_York" in timezone_row
+    assert "file" in timezone_row
+    assert "Asia/Taipei" in timezone_row
 
-    timezone_row = next(line for line in output.splitlines() if "report.timezone" in line)
-    assert "default" in timezone_row
+    timeout_row = next(
+        line for line in output.splitlines() if "harnesses.opencode.cli.timeout_seconds" in line
+    )
+    assert "default" in timeout_row
 
 
 def test_settings_table_fully_renders_a_long_key_at_80_columns() -> None:

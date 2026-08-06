@@ -19,13 +19,13 @@ shell it was set in:
 ```bash
 agent-worklog config path                        # where the file is
 agent-worklog config list                        # every setting, value, and source
-agent-worklog config set llm.model gpt-5         # write one setting
-agent-worklog config set llm.model ""            # empty value: back to the default
-agent-worklog config unset llm.model             # same thing, spelled out
+agent-worklog config set opencode.cli.model deepseek-r1   # write one setting
+agent-worklog config set opencode.cli.model ""            # empty value: back to the default
+agent-worklog config unset opencode.cli.model             # same thing, spelled out
 ```
 
 Keys are the lowercase, dot-separated form of the variable name, so
-`AGENT_WORKLOG_LLM__MODEL` is `llm.model` and
+`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL` is `opencode.cli.model` and
 `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` is
 `harnesses.opencode.cli.executable`. `config list` shows every setting's key, its
 current value, whether that value came from the environment, the file, or the default,
@@ -38,17 +38,13 @@ The file is a `config.env` in the user configuration directory — run
 foreign variables and secrets that have nothing to do with Agent Worklog into the same
 file. The file is created readable and writable only by its owner on macOS and Linux.
 
-The settings file is not a place for secrets: like any environment variable,
-`AGENT_WORKLOG_LLM__API_KEY_ENV` names an environment variable that holds a key rather
-than holding the key itself (see the LLM settings section below), and the same applies
-to every other setting. `config list` prints every value — including whatever you put
-in the file — unredacted, by design: these are your own settings, shown at your own
-request.
+`config list` prints every value — including whatever you put in the file — unredacted,
+by design: these are your own settings, shown at your own request.
 
-An exported variable always beats the file, so `AGENT_WORKLOG_LLM__ENABLED=false
-agent-worklog report --period last-week` still works with a file that enables the LLM.
-`config set` and `config unset` say so when the setting they just touched is already
-exported.
+An exported variable always beats the file, so
+`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL=deepseek-r1 agent-worklog report` still
+wins over a file that sets the same key. `config set` and `config unset` say so when
+the setting they just touched is already exported.
 
 `config set` refuses an unknown key and a value the settings would reject, so a typo
 fails at the moment you make it rather than on the next report. Both exit with code 3.
