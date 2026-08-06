@@ -16,42 +16,11 @@ Agent Worklog 把 coding-agent 的工作階段整理成給主管看的週報，�
 
 ## 架構
 
-```mermaid
-flowchart LR
-    subgraph Sources["Session sources"]
-        OC["OpenCode<br/>(opencode db + export)"]
-        CC["Claude Code<br/>(~/.claude/projects transcripts)"]
-        CX["Codex<br/>(~/.codex state DB or rollouts)"]
-    end
+<!-- 這裡用 render 好的圖而非 mermaid 區塊：GitHub 手機 App 與 PyPI 會把 mermaid
+     原始碼當純文字顯示。要修改請編輯 docs/assets/architecture.mmd，
+     並依該檔開頭的指令重新產生 SVG。 -->
 
-    subgraph Pipeline["Scan pipeline"]
-        SC["ScanService<br/>discover → load → filter"]
-        RV["RepositoryResolver<br/>origin → common dir → harness → path"]
-    end
-
-    subgraph Report["Report pipeline"]
-        EX["Extraction<br/>evidence + 300-char cap"]
-        RD["Redaction<br/>secret patterns"]
-        SU["Summarizer<br/>rule-based or LLM"]
-        US["Usage stats<br/>opencode stats or session tokens"]
-        RE["MarkdownRenderer"]
-        WR["Atomic write<br/>0600 on POSIX"]
-    end
-
-    CLI["doctor / scan / report"] --> OC
-    CLI --> CC
-    CLI --> CX
-    OC --> SC
-    CC --> SC
-    CX --> SC
-    SC --> RV
-    RV --> EX
-    EX --> RD
-    RD --> SU
-    US --> RE
-    SU --> RE
-    RE --> WR
-```
+![架構圖：CLI 讀取三種工作階段來源之一，掃描並解析 repository，再擷取、去敏、摘要並寫出報告](https://github.com/mike840609/agent-worklog/raw/refs/heads/main/docs/assets/architecture.svg)
 
 Agent Worklog 會依 harness 選用三種來源之一，只載入與指定期間重疊的工作階段，依
 repository 分組，再對佐證資料做去敏與摘要，最後以僅擁有者可讀寫的權限原子性地寫出
