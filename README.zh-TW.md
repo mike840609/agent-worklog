@@ -112,6 +112,16 @@ agent-worklog report --harness codex --period last-week
 agent-worklog report --harness codex --period last-week --no-llm
 ```
 
+想要一步步引導操作，而不是背一堆旗標的話，也可以使用 `run`：它會依序問要
+由哪個 harness、哪個期間、要多詳細，接著在寫報告前先預覽掃描結果給你確認：
+
+```bash
+agent-worklog run
+```
+
+`run` 與 `config init` 需要有互動式終端機，因此當 stdin 不是終端機時，它們會拒絕執行；
+非互動式的工作請改用 `scan` 與 `report`。
+
 ## 指令參考
 
 | 指令 | 用途 |
@@ -119,6 +129,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `doctor` | 檢查目前選用的 harness 與 `git` 是否就緒。 |
 | `scan` | 顯示哪些工作階段落在指定期間內，以及它們如何分組成 repository。 |
 | `report` | 產生指定期間的 Markdown 報告。 |
+| `run` | 引導式精靈：挑選 harness 與期間、預覽掃描結果，再寫出報告。 |
 | `config` | 顯示與編輯設定檔：`path`、`list`、`init`、`set`、`unset`。 |
 
 `scan` 與 `report` 共用這些選項：

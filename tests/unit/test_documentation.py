@@ -163,6 +163,15 @@ def test_readmes_document_the_interactive_config_commands() -> None:
         )
 
 
+def test_readmes_document_the_interactive_run_command() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        assert "agent-worklog run" in text
+        assert "`run`" in text
+
+
 def test_configuration_doc_explains_what_an_empty_answer_means() -> None:
     """The prompt's Enter key and `config set <key> ""` mean different things."""
 

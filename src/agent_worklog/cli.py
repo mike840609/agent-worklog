@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from functools import partial
 from pathlib import Path
@@ -683,3 +683,218 @@ def config_unset(key: str) -> None:
         return
     reporter.message(_default_restored(setting, removed))
     _warn_if_shadowed(reporter, setting)
+
+
+def _prompt(prompt: str) -> str:
+    """Ask one free-form question, returning the trimmed answer (empty on Enter)."""
+
+    return typer.prompt(prompt, default="", show_default=False).strip()
+
+
+def _ask_yes(prompt: str, *, default: bool) -> bool:
+    """Ask a yes/no question; Enter keeps the default and a bad answer re-asks."""
+
+    suffix = "Y/n" if default else "y/N"
+    while True:
+        answer = _prompt(f"{prompt} [{suffix}]").casefold()
+        if not answer:
+            return default
+        if answer in {"y", "yes"}:
+            return True
+        if answer in {"n", "no"}:
+            return False
+        typer.echo("  answer y or n")
+
+
+def _enabled_harnesses(settings: AppSettings) -> list[Harness]:
+    """The harnesses this machine has not switched off."""
+
+    enabled = [h for h in Harness if getattr(settings.harnesses, h.name.lower()).enabled]
+    if not enabled:
+        raise ConfigurationError("every harness is disabled by configuration")
+    return enabled
+
+
+def _ask_harness(settings: AppSettings) -> Harness:
+    """Offer only the harnesses that are on; Enter keeps OpenCode when it is."""
+
+    enabled = _enabled_harnesses(settings)
+    default = Harness.OPENCODE if Harness.OPENCODE in enabled else enabled[0]
+    names = [h.value for h in enabled]
+    typer.echo(f"Available harnesses: {', '.join(names)}")
+    while True:
+        answer = _prompt(f"Harness [{default.value}]")
+        if not answer:
+            return default
+        for harness in enabled:
+            if harness == answer:
+                return harness
+        typer.echo(f"  choose from: {', '.join(names)}")
+
+
+def _ask_period(timezone: str, now: datetime) -> DateRange:
+    """Ask which window to report; Enter chooses the last full week."""
+
+    while True:
+        answer = _prompt("Period [1=last week, 2=last N days, 3=custom range]")
+        if not answer:
+            return DateRange.previous_week(now=now)
+        if answer == "1":
+            return DateRange.previous_week(now=now)
+        if answer == "2":
+            return DateRange.from_days(days=_ask_int("Days", default=7), now=now)
+        if answer == "3":
+            default_since = (now - timedelta(days=7)).isoformat()
+            since = _prompt(f"Since [{default_since}]") or default_since
+            until = _prompt(f"Until [{now.isoformat()}]") or now.isoformat()
+            try:
+                start = _parse_iso_datetime(since, timezone=timezone)
+                end = _parse_iso_datetime(until, timezone=timezone)
+                return DateRange(since=start, until=end)
+            except (ConfigurationError, typer.BadParameter, ValueError) as exc:
+                typer.echo(f"  {exc}")
+                continue
+        typer.echo("  choose 1, 2, or 3")
+
+
+def _ask_int(prompt: str, *, default: int) -> int:
+    """Ask a whole positive number; Enter keeps the default."""
+
+    while True:
+        answer = _prompt(f"{prompt} [{default}]")
+        if not answer:
+            return default
+        try:
+            value = int(answer)
+        except ValueError:
+            typer.echo("  enter a whole number")
+            continue
+        if value < 1:
+            typer.echo("  must be at least 1")
+            continue
+        return value
+
+
+def _ask_detail() -> DetailLevel:
+    """Ask how much detail the report should carry."""
+
+    while True:
+        answer = _prompt("Detail [full/brief]")
+        if not answer:
+            return DetailLevel.FULL
+        answer = answer.casefold()
+        if answer in {DetailLevel.FULL, DetailLevel.BRIEF}:
+            return DetailLevel(answer)
+        typer.echo("  choose full or brief")
+
+
+def _ask_output_path(settings: AppSettings, period: DateRange) -> tuple[Path, bool]:
+    """Ask where to write, and whether to overwrite, offering the default path.
+
+    Returns the chosen path and whether to force an overwrite.
+    """
+
+    default = _default_output_path(settings, period)
+    answer = _prompt(f"Output [{default}]")
+    path = Path(answer).expanduser() if answer else default
+    force = _ask_yes(f"{path} exists — overwrite?", default=False) if path.exists() else False
+    return path, force
+
+
+@app.command()
+def run(
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    """Answer a few questions, preview the scan, and generate a worklog.
+
+    Everything `report` takes as flags is asked one by one, the sessions are
+    scanned and shown for a yes-or-no review, and only then is the report
+    written. Useful when a manager wants a report from a machine you are
+    already facing instead of you re-typing a long command line.
+    """
+
+    reporter = ConsoleReporter(verbose=verbose)
+    try:
+        _require_a_terminal(
+            "run needs a terminal; use scan and report to work non-interactively"
+        )
+        settings = _load_settings()
+        now = _now_in_timezone(settings.report.timezone)
+        harness = _ask_harness(settings)
+        sanitize = (
+            _ask_yes("Ask OpenCode to redact exported session content?", default=False)
+            if harness is Harness.OPENCODE
+            else False
+        )
+        include_children = _ask_yes("Include child/subagent sessions?", default=True)
+        period = _ask_period(settings.report.timezone, now)
+        detail = _ask_detail()
+        # `report`'s default is the narrative review, so the wizard's default is
+        # too. Answering no is what `--no-llm` does: the deterministic structured
+        # report, which is also the answer when `opencode` is not installed.
+        narrative = _ask_yes(
+            "Write the narrative review with the local `opencode run`?", default=True
+        )
+        _validate_privacy_options(
+            harness=harness,
+            sanitize=sanitize if harness is Harness.OPENCODE else None,
+        )
+        output_path, force = _ask_output_path(settings, period)
+
+        with reporter.progress() as progress:
+            scan_service = _build_scan_service(
+                settings,
+                period,
+                not include_children,
+                harness=harness,
+                sanitize=sanitize,
+                progress=progress,
+            )
+            scan = scan_service.scan()
+            if scan.loaded_session_count == 0:
+                raise NoSessionsError(
+                    f"no {harness.value} activity found in the requested period"
+                )
+        reporter.scan_result(scan)
+        for warning in scan.warnings:
+            reporter.message(f"Warning: {warning}")
+        if not _ask_yes(
+            f"Generate the report for {len(scan.sessions_by_repository)} repositories?",
+            default=True,
+        ):
+            reporter.message("Aborted; nothing was written.")
+            return
+
+        with reporter.progress() as progress:
+            service = _build_report_service(
+                settings,
+                period,
+                output_path,
+                no_llm=not narrative,
+                root_only=not include_children,
+                now=now,
+                harness=harness,
+                sanitize=sanitize,
+                detail=detail,
+                progress=progress,
+            )
+            result = service.generate(force=force, scan=scan)
+            if not result.report.repositories:
+                raise NoSessionsError(
+                    f"no {harness.value} activity found in the requested period"
+                )
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+    except NoSessionsError as exc:
+        _handle_expected_error(exc, code=4)
+        return
+    except HarnessSourceError as exc:
+        _handle_expected_error(exc, code=5)
+        return
+    except ReportOutputError as exc:
+        _handle_expected_error(exc, code=7)
+        return
+    reporter.message(f"Report written to {result.output_path}")
+    for warning in result.report.warnings:
+        reporter.message(f"Warning: {warning}")

@@ -853,3 +853,349 @@ def test_config_init_needs_a_terminal(monkeypatch, tmp_path) -> None:
     # The way out of a non-interactive shell differs per command, so the
     # message must point at `config set`, not at "pass the value".
     assert "config set" in result.stdout
+
+
+def _answer_for_run(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    output_path: Path,
+    period: DateRange,
+    final_accept: bool,
+) -> None:
+    """Wire the run wizard's questions to fixed answers.
+
+    sanitize/children/remote-LLM are all answered with their defaults kept by
+    returning False for anything that is not the final preview review.
+    """
+
+    def ask_yes(prompt, *, default):
+        return final_accept and "Generate the report" in prompt
+
+    def ask_harness(settings):
+        return cli.Harness.OPENCODE
+
+    def ask_detail():
+        return cli.DetailLevel.FULL
+
+    def ask_output_path(settings, asked_period):
+        return output_path, False
+
+    monkeypatch.setattr(cli, "_ask_yes", ask_yes)
+    monkeypatch.setattr(cli, "_ask_harness", ask_harness)
+    monkeypatch.setattr(cli, "_ask_period", lambda settings_tz, now: period)
+    monkeypatch.setattr(cli, "_ask_detail", ask_detail)
+    monkeypatch.setattr(cli, "_ask_output_path", ask_output_path)
+    _as_a_terminal(monkeypatch)
+
+
+def test_run_refuses_a_non_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 3
+    # The message must name the non-interactive route, not ask for a terminal.
+    assert "needs a terminal" in result.stdout
+    assert "scan" in result.stdout
+    assert "report" in result.stdout
+
+
+def test_run_scans_once_then_generates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    output_path = tmp_path / "worklog.md"
+    scan = SimpleNamespace(
+        loaded_session_count=2,
+        sessions_by_repository={
+            "git:github.com/mike/agent-worklog": [
+                SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+            ]
+        },
+        warnings=[],
+    )
+    seen: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return scan
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            seen["scan"] = scan
+            self.output_path.write_text("# Engineering Worklog\n")
+            report = WorklogReport(
+                generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                period=self.period,
+                repositories=[
+                    RepositorySummary(
+                        repository_id="git:github.com/mike/agent-worklog",
+                        display_name="Agent Worklog",
+                    )
+                ],
+            )
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=report,
+            )
+
+    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+        seen["root_only"] = root_only
+        return StubScanService()
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        seen["root_only"] = root_only
+        return StubReportService(output_path, period)
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 0, result.stdout
+    assert output_path.exists()
+    assert "Report written to" in result.stdout
+    # The preview scan is reused for generation, not re-run.
+    assert seen["scan"] is scan
+    # The wizard answered "no" to including child sessions, so both the scan
+    # and the report were told to keep to root sessions.
+    assert seen["root_only"] is True
+
+
+def test_run_aborts_when_the_preview_is_declined(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_path = tmp_path / "worklog.md"
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=False,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        lambda settings, period, root_only=False, *, harness, sanitize, progress: StubScanService(),
+    )
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 0
+    assert "Aborted" in result.stdout
+    assert not output_path.exists()
+
+
+def test_run_accepts_a_non_opencode_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-OpenCode harness must not trip the sanitize-only-for-OpenCode guard."""
+
+    output_path = tmp_path / "worklog.md"
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    seen: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            self.output_path.write_text("# Engineering Worklog\n")
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=WorklogReport(
+                    generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                    period=self.period,
+                    repositories=[
+                        RepositorySummary(
+                            repository_id="git:github.com/mike/agent-worklog",
+                            display_name="Agent Worklog",
+                        )
+                    ],
+                ),
+            )
+
+    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+        seen["harness"] = harness
+        seen["sanitize"] = sanitize
+        return StubScanService()
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        return StubReportService(output_path, period)
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.CLAUDE_CODE)
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 0, result.stdout
+    assert output_path.exists()
+    assert seen["harness"] is cli.Harness.CLAUDE_CODE
+    assert seen["sanitize"] is False
+
+
+def test_run_walks_the_real_prompts_on_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drive the wizard through its actual prompts, answering nothing.
+
+    Pressing Enter at every question must accept the defaults, which is the
+    interactive equivalent of `report --days 7 --no-llm`.
+    """
+
+    output_path = tmp_path / "worklog.md"
+    captured: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            self.output_path.write_text("# Engineering Worklog\n")
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=WorklogReport(
+                    generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                    period=self.period,
+                    repositories=[
+                        RepositorySummary(
+                            repository_id="git:github.com/mike/agent-worklog",
+                            display_name="Agent Worklog",
+                        )
+                    ],
+                ),
+            )
+
+    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+        captured["harness"] = harness
+        captured["sanitize"] = sanitize
+        captured["root_only"] = root_only
+        return StubScanService()
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        captured["no_llm"] = no_llm
+        captured["detail"] = detail
+        return StubReportService(output_path, period)
+
+    _as_a_terminal(monkeypatch)
+    monkeypatch.setattr(cli, "_default_output_path", lambda settings, period: output_path)
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run"], input="\n" * 8)
+
+    assert result.exit_code == 0, result.stdout
+    assert output_path.exists()
+    assert "Report written to" in result.stdout
+    assert captured["harness"] is cli.Harness.OPENCODE
+    assert captured["sanitize"] is False
+    # Enter at the narrative question keeps `report`'s default: the narrative
+    # review, which is `no_llm=False`.
+    assert captured["no_llm"] is False
+    assert captured["root_only"] is False
+    assert captured["detail"] is cli.DetailLevel.FULL
