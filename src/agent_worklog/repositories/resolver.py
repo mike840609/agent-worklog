@@ -37,12 +37,19 @@ class RepositoryResolver:
 
     def __init__(self, *, runner: Runner) -> None:
         self._runner = runner
+        self._git_cache: dict[str, dict[tuple[str, ...], CommandResult]] = {}
 
     def _git(self, cwd: str, *args: str) -> CommandResult:
+        cache = self._git_cache.setdefault(_normalize_local_path(cwd), {})
+        cached = cache.get(args)
+        if cached is not None:
+            return cached
         try:
-            return self._runner.run(["git", "-C", cwd, *args])
+            result = self._runner.run(["git", "-C", cwd, *args])
         except (FileNotFoundError, TimeoutError, OSError) as exc:
-            return CommandResult(returncode=1, stdout="", stderr=type(exc).__name__)
+            result = CommandResult(returncode=1, stdout="", stderr=type(exc).__name__)
+        cache[args] = result
+        return result
 
     def resolve(self, session: AgentSession) -> RepositoryIdentity:
         cwd = session.working_directory
@@ -51,19 +58,15 @@ class RepositoryResolver:
 
         if cwd:
             remote_result = self._git(cwd, "remote", "get-url", "origin")
-            common_result = self._git(cwd, "rev-parse", "--git-common-dir")
-            branch_result = self._git(cwd, "branch", "--show-current")
-            if branch_result.returncode == 0:
-                branch = branch_result.stdout.strip() or None
-            if common_result.returncode == 0 and common_result.stdout.strip():
-                common_dir = _normalize_local_path(common_result.stdout.strip(), base=cwd)
-
             if remote_result.returncode == 0 and remote_result.stdout.strip():
                 try:
                     normalized_remote = normalize_git_remote(remote_result.stdout.strip())
                 except ValueError:
                     normalized_remote = None
                 if normalized_remote is not None:
+                    branch_result = self._git(cwd, "branch", "--show-current")
+                    if branch_result.returncode == 0:
+                        branch = branch_result.stdout.strip() or None
                     return RepositoryIdentity(
                         repository_id=f"git:{normalized_remote}",
                         display_name=repository_display_name(normalized_remote),
@@ -73,6 +76,13 @@ class RepositoryResolver:
                         working_directory=cwd,
                         resolution_method="git_origin_remote",
                     )
+
+            common_result = self._git(cwd, "rev-parse", "--git-common-dir")
+            branch_result = self._git(cwd, "branch", "--show-current")
+            if branch_result.returncode == 0:
+                branch = branch_result.stdout.strip() or None
+            if common_result.returncode == 0 and common_result.stdout.strip():
+                common_dir = _normalize_local_path(common_result.stdout.strip(), base=cwd)
 
             if common_dir is not None:
                 return RepositoryIdentity(

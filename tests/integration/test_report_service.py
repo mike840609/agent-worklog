@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.errors import HarnessSourceError
+from agent_worklog.errors import HarnessSourceError, ReportOutputError
 from agent_worklog.models.session import (
     ActivityType,
     AgentSession,
@@ -263,6 +263,60 @@ def test_report_emits_repository_and_output_stages(tmp_path: Path) -> None:
         ("start", ProgressStage.RENDERING_REPORT, None),
         ("start", ProgressStage.WRITING_REPORT, None),
     ]
+
+
+class FailOnUseSource(FakeSource):
+    """A source that fails the test if the scan layer is ever touched."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.discovered = 0
+        self.loaded = 0
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        del period
+        self.discovered += 1
+        raise AssertionError("scan must not run when the output file already exists")
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        self.loaded += 1
+        raise AssertionError("scan must not run when the output file already exists")
+
+
+def test_existing_output_fails_fast_before_scan_without_force(tmp_path: Path) -> None:
+    output = tmp_path / "report.md"
+    output.write_text("existing")
+    source = FailOnUseSource()
+
+    with pytest.raises(
+        ReportOutputError,
+        match=f"report already exists: {output}",
+    ):
+        service(source, output).generate(force=False)
+
+    assert source.discovered == 0
+    assert source.loaded == 0
+
+
+def test_existing_output_is_overwritten_by_force(tmp_path: Path) -> None:
+    output = tmp_path / "report.md"
+    output.write_text("existing")
+    source = FakeSource()
+
+    result = service(source, output).generate(force=True)
+
+    assert result.output_path == output
+    assert "Engineering Worklog" in output.read_text()
+
+
+def test_existing_output_is_allowed_by_dry_run(tmp_path: Path) -> None:
+    output = tmp_path / "report.md"
+    output.write_text("existing")
+    source = FakeSource()
+
+    service(source, output).generate(dry_run=True)
+
+    assert output.read_text() == "existing"
 
 
 def test_report_dry_run_skips_write_after_usage_failure(tmp_path: Path) -> None:

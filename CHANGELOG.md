@@ -16,6 +16,16 @@ All notable changes to this project are documented in this file.
   so a new field in `config.py` is settable and listed the moment it exists. `config set`
   rejects an unknown key — with the closest match as a hint — and a value the settings
   would reject, both with exit code 3.
+- Split the README into a condensed landing page and dedicated published docs. The
+  README now points to three new files in `docs/` that hold the detail it used to
+  carry: `docs/guides.md` (reporting periods, subagents, repository grouping, LLM
+  summaries, and output handling), `docs/usage-statistics.md` (the usage window
+  caveat), and `docs/limitations.md` (the full per-harness limit list). `README.md`
+  drops from 434 to 228 lines and the Traditional Chinese `README.zh-TW.md` is
+  mirrored to the same shape. Documentation links stay absolute so they resolve from
+  PyPI, which renders the README as its long description. The Codex-limit assertions
+  in `tests/unit/test_documentation.py` now read `docs/limitations.md` because the
+  content moved there.
 
 ## 0.5.0
 
