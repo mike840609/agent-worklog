@@ -1,7 +1,8 @@
-%% Source for architecture.svg. Regenerate after editing:
-%%   npx -y -p @mermaid-js/mermaid-cli -p mermaid mmdc \
-%%     -i docs/assets/architecture.mmd -o docs/assets/architecture.svg \
-%%     -c docs/assets/mermaid.json -b white
+%% Source for architecture.svg. After editing, regenerate with:
+%%   docs/assets/render-architecture.sh
+%% Spacing is tuned in mermaid.json to hold the rendered height down without
+%% shrinking the text. Keep every comment line non-empty: a bare "%%" line
+%% swallows the newline and breaks the parser.
 flowchart TD
     subgraph Sources["Session sources"]
         OC["OpenCode<br/>opencode db<br/>+ export"]

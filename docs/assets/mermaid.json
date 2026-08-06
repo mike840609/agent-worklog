@@ -1,4 +1,10 @@
 {
   "htmlLabels": false,
-  "flowchart": { "htmlLabels": false }
+  "flowchart": {
+    "htmlLabels": false,
+    "rankSpacing": 34,
+    "nodeSpacing": 20,
+    "padding": 8,
+    "subGraphTitleMargin": { "top": 4, "bottom": 14 }
+  }
 }
