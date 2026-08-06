@@ -1,21 +1,30 @@
-%% Source for architecture.svg. Regenerate after editing:
-%%   npx -y -p @mermaid-js/mermaid-cli -p mermaid mmdc \
-%%     -i docs/assets/architecture.mmd -o docs/assets/architecture.svg \
-%%     -c docs/assets/mermaid.json -b white
-flowchart TD
+%% Source for architecture.svg. After editing, regenerate with:
+%%   docs/assets/render-architecture.sh
+%% Laid out left-to-right with each subgraph stacked top-to-bottom, so the
+%% diagram stays landscape without stretching into one long row. The invisible
+%% links in Sources are what stack those three nodes: without an edge between
+%% them they share a rank and mermaid places them side by side.
+%% (Keep every comment line non-empty; a bare "%%" line breaks the parser.)
+flowchart LR
+    CLI["doctor / scan / report"]
+
     subgraph Sources["Session sources"]
-        OC["OpenCode<br/>opencode db<br/>+ export"]
+        direction TB
+        OC["OpenCode<br/>opencode db + export"]
         CC["Claude Code<br/>~/.claude/projects<br/>transcripts"]
         CX["Codex<br/>~/.codex state DB<br/>or rollouts"]
+        OC ~~~ CC ~~~ CX
     end
 
     subgraph Pipeline["Scan pipeline"]
-        SC["ScanService<br/>discover → load<br/>→ filter"]
+        direction TB
+        SC["ScanService<br/>discover → load → filter"]
         RV["RepositoryResolver<br/>origin → common dir<br/>→ harness → path"]
     end
 
     subgraph Report["Report pipeline"]
-        EX["Extraction<br/>evidence<br/>+ 300-char cap"]
+        direction TB
+        EX["Extraction<br/>evidence + 300-char cap"]
         RD["Redaction<br/>secret patterns"]
         SU["Summarizer<br/>rule-based or LLM"]
         US["Usage stats<br/>opencode stats<br/>or session tokens"]
@@ -23,7 +32,7 @@ flowchart TD
         WR["Atomic write<br/>0600 on POSIX"]
     end
 
-    CLI["doctor / scan / report"] --> OC
+    CLI --> OC
     CLI --> CC
     CLI --> CX
     OC --> SC
