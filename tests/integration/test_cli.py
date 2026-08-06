@@ -1,3 +1,4 @@
+import os
 import sys
 from datetime import datetime, timedelta
 from itertools import count
@@ -493,3 +494,183 @@ def test_report_rejects_an_unknown_detail_level(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert not output_path.exists()
+
+
+def test_config_path_prints_the_settings_file(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+
+    result = CliRunner().invoke(cli.app, ["config", "path"])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == str(tmp_path / "config.env")
+
+
+def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='stored-model'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    # A second setting, set through the environment rather than the file, so the
+    # source column is pinned independently: "environment" collides with nothing
+    # else in the output, unlike "file" which also appears in the footer's
+    # "Settings file: ..." line.
+    monkeypatch.setenv("AGENT_WORKLOG_REPORT__TIMEZONE", "UTC")
+    # Rich wraps to 80 columns when stdout is not a terminal, which would split
+    # the longer settings across lines and break these substring assertions.
+    monkeypatch.setenv("COLUMNS", "200")
+
+    result = CliRunner().invoke(cli.app, ["config", "list"])
+
+    assert result.exit_code == 0
+    assert "Every setting is optional" in result.stdout
+
+    llm_row = next(line for line in result.stdout.splitlines() if "llm.model" in line)
+    assert "stored-model" in llm_row
+    assert "file" in llm_row
+    assert "gpt-5-mini" in llm_row
+
+    timezone_row = next(
+        line for line in result.stdout.splitlines() if "report.timezone" in line
+    )
+    assert "UTC" in timezone_row
+    assert "environment" in timezone_row
+
+
+def test_help_lists_the_config_command() -> None:
+    result = CliRunner().invoke(cli.app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "config" in result.stdout
+
+
+def test_config_set_writes_the_value_and_the_next_load_reads_it(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    assert result.exit_code == 0
+    assert cli._load_settings().llm.model == "gpt-5"
+
+
+def test_config_set_rejects_an_unknown_key(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.mdoel", "gpt-5"])
+
+    assert result.exit_code == 3
+    assert "did you mean llm.model" in result.stdout
+
+
+def test_config_set_rejects_a_value_the_settings_model_would_reject(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "llm.timeout_seconds", "abc"]
+    )
+
+    assert result.exit_code == 3
+    assert "invalid value for llm.timeout_seconds" in result.stdout
+    assert not path.exists()
+
+
+def test_config_set_with_an_empty_value_restores_the_default(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", ""])
+
+    assert result.exit_code == 0
+    assert "gpt-5-mini" in result.stdout
+    assert cli._load_settings().llm.model == "gpt-5-mini"
+
+
+def test_config_unset_restores_the_default(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    result = CliRunner().invoke(cli.app, ["config", "unset", "llm.model"])
+
+    assert result.exit_code == 0
+    assert cli._load_settings().llm.model == "gpt-5-mini"
+
+
+def test_config_unset_of_an_unset_key_says_the_default_is_already_in_use(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("COLUMNS", "200")
+
+    result = CliRunner().invoke(cli.app, ["config", "unset", "llm.model"])
+
+    assert result.exit_code == 0
+    assert "already using default" in result.stdout
+
+
+def test_config_set_warns_when_the_environment_overrides_the_write(
+    monkeypatch, tmp_path
+) -> None:
+    """Without this note the write is a silent no-op for the whole shell."""
+
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("AGENT_WORKLOG_LLM__MODEL", "from-environment")
+    monkeypatch.setenv("COLUMNS", "200")
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    assert result.exit_code == 0
+    assert "AGENT_WORKLOG_LLM__MODEL" in result.stdout
+    assert "takes precedence" in result.stdout
+
+
+# chmod-based permission denial does not bite on Windows, and root ignores file
+# permission bits entirely, so both would make these tests spuriously fail to
+# reproduce the OSError-turned-exit-3 behavior they exist to catch.
+skip_unless_permissions_enforced = pytest.mark.skipif(
+    sys.platform.startswith("win") or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="chmod-based permission denial does not apply on Windows or as root",
+)
+
+
+@skip_unless_permissions_enforced
+def test_config_set_exits_3_instead_of_a_traceback_on_an_unwritable_directory(
+    monkeypatch, tmp_path
+) -> None:
+    """Filesystem errors must honor the exit-3 contract, not dump a traceback."""
+
+    directory = tmp_path / "unwritable"
+    directory.mkdir()
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(directory / "config.env"))
+    directory.chmod(0o500)
+    try:
+        result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+    finally:
+        directory.chmod(0o700)  # restore so pytest can clean up tmp_path
+
+    assert result.exit_code == 3
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+@skip_unless_permissions_enforced
+def test_config_list_exits_3_instead_of_a_traceback_on_an_unreadable_file(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='gpt-5'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    path.chmod(0o000)
+    try:
+        result = CliRunner().invoke(cli.app, ["config", "list"])
+    finally:
+        path.chmod(0o600)  # restore so pytest can clean up tmp_path
+
+    assert result.exit_code == 3
+    assert result.exception is None or isinstance(result.exception, SystemExit)

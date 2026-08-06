@@ -10,6 +10,21 @@ from agent_worklog.process import CommandResult
 from tests.codex_state_db import seconds, write_database
 
 
+@pytest.fixture(autouse=True)
+def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Isolate the settings file to avoid reading a developer's or CI's real config.
+
+    _load_settings() resolves to a machine-global path when AGENT_WORKLOG_CONFIG_FILE
+    is unset. This fixture ensures every test gets a guaranteed-nonexistent path
+    in tmp_path, preventing nondeterministic failures when config set creates a
+    real file.
+
+    Per-test monkeypatch.setenv calls take precedence and will override this default.
+    """
+
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+
+
 @dataclass
 class FakeCommandRunner:
     stdout: str = ""

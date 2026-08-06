@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 
+from agent_worklog import config_store
 from agent_worklog.config import AppSettings
 from agent_worklog.errors import (
     ConfigurationError,
@@ -32,6 +33,7 @@ from agent_worklog.progress import ProgressReporter
 from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
 from agent_worklog.renderers.usage import render_activity_usage
 from agent_worklog.repositories.resolver import RepositoryResolver
+from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.doctor import run_doctor
 from agent_worklog.services.report import ReportService
 from agent_worklog.services.scan import ScanResult, ScanService
@@ -67,10 +69,25 @@ app = typer.Typer(
 
 
 def _load_settings() -> AppSettings:
+    """Load settings, layering the settings file below the environment.
+
+    pydantic-settings gives environment variables precedence over `_env_file`,
+    which is the order `config set` promises: the file holds defaults, an
+    exported variable overrides them for one shell.
+    """
+
+    path = config_store.config_file_path()
     try:
-        return AppSettings()
+        return AppSettings(_env_file=path)  # type: ignore[call-arg]
     except Exception as exc:  # Pydantic aggregates configuration failures.
-        raise ConfigurationError(str(exc)) from exc
+        # Name the file when there is one: a parse error otherwise says what is
+        # wrong without saying where the value came from.
+        hint = f"; settings come from the environment and {path}" if path.exists() else ""
+        # Pydantic's validation errors echo the offending input verbatim (e.g.
+        # `input_value='sk-proj-...'`), so a bad value in a setting the model
+        # DOES own — a base URL with an embedded password, an API key typed
+        # into the wrong field — must not reach stdout unredacted.
+        raise ConfigurationError(redact_text(f"{exc}{hint}")) from exc
 
 
 def _now_in_timezone(timezone: str) -> datetime:
@@ -581,3 +598,88 @@ def report(
         if verbose:
             for warning in result.report.warnings:
                 reporter.message(f"Warning: {warning}")
+
+
+config_app = typer.Typer(
+    no_args_is_help=True,
+    help="Show and edit the settings file.",
+)
+app.add_typer(config_app, name="config")
+
+
+@config_app.command("path")
+def config_path() -> None:
+    """Print the settings file location."""
+
+    typer.echo(str(config_store.config_file_path()))
+
+
+@config_app.command("list")
+def config_list() -> None:
+    """Show every setting, the value in force, and where it comes from."""
+
+    path = config_store.config_file_path()
+    try:
+        rows = config_store.describe_settings(path)
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+    ConsoleReporter().settings_table(rows, path=path)
+
+
+def _default_restored(setting: config_store.SettingKey, removed: bool) -> str:
+    if removed:
+        return f"Removed {setting.key}; using default: {setting.default}"
+    return f"{setting.key} was not set; already using default: {setting.default}"
+
+
+def _warn_if_shadowed(
+    reporter: ConsoleReporter, setting: config_store.SettingKey
+) -> None:
+    """Say so when an exported variable overrides what was just written.
+
+    The environment wins over the file, so without this the command reports
+    success on a change the next run will ignore.
+    """
+
+    if os.environ.get(setting.variable) is not None:
+        reporter.message(
+            f"Note: {setting.variable} is set in the environment "
+            "and takes precedence."
+        )
+
+
+@config_app.command("set")
+def config_set(key: str, value: str) -> None:
+    """Set one setting. An empty value restores its default."""
+
+    reporter = ConsoleReporter()
+    path = config_store.config_file_path()
+    try:
+        if value == "":
+            # Every setting is optional, so "no value" is a real answer: drop
+            # the entry rather than storing an empty string the model would
+            # then have to interpret.
+            setting, removed = config_store.unset_value(key, path=path)
+            reporter.message(_default_restored(setting, removed))
+        else:
+            setting = config_store.set_value(key, value, path=path)
+            reporter.message(f"{setting.key} = {value} ({path})")
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+    _warn_if_shadowed(reporter, setting)
+
+
+@config_app.command("unset")
+def config_unset(key: str) -> None:
+    """Remove one setting so its default applies again."""
+
+    reporter = ConsoleReporter()
+    try:
+        setting, removed = config_store.unset_value(key)
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+    reporter.message(_default_restored(setting, removed))
+    _warn_if_shadowed(reporter, setting)

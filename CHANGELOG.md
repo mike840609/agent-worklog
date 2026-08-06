@@ -13,6 +13,18 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Add `agent-worklog config` with `path`, `list`, `set`, and `unset`, so a setting can be
+  recorded once instead of exported from a shell profile. Values go to a `config.env` in
+  the user configuration directory, which pydantic-settings loads below the environment:
+  an exported variable still wins, and `config set` says so when one already shadows the
+  setting it just wrote.
+- Report every setting as optional. `config list` shows each setting's value, whether it
+  came from the environment, the file, or the default, and what the default is; setting a
+  value to the empty string removes the entry and restores the default, as `unset` does.
+- Derive the settable key list from the settings model rather than a hand-kept registry,
+  so a new field in `config.py` is settable and listed the moment it exists. `config set`
+  rejects an unknown key — with the closest match as a hint — and a value the settings
+  would reject, both with exit code 3.
 - Split the README into a condensed landing page and dedicated published docs. The
   README now points to three new files in `docs/` that hold the detail it used to
   carry: `docs/guides.md` (reporting periods, subagents, repository grouping, LLM

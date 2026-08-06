@@ -77,6 +77,11 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="AGENT_WORKLOG_",
         env_nested_delimiter="__",
+        # The settings file is swept wholesale into the model by
+        # `DotEnvSettingsSource` (unlike the environment source, which only reads
+        # variable names it owns), so a foreign line — another tool's own
+        # variable sharing the file — must not be a hard failure.
+        extra="ignore",
     )
 
     harnesses: HarnessSettings = Field(default_factory=HarnessSettings)

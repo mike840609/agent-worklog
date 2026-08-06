@@ -139,6 +139,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `doctor` | 檢查目前選用的 harness 與 `git` 是否就緒。 |
 | `scan` | 顯示哪些工作階段落在指定期間內，以及它們如何分組成 repository。 |
 | `report` | 產生指定期間的 Markdown 報告。 |
+| `config` | 顯示與編輯設定檔：`path`、`list`、`set`、`unset`。 |
 
 `scan` 與 `report` 共用這些選項：
 
@@ -185,7 +186,30 @@ In Progress 各最多五條，不輸出 Key Files、Directories、Sessions、Bra
 
 ## 設定
 
-Agent Worklog 透過環境變數進行設定。變數名稱以 `AGENT_WORKLOG_` 開頭，設定名稱的各層之間用 `__` 分隔。例如：
+Agent Worklog 的每項設定都先讀環境變數，環境變數沒有設定的部分則讀設定檔。每項設定的
+順序是：環境變數、設定檔、預設值。
+
+設定一次就會寫進設定檔：
+
+```bash
+agent-worklog config set llm.model gpt-5
+agent-worklog config set report.timezone Europe/Berlin
+agent-worklog config list
+```
+
+`config list` 會列出每項設定的目前值、該值來自環境變數、設定檔或預設值，以及預設值本身。
+每項設定都是選填的：值留空即回到預設值，`unset` 也是同樣的效果。
+
+```bash
+agent-worklog config set llm.model ""
+agent-worklog config unset report.timezone
+```
+
+`agent-worklog config path` 會印出設定檔位置。設定 `AGENT_WORKLOG_CONFIG_FILE` 可以改用
+其他檔案。
+
+變數名稱以 `AGENT_WORKLOG_` 開頭，設定名稱的各層之間用 `__` 分隔。已匯出的環境變數在該
+shell 中會覆蓋設定檔：
 
 ```bash
 export AGENT_WORKLOG_REPORT__TIMEZONE="Asia/Taipei"

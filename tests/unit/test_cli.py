@@ -123,3 +123,101 @@ def test_report_still_runs_when_the_harness_is_enabled(tmp_path) -> None:
     )
 
     assert result.exit_code == 4  # no sessions in an empty directory, not a config error
+
+
+def test_load_settings_reads_the_settings_file(monkeypatch, tmp_path) -> None:
+    import agent_worklog.cli as cli
+
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+
+    assert cli._load_settings().llm.model == "from-file"
+
+
+def test_the_environment_beats_the_settings_file(monkeypatch, tmp_path) -> None:
+    """The file is a default store, not an override: an exported variable wins."""
+
+    import agent_worklog.cli as cli
+
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("AGENT_WORKLOG_LLM__MODEL", "from-environment")
+
+    assert cli._load_settings().llm.model == "from-environment"
+
+
+def test_load_settings_points_at_the_file_when_it_holds_a_bad_value(
+    monkeypatch, tmp_path
+) -> None:
+    import pytest
+
+    import agent_worklog.cli as cli
+    from agent_worklog.errors import ConfigurationError
+
+    path = tmp_path / "config.env"
+    path.write_text("AGENT_WORKLOG_LLM__TIMEOUT_SECONDS='abc'\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+
+    with pytest.raises(ConfigurationError) as error:
+        cli._load_settings()
+
+    assert str(path) in str(error.value)
+
+
+def test_load_settings_ignores_a_foreign_variable_in_the_settings_file(
+    monkeypatch, tmp_path
+) -> None:
+    """A line another tool owns must not make every command reject the file.
+
+    `DotEnvSettingsSource` sweeps every variable in the file into the model,
+    unlike the environment source, which only reads names it owns — so a
+    settings file shared with (or leftover from) another tool must not turn
+    into a hard `extra_forbidden` failure.
+    """
+
+    import agent_worklog.cli as cli
+
+    path = tmp_path / "config.env"
+    path.write_text(
+        "AGENT_WORKLOG_LLM__MODEL='gpt-5'\nOPENAI_API_KEY='sk-proj-not-a-real-secret-key'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+
+    settings = cli._load_settings()
+
+    assert settings.llm.model == "gpt-5"
+
+
+def test_load_settings_does_not_echo_a_secret_looking_value_in_its_error(
+    monkeypatch, tmp_path
+) -> None:
+    """A bad value in a setting the model DOES own still lands in the message.
+
+    (a) alone (ignoring foreign variables) does not cover this: a malformed
+    value for a setting the model owns, such as a base URL with an embedded
+    password, still reaches pydantic's validation error text, and that text
+    must not echo the secret verbatim.
+    """
+
+    import pytest
+
+    import agent_worklog.cli as cli
+    from agent_worklog.errors import ConfigurationError
+
+    path = tmp_path / "config.env"
+    path.write_text(
+        "AGENT_WORKLOG_LLM__TIMEOUT_SECONDS='sk-proj-not-a-real-secret-key'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+
+    with pytest.raises(ConfigurationError) as error:
+        cli._load_settings()
+
+    assert "sk-proj-not-a-real-secret-key" not in str(error.value)
+    assert "[REDACTED]" in str(error.value)
