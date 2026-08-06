@@ -1,0 +1,192 @@
+name: Update privacy release files
+
+on:
+  push:
+    branches:
+      - feat/opencode-raw-export-default
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/opencode-raw-export-default
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Update documentation and version
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"missing expected text in {path}: {old!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def append_once(path: str, marker: str, section: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if marker not in text:
+                  file.write_text(text.rstrip() + "\n\n" + section.strip() + "\n", encoding="utf-8")
+
+          replace(
+              "README.md",
+              "`opencode` executable that provides `opencode db` and `opencode export --sanitize`;",
+              "`opencode` executable that provides `opencode db` and `opencode export`;",
+          )
+          replace(
+              "README.md",
+              "| `--root-only` | Leaves out child and subagent sessions. |",
+              "| `--root-only` | Leaves out child and subagent sessions. |\n| `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |",
+          )
+          replace(
+              "README.md",
+              "| `--no-llm` | Creates the summary without an external LLM. |",
+              "| `--no-llm` | Creates the summary without an external LLM. |\n| `--allow-remote-llm` | Explicitly allows extracted, locally redacted evidence to be sent to the configured OpenAI-compatible endpoint for this invocation. |",
+          )
+          replace(
+              "README.md",
+              "export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE=\"opencode\"",
+              "export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE=\"opencode\"\nexport AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE=\"false\"",
+          )
+          old_privacy = (
+              "Agent Worklog requests OpenCode exports with `--sanitize`, redacts common secret patterns\n"
+              "before any report or LLM request, and caps every piece of supporting information at 300\n"
+              "characters. Reports may still contain private goals, filenames, commands, and full working\n"
+              "paths — always review a report before sharing it."
+          )
+          new_privacy = (
+              "OpenCode exports are raw by default so reports retain useful work details. Agent Worklog\n"
+              "redacts common secret patterns locally and uses the rule-based summarizer unless each report\n"
+              "invocation explicitly includes `--allow-remote-llm`. Use `--sanitize` for OpenCode's stronger\n"
+              "redaction, which intentionally removes most work evidence. Reports may still contain private\n"
+              "goals, filenames, commands, and full working paths — always review a report before sharing it."
+          )
+          replace("README.md", old_privacy, new_privacy)
+
+          replace(
+              "README.zh-TW.md",
+              "`opencode db` 與 `opencode export --sanitize` 的 `opencode` 執行檔；Claude Code 與 Codex",
+              "`opencode db` 與 `opencode export` 的 `opencode` 執行檔；Claude Code 與 Codex",
+          )
+          replace(
+              "README.zh-TW.md",
+              "| `--root-only` | 排除 child 與 subagent 工作階段。 |",
+              "| `--root-only` | 排除 child 與 subagent 工作階段。 |\n| `--sanitize / --no-sanitize` | 開啟或關閉 OpenCode 匯出去敏；預設使用 raw export。僅適用 OpenCode。 |",
+          )
+          replace(
+              "README.zh-TW.md",
+              "| `--no-llm` | 不使用外部 LLM 產生摘要。 |",
+              "| `--no-llm` | 不使用外部 LLM 產生摘要。 |\n| `--allow-remote-llm` | 本次執行明確允許把本機去敏後的 evidence 傳送到設定的 OpenAI-compatible endpoint。 |",
+          )
+          replace(
+              "README.zh-TW.md",
+              "export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE=\"opencode\"",
+              "export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE=\"opencode\"\nexport AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE=\"false\"",
+          )
+          old_privacy_zh = (
+              "Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料，在送出任何報告或 LLM 請求前先\n"
+              "檢查常見的機密字串樣式，並把每一筆佐證資訊截斷到 300 個字元。報告中仍可能包含私人的\n"
+              "目標、檔名、指令與工作資料夾的完整路徑——分享報告前請務必先檢查內容。"
+          )
+          new_privacy_zh = (
+              "OpenCode 預設使用 raw export，讓報告保留可用的工作細節。Agent Worklog 會先在本機清理\n"
+              "常見機密，且除非本次指令明確加入 `--allow-remote-llm`，否則只使用規則式摘要。需要\n"
+              "OpenCode 強力遮蔽時可加入 `--sanitize`，但這會刻意移除大部分工作 evidence。報告仍可能\n"
+              "包含私人目標、檔名、指令與完整路徑——分享前請務必檢查。"
+          )
+          replace("README.zh-TW.md", old_privacy_zh, new_privacy_zh)
+
+          append_once(
+              "docs/configuration.md",
+              "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE",
+              """
+          ## OpenCode export privacy
+
+          `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE` defaults to `false`.
+          Set it to `true` to request `opencode export --sanitize`. The CLI flags
+          `--sanitize` and `--no-sanitize` override this setting for one invocation.
+          Remote LLM authorization is intentionally not configurable: each report that may
+          transmit evidence must include `--allow-remote-llm`.
+          """,
+          )
+          append_once(
+              "docs/guides.md",
+              "## OpenCode privacy modes",
+              """
+          ## OpenCode privacy modes
+
+          `agent-worklog report --days 7` uses raw OpenCode export and local rule-based
+          summarization. Add `--sanitize` to ask OpenCode to redact the export; the report
+          then retains repository and session metadata but most work details are unavailable.
+          Add `--allow-remote-llm` only when extracted evidence may be sent to the configured
+          OpenAI-compatible endpoint. `--no-llm` and `--allow-remote-llm` cannot be combined.
+          """,
+          )
+          append_once(
+              "docs/privacy.md",
+              "## OpenCode raw export default",
+              """
+          ## OpenCode raw export default
+
+          OpenCode sessions are loaded with raw `opencode export` by default. The complete
+          JSON stays in subprocess stdout and Python memory; Agent Worklog does not persist or
+          log it. Extracted evidence still passes through the local redactor before rendering
+          or an authorized LLM request.
+
+          Remote summarization is disabled unless the current command includes
+          `--allow-remote-llm`. `--sanitize` asks OpenCode to remove session text and tool data,
+          producing a deliberately limited metadata-only report. `--dry-run` prints report
+          content to stdout, so terminal history, CI logs, and shell redirection must be treated
+          as sensitive outputs.
+          """,
+          )
+          append_once(
+              "docs/limitations.md",
+              "## OpenCode sanitized reports",
+              """
+          ## OpenCode sanitized reports
+
+          OpenCode's `--sanitize` replaces conversation text, tool input and output, paths, and
+          patches with redaction placeholders. Agent Worklog cannot restore that content. It
+          filters placeholders and keeps available database metadata, repository grouping,
+          session counts, and usage statistics, but detailed goals and outcomes are unavailable.
+          """,
+          )
+
+          changelog = Path("CHANGELOG.md")
+          text = changelog.read_text(encoding="utf-8")
+          entry = """## 0.6.0 - 2026-08-06
+
+          - OpenCode exports are raw by default.
+          - `--sanitize/--no-sanitize` and the nested environment setting control OpenCode redaction.
+          - Remote LLM summaries require `--allow-remote-llm` per invocation.
+          - `--no-llm` and `--allow-remote-llm` are mutually exclusive.
+          - Sanitized placeholders are omitted while database session metadata is retained.
+
+          """
+          if "## 0.6.0 - 2026-08-06" not in text:
+              first_break = text.find("\n")
+              text = text[: first_break + 1] + "\n" + entry + text[first_break + 1 :]
+              changelog.write_text(text, encoding="utf-8")
+
+          replace("pyproject.toml", 'version = "0.5.0"', 'version = "0.6.0"')
+          PY
+
+          uv lock
+
+      - name: Commit generated release files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md README.zh-TW.md docs/configuration.md docs/guides.md docs/privacy.md docs/limitations.md CHANGELOG.md pyproject.toml uv.lock
+          git commit -m "release: prepare 0.6.0 privacy defaults"
+          git push origin HEAD:feat/opencode-raw-export-default
