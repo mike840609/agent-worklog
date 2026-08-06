@@ -1,0 +1,38 @@
+%% Source for architecture.svg. Regenerate after editing:
+%%   npx -y -p @mermaid-js/mermaid-cli -p mermaid mmdc \
+%%     -i docs/assets/architecture.mmd -o docs/assets/architecture.svg \
+%%     -c docs/assets/mermaid.json -b white
+flowchart TD
+    subgraph Sources["Session sources"]
+        OC["OpenCode<br/>opencode db<br/>+ export"]
+        CC["Claude Code<br/>~/.claude/projects<br/>transcripts"]
+        CX["Codex<br/>~/.codex state DB<br/>or rollouts"]
+    end
+
+    subgraph Pipeline["Scan pipeline"]
+        SC["ScanService<br/>discover → load<br/>→ filter"]
+        RV["RepositoryResolver<br/>origin → common dir<br/>→ harness → path"]
+    end
+
+    subgraph Report["Report pipeline"]
+        EX["Extraction<br/>evidence<br/>+ 300-char cap"]
+        RD["Redaction<br/>secret patterns"]
+        SU["Summarizer<br/>rule-based or LLM"]
+        US["Usage stats<br/>opencode stats<br/>or session tokens"]
+        RE["MarkdownRenderer"]
+        WR["Atomic write<br/>0600 on POSIX"]
+    end
+
+    CLI["doctor / scan / report"] --> OC
+    CLI --> CC
+    CLI --> CX
+    OC --> SC
+    CC --> SC
+    CX --> SC
+    SC --> RV
+    RV --> EX
+    EX --> RD
+    RD --> SU
+    US --> RE
+    SU --> RE
+    RE --> WR

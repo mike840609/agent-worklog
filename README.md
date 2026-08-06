@@ -17,42 +17,11 @@ engineers time.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph Sources["Session sources"]
-        OC["OpenCode<br/>(opencode db + export)"]
-        CC["Claude Code<br/>(~/.claude/projects transcripts)"]
-        CX["Codex<br/>(~/.codex state DB or rollouts)"]
-    end
+<!-- Rendered image, not a mermaid block: the GitHub mobile app and PyPI show
+     mermaid source as plain text. Edit docs/assets/architecture.mmd and follow
+     the regenerate command at the top of that file. -->
 
-    subgraph Pipeline["Scan pipeline"]
-        SC["ScanService<br/>discover → load → filter"]
-        RV["RepositoryResolver<br/>origin → common dir → harness → path"]
-    end
-
-    subgraph Report["Report pipeline"]
-        EX["Extraction<br/>evidence + 300-char cap"]
-        RD["Redaction<br/>secret patterns"]
-        SU["Summarizer<br/>rule-based or LLM"]
-        US["Usage stats<br/>opencode stats or session tokens"]
-        RE["MarkdownRenderer"]
-        WR["Atomic write<br/>0600 on POSIX"]
-    end
-
-    CLI["doctor / scan / report"] --> OC
-    CLI --> CC
-    CLI --> CX
-    OC --> SC
-    CC --> SC
-    CX --> SC
-    SC --> RV
-    RV --> EX
-    EX --> RD
-    RD --> SU
-    US --> RE
-    SU --> RE
-    RE --> WR
-```
+![Architecture: CLI reads one of three session sources, scans and resolves repositories, then extracts, redacts, summarizes, and writes the report](https://github.com/mike840609/agent-worklog/raw/refs/heads/main/docs/assets/architecture.svg)
 
 Agent Worklog runs one of three sources per harness, loads only the sessions that overlap
 the requested period, groups them by repository, redacts and summarizes the evidence, and
