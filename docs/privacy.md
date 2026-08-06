@@ -243,3 +243,16 @@ are reported using session IDs and redacted error text.
 - Review generated content before distribution.
 - Rotate any credential that appears unredacted and report the pattern so the redactor can
   be extended.
+
+## OpenCode raw export default
+
+OpenCode sessions are loaded with raw `opencode export` by default. The complete
+JSON stays in subprocess stdout and Python memory; Agent Worklog does not persist or
+log it. Extracted evidence still passes through the local redactor before rendering
+or an authorized LLM request.
+
+Remote summarization is disabled unless the current command includes
+`--allow-remote-llm`. `--sanitize` asks OpenCode to remove session text and tool data,
+producing a deliberately limited metadata-only report. `--dry-run` prints report
+content to stdout, so terminal history, CI logs, and shell redirection must be treated
+as sensitive outputs.

@@ -169,3 +169,11 @@ agent-worklog report --period last-week --no-llm
 For each setting, Agent Worklog takes the environment variable, then the settings file,
 then the default. CLI period and output options apply to the current invocation only and
 override the settings that back them.
+
+## OpenCode export privacy
+
+`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE` defaults to `false`.
+Set it to `true` to request `opencode export --sanitize`. The CLI flags
+`--sanitize` and `--no-sanitize` override this setting for one invocation.
+Remote LLM authorization is intentionally not configurable: each report that may
+transmit evidence must include `--allow-remote-llm`.

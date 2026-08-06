@@ -112,3 +112,24 @@ def test_every_variable_in_the_configuration_doc_is_a_real_setting() -> None:
     known.add("AGENT_WORKLOG_CONFIG_FILE")
 
     assert documented <= known, f"documented but not settable: {documented - known}"
+
+
+def test_readmes_document_privacy_controls() -> None:
+    for path in (Path("README.md"), Path("README.zh-TW.md")):
+        text = path.read_text(encoding="utf-8")
+        assert "--sanitize" in text
+        assert "--allow-remote-llm" in text
+
+
+def test_configuration_documents_opencode_sanitize_setting() -> None:
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE" in configuration
+
+
+def test_privacy_doc_warns_about_raw_export_and_dry_run() -> None:
+    privacy = Path("docs/privacy.md").read_text(encoding="utf-8").casefold()
+
+    assert "raw" in privacy
+    assert "--dry-run" in privacy
+    assert "--allow-remote-llm" in privacy

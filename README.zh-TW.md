@@ -75,7 +75,7 @@ harness，都可以：
 - Python 3.11 以上。
 - 可以用 `git` 執行的 Git。
 - 一個 coding-agent harness：OpenCode（預設）、Claude Code 或 Codex。OpenCode 需要一個提供
-  `opencode db` 與 `opencode export --sanitize` 的 `opencode` 執行檔；Claude Code 與 Codex
+  `opencode db` 與 `opencode export` 的 `opencode` 執行檔；Claude Code 與 Codex
   不需要命令列工具，只需要一個可讀取的逐字紀錄存放處（`~/.claude/projects` 或 `~/.codex`）。
 
 ## 安裝
@@ -151,6 +151,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `--until ISO` | 以指定時間作為期間終點，必須搭配 `--since`。 |
 | `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）、`claude-code` 或 `codex`。 |
 | `--root-only` | 排除 child 與 subagent 工作階段。 |
+| `--sanitize / --no-sanitize` | 開啟或關閉 OpenCode 匯出去敏；預設使用 raw export。僅適用 OpenCode。 |
 | `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。用於 `scan` 時，也會列出每個 repository 的工作階段標題與工作目錄。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
 
@@ -166,6 +167,7 @@ repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀�
 | `--force` | 輸出檔案已存在時直接覆寫。 |
 | `--dry-run` | 直接印出 Markdown，不寫入檔案。 |
 | `--no-llm` | 不使用外部 LLM 產生摘要。 |
+| `--allow-remote-llm` | 本次執行明確允許把本機去敏後的 evidence 傳送到設定的 OpenAI-compatible endpoint。 |
 | `--detail LEVEL` | 報告的詳細程度：`full`（預設）或 `brief`。 |
 
 `--detail brief` 會產生適合貼進週報的簡短報告：保留標頭，每個 repository 保留
@@ -211,6 +213,11 @@ shell 中會覆蓋設定檔：
 
 ```bash
 export AGENT_WORKLOG_REPORT__TIMEZONE="Asia/Taipei"
+export AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY="reports"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE="opencode"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE="false"
+export AGENT_WORKLOG_LLM__MODEL="gpt-5-mini"
+export AGENT_WORKLOG_LLM__BASE_URL="https://api.openai.com/v1/"
 export AGENT_WORKLOG_LLM__ENABLED="false"
 ```
 
@@ -219,9 +226,10 @@ export AGENT_WORKLOG_LLM__ENABLED="false"
 
 ## 隱私
 
-Agent Worklog 使用 `--sanitize` 要求 OpenCode 匯出資料，在送出任何報告或 LLM 請求前先
-檢查常見的機密字串樣式，並把每一筆佐證資訊截斷到 300 個字元。報告中仍可能包含私人的
-目標、檔名、指令與工作資料夾的完整路徑——分享報告前請務必先檢查內容。
+OpenCode 預設使用 raw export，讓報告保留可用的工作細節。Agent Worklog 會先在本機清理
+常見機密，且除非本次指令明確加入 `--allow-remote-llm`，否則只使用規則式摘要。需要
+OpenCode 強力遮蔽時可加入 `--sanitize`，但這會刻意移除大部分工作 evidence。報告仍可能
+包含私人目標、檔名、指令與完整路徑——分享前請務必檢查。
 
 詳細的資料安全與目前限制，請見
 [隱私與安全](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md)。

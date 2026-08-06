@@ -52,6 +52,7 @@ def test_end_to_end_weekly_worklog(
     assert "/worktrees/agent-main" in content
     assert "Session failed-export export failed" in content
     assert mocked_opencode.export_calls
-    assert all(call[-1] == "--sanitize" for call in mocked_opencode.export_calls)
+    assert all("--sanitize" not in call for call in mocked_opencode.export_calls)
+    assert "[redacted:" not in content
     assert "## Usage" in content
     assert "gpt-5-mini 1234 tokens" in content
