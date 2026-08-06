@@ -43,8 +43,8 @@ All three harnesses then continue:
    cover the report period rather than a window ending now. Either way the usage output
    holds model, token, and tool totals rather than session content, and it is redacted
    before it reaches the report.
-6. The redacted evidence is rendered locally or optionally sent to an OpenAI-compatible
-   endpoint.
+6. The redacted evidence is rendered to the structured report, or grouped into a
+   redacted raw transcript for the locally installed `opencode run` to narrate.
 7. Markdown is written with an atomic replacement and owner-only `0600` permissions on
    POSIX systems.
 
@@ -192,20 +192,19 @@ listed under "Key Files", which for a `Write`-shaped call means the beginning of
 file's own `content`. Text that does not look like a single path is refused instead, so
 such a call contributes no "Key File" entry rather than an entry made of file contents.
 
-## Optional LLM use
+## Narrative report data
 
-An HTTP client is constructed only when LLM support is enabled, `--no-llm` is absent, and
-the configured API-key environment variable exists. The payload contains canonical,
-redacted evidence rather than raw transcripts or raw metadata.
+The default report invokes the locally installed `opencode run` subprocess. The
+payload is a grouped, redacted raw transcript plus a summarization prompt. It
+contains session content that the structured evidence pipeline also sees: session
+titles and absolute working directories, goals, commands, and filenames. They are
+redacted for secrets like every other field, but redaction does not remove what a
+path identifies. A directory such as `/Users/<operator>/work/<client>/service`
+still names the operator and often a client or employer.
 
-That evidence includes per-session titles and absolute working directories. They are
-redacted for secrets like every other field, but redaction does not remove what a path
-identifies. A directory such as `/Users/<operator>/work/<client>/service` leaves the
-machine with the request, usernames and client or employer names included.
-
-The endpoint operator may retain requests according to its own policies. Use
-`--no-llm` or set `AGENT_WORKLOG_LLM__ENABLED=false` when external processing is not
-permitted.
+The transcript is a temporary file that is removed after the invocation, and the
+prose returns to the same process. Use `--no-llm` to produce the deterministic
+structured report without running `opencode run` at all.
 
 ## Reports remain sensitive
 
@@ -239,7 +238,6 @@ are reported using session IDs and redacted error text.
 
 - Keep the OpenCode storage (or, for Claude Code, `~/.claude/projects`; or, for Codex,
   `~/.codex`) and generated reports protected by appropriate filesystem permissions.
-- Do not enable an external LLM endpoint unless company policy permits it.
 - Review generated content before distribution.
 - Rotate any credential that appears unredacted and report the pattern so the redactor can
   be extended.
@@ -249,10 +247,10 @@ are reported using session IDs and redacted error text.
 OpenCode sessions are loaded with raw `opencode export` by default. The complete
 JSON stays in subprocess stdout and Python memory; Agent Worklog does not persist or
 log it. Extracted evidence still passes through the local redactor before rendering
-or an authorized LLM request.
+or before it reaches the narrative `opencode run` invocation.
 
-Remote summarization is disabled unless the current command includes
-`--allow-remote-llm`. `--sanitize` asks OpenCode to remove session text and tool data,
-producing a deliberately limited metadata-only report. `--dry-run` prints report
-content to stdout, so terminal history, CI logs, and shell redirection must be treated
-as sensitive outputs.
+`opencode run` is invoked with the redacted grouped transcript; it runs locally with
+the user's own model configuration and no API key is read. `--sanitize` asks OpenCode
+to remove session text and tool data, producing a deliberately limited narrative.
+`--dry-run` prints report content to stdout, so terminal history, CI logs, and shell
+redirection must be treated as sensitive outputs.

@@ -83,7 +83,13 @@ agent-worklog doctor
 agent-worklog scan --period last-week
 ```
 
-不使用外部 LLM，直接產生 Markdown 報告：
+產生 Markdown 報告；預設會在本機執行 `opencode run` 來撰寫敘事式週報：
+
+```bash
+agent-worklog report --period last-week
+```
+
+要改為決定性的結構化報告，加上 `--no-llm`：
 
 ```bash
 agent-worklog report --period last-week --no-llm
@@ -92,7 +98,8 @@ agent-worklog report --period last-week --no-llm
 預設輸出會寫到 `reports/` 底下。
 
 上面三個指令預設都是 `--harness opencode`。要用 Claude Code 或 Codex 的話，各自加上
-`--harness claude-code` 或 `--harness codex` 即可，不需要安裝 OpenCode：
+`--harness claude-code` 或 `--harness codex` 即可，不需要安裝 OpenCode
+（結構化的 `--no-llm` 報告對所有 harness 都可用）：
 
 ```bash
 agent-worklog doctor --harness claude-code
@@ -135,8 +142,7 @@ repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀�
 | `--output PATH` | 寫到指定檔案，而不是預設資料夾。 |
 | `--force` | 輸出檔案已存在時直接覆寫。 |
 | `--dry-run` | 直接印出 Markdown，不寫入檔案。 |
-| `--no-llm` | 不使用外部 LLM 產生摘要。 |
-| `--allow-remote-llm` | 本次執行明確允許把本機去敏後的 evidence 傳送到設定的 OpenAI-compatible endpoint。 |
+| `--no-llm` | 跳過本機 `opencode run` 的敘事式報告，直接輸出決定性的結構化報告。 |
 | `--detail LEVEL` | 報告的詳細程度：`full`（預設）或 `brief`。 |
 
 `--detail brief` 會產生適合貼進週報的簡短報告：保留標頭，每個 repository 保留
@@ -185,9 +191,8 @@ export AGENT_WORKLOG_REPORT__TIMEZONE="Asia/Taipei"
 export AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY="reports"
 export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE="opencode"
 export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE="false"
-export AGENT_WORKLOG_LLM__MODEL="gpt-5-mini"
-export AGENT_WORKLOG_LLM__BASE_URL="https://api.openai.com/v1/"
-export AGENT_WORKLOG_LLM__ENABLED="false"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS="600.0"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL=""
 ```
 
 完整設定清單請見
@@ -196,7 +201,8 @@ export AGENT_WORKLOG_LLM__ENABLED="false"
 ## 隱私
 
 OpenCode 預設使用 raw export，讓報告保留可用的工作細節。Agent Worklog 會先在本機清理
-常見機密，且除非本次指令明確加入 `--allow-remote-llm`，否則只使用規則式摘要。需要
+常見機密，然後把分組、去敏後的原始 transcript 交給本機安裝的 `opencode run` 撰寫敘事式
+週報；資料不會離開本機，也不需要 API key。要決定性的結構化報告可用 `--no-llm`。需要
 OpenCode 強力遮蔽時可加入 `--sanitize`，但這會刻意移除大部分工作 evidence。報告仍可能
 包含私人目標、檔名、指令與完整路徑——分享前請務必檢查。
 

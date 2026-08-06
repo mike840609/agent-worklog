@@ -129,36 +129,25 @@ agent-worklog doctor --harness codex
 
 The `--output` CLI option overrides the configured output directory for one invocation.
 
-## LLM settings
+## OpenCode run settings
+
+The default narrative report runs the locally installed `opencode run`. These
+settings control that invocation. An empty `MODEL` uses opencode's default model.
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_LLM__ENABLED` | `true` | Allows LLM use when a key is available. |
-| `AGENT_WORKLOG_LLM__PROVIDER` | `openai-compatible` | Provider label. |
-| `AGENT_WORKLOG_LLM__MODEL` | `gpt-5-mini` | Model sent to the endpoint. |
-| `AGENT_WORKLOG_LLM__BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL. |
-| `AGENT_WORKLOG_LLM__API_KEY_ENV` | `OPENAI_API_KEY` | Name of the environment variable containing the key. |
-| `AGENT_WORKLOG_LLM__TIMEOUT_SECONDS` | `60` | HTTP timeout per attempt. |
+| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | The `opencode` executable used for export, stats, and the narrative report. |
+| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS` | `600.0` | How long a single `opencode run` may take before Agent Worklog falls back to the structured report. |
+| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL` | `""` | Optional model passed as `--model` to `opencode run`. Empty means opencode's default. |
 
-To use a company endpoint without placing its key in an Agent Worklog setting:
+To pin a specific model for report narratives:
 
 ```bash
-export COMPANY_LLM_API_KEY="..."
-export AGENT_WORKLOG_LLM__API_KEY_ENV="COMPANY_LLM_API_KEY"
-export AGENT_WORKLOG_LLM__BASE_URL="https://llm.example.com/v1/"
-export AGENT_WORKLOG_LLM__MODEL="company-summary-model"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL="gpt-5.3"
 agent-worklog report --period last-week
 ```
 
-Agent Worklog reads the value named by `API_KEY_ENV`; it does not log that value.
-
-To disable external summarization globally:
-
-```bash
-export AGENT_WORKLOG_LLM__ENABLED="false"
-```
-
-To disable it for one command:
+To disable the narrative for one command and emit the deterministic structured report:
 
 ```bash
 agent-worklog report --period last-week --no-llm
@@ -167,13 +156,13 @@ agent-worklog report --period last-week --no-llm
 ## Precedence
 
 For each setting, Agent Worklog takes the environment variable, then the settings file,
-then the default. CLI period and output options apply to the current invocation only and
-override the settings that back them.
+then the default. CLI period and output options apply to the current invocation only
+and override the settings that back them. Environment settings provide defaults for
+harness execution, timezone, output directory, and the narrative `opencode run`
+invocation.
 
 ## OpenCode export privacy
 
 `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE` defaults to `false`.
 Set it to `true` to request `opencode export --sanitize`. The CLI flags
 `--sanitize` and `--no-sanitize` override this setting for one invocation.
-Remote LLM authorization is intentionally not configurable: each report that may
-transmit evidence must include `--allow-remote-llm`.

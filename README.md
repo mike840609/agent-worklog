@@ -87,7 +87,14 @@ Preview how Agent Worklog groups repositories for the previous full week:
 agent-worklog scan --period last-week
 ```
 
-Create the Markdown report without using an external LLM:
+Create the Markdown report; the default runs your local `opencode run` to write a
+narrative weekly review:
+
+```bash
+agent-worklog report --period last-week
+```
+
+Use `--no-llm` for the deterministic structured report instead:
 
 ```bash
 agent-worklog report --period last-week --no-llm
@@ -97,7 +104,7 @@ The default output is written under `reports/`.
 
 Those three commands default to `--harness opencode`. For Claude Code or Codex, add
 `--harness claude-code` or `--harness codex` to each — no OpenCode installation is
-needed:
+needed (the structured `--no-llm` report works for every harness):
 
 ```bash
 agent-worklog doctor --harness claude-code
@@ -141,8 +148,7 @@ stderr so stdout contains only Markdown.
 | `--output PATH` | Writes to this file instead of the default folder. |
 | `--force` | Replaces the output file if it already exists. |
 | `--dry-run` | Prints the Markdown instead of writing a file. |
-| `--no-llm` | Creates the summary without an external LLM. |
-| `--allow-remote-llm` | Explicitly allows extracted, locally redacted evidence to be sent to the configured OpenAI-compatible endpoint for this invocation. |
+| `--no-llm` | Skips the local `opencode run` narrative and emits the deterministic structured report. |
 | `--detail LEVEL` | How much detail the report contains: `full` (default) or `brief`. |
 
 `--detail brief` produces a short report for a status update: it keeps the
@@ -200,9 +206,8 @@ export AGENT_WORKLOG_REPORT__TIMEZONE="Asia/Taipei"
 export AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY="reports"
 export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE="opencode"
 export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE="false"
-export AGENT_WORKLOG_LLM__MODEL="gpt-5-mini"
-export AGENT_WORKLOG_LLM__BASE_URL="https://api.openai.com/v1/"
-export AGENT_WORKLOG_LLM__ENABLED="false"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS="600.0"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL=""
 ```
 
 See the
@@ -212,10 +217,12 @@ for a complete list of settings.
 ## Privacy
 
 OpenCode exports are raw by default so reports retain useful work details. Agent Worklog
-redacts common secret patterns locally and uses the rule-based summarizer unless each report
-invocation explicitly includes `--allow-remote-llm`. Use `--sanitize` for OpenCode's stronger
-redaction, which intentionally removes most work evidence. Reports may still contain private
-goals, filenames, commands, and full working paths — always review a report before sharing it.
+redacts common secret patterns locally. The default report hands a grouped, redacted raw
+transcript to the locally installed `opencode run`, which writes the narrative; nothing
+leaves your machine and no API key is needed. Use `--no-llm` for the deterministic
+structured report. Use `--sanitize` for OpenCode's stronger redaction, which
+intentionally removes most work evidence. Reports may still contain private goals,
+filenames, commands, and full working paths — always review a report before sharing it.
 
 See
 [Privacy and security](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md)
