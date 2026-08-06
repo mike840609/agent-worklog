@@ -298,20 +298,26 @@ def _build_report_service(
         )
 
     usage_provider, days = _usage_provider(settings, period, harness, now)
-    scan_kwargs: dict[str, object] = {
-        "harness": harness,
-        "progress": progress,
-    }
     if sanitize:
-        scan_kwargs["sanitize"] = True
-
-    return ReportService(
-        scan_service=_build_scan_service(
+        scan_service = _build_scan_service(
             settings,
             period,
             root_only,
-            **scan_kwargs,
-        ),
+            harness=harness,
+            sanitize=True,
+            progress=progress,
+        )
+    else:
+        scan_service = _build_scan_service(
+            settings,
+            period,
+            root_only,
+            harness=harness,
+            progress=progress,
+        )
+
+    return ReportService(
+        scan_service=scan_service,
         summarizer=summarizer,
         renderer=MarkdownRenderer(),
         period=period,
@@ -401,19 +407,25 @@ def scan(
             timezone=settings.report.timezone,
             now=now,
         )
-        build_kwargs: dict[str, object] = {
-            "harness": harness,
-        }
-        if effective_sanitize:
-            build_kwargs["sanitize"] = True
         with reporter.progress() as progress:
-            build_kwargs["progress"] = progress
-            result = _build_scan_service(
-                settings,
-                selected_period,
-                root_only,
-                **build_kwargs,
-            ).scan()
+            if effective_sanitize:
+                service = _build_scan_service(
+                    settings,
+                    selected_period,
+                    root_only,
+                    harness=harness,
+                    sanitize=True,
+                    progress=progress,
+                )
+            else:
+                service = _build_scan_service(
+                    settings,
+                    selected_period,
+                    root_only,
+                    harness=harness,
+                    progress=progress,
+                )
+            result = service.scan()
             if result.loaded_session_count == 0:
                 raise NoSessionsError(
                     f"no {harness.value} activity found in the requested period"
@@ -489,25 +501,59 @@ def report(
             now=now,
         )
         output_path = output or _default_output_path(settings, selected_period)
-        build_kwargs: dict[str, object] = {
-            "now": now,
-            "harness": harness,
-            "detail": detail,
-        }
-        if effective_sanitize:
-            build_kwargs["sanitize"] = True
-        if allow_remote_llm:
-            build_kwargs["allow_remote_llm"] = True
         with reporter.progress() as progress:
-            build_kwargs["progress"] = progress
-            service = _build_report_service(
-                settings,
-                selected_period,
-                output_path,
-                no_llm,
-                root_only,
-                **build_kwargs,
-            )
+            if effective_sanitize and allow_remote_llm:
+                service = _build_report_service(
+                    settings,
+                    selected_period,
+                    output_path,
+                    no_llm,
+                    root_only,
+                    now=now,
+                    harness=harness,
+                    sanitize=True,
+                    allow_remote_llm=True,
+                    detail=detail,
+                    progress=progress,
+                )
+            elif effective_sanitize:
+                service = _build_report_service(
+                    settings,
+                    selected_period,
+                    output_path,
+                    no_llm,
+                    root_only,
+                    now=now,
+                    harness=harness,
+                    sanitize=True,
+                    detail=detail,
+                    progress=progress,
+                )
+            elif allow_remote_llm:
+                service = _build_report_service(
+                    settings,
+                    selected_period,
+                    output_path,
+                    no_llm,
+                    root_only,
+                    now=now,
+                    harness=harness,
+                    allow_remote_llm=True,
+                    detail=detail,
+                    progress=progress,
+                )
+            else:
+                service = _build_report_service(
+                    settings,
+                    selected_period,
+                    output_path,
+                    no_llm,
+                    root_only,
+                    now=now,
+                    harness=harness,
+                    detail=detail,
+                    progress=progress,
+                )
             result = service.generate(force=force, dry_run=dry_run)
             if not result.report.repositories:
                 raise NoSessionsError(
