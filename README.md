@@ -144,7 +144,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `doctor` | Checks that the selected harness and `git` are ready to use. |
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
-| `config` | Shows and edits the settings file: `path`, `list`, `set`, `unset`. |
+| `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
 `scan` and `report` share these options:
 
@@ -203,11 +203,23 @@ Agent Worklog reads every setting from an environment variable, and reads a sett
 file for the ones the environment does not set. For each setting it takes the
 environment variable, then the settings file, then the default.
 
-Set a value once, in the settings file:
+To set everything up at once, `config init` walks through every setting, showing the
+value in force in brackets. Press Enter to keep it:
+
+```
+$ agent-worklog config init
+Press Enter to keep the value in brackets. Every setting is optional.
+report.timezone [Asia/Taipei]:
+llm.model [gpt-5-mini]: gpt-5
+Wrote 1 setting to /home/dev/.config/agent-worklog/config.env
+```
+
+Or set a value once, in the settings file:
 
 ```bash
 agent-worklog config set llm.model gpt-5
 agent-worklog config set report.timezone Europe/Berlin
+agent-worklog config set llm.model            # leave the value out to be asked for it
 agent-worklog config list
 ```
 

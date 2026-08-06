@@ -11,6 +11,7 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 import agent_worklog.cli as cli
+from agent_worklog import config_store
 from agent_worklog.errors import ReportOutputError
 from agent_worklog.models.report import RepositorySummary, WorklogReport
 from agent_worklog.models.time_range import DateRange
@@ -674,3 +675,142 @@ def test_config_list_exits_3_instead_of_a_traceback_on_an_unreadable_file(
 
     assert result.exit_code == 3
     assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def _as_a_terminal(monkeypatch) -> None:
+    """Pretend stdin is a terminal.
+
+    CliRunner feeds stdin through a pipe, so the real `isatty()` is False and
+    every prompting test would hit the non-terminal guard instead of the
+    behavior it means to exercise.
+    """
+
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: True)
+
+
+def test_config_set_prompts_when_the_value_is_omitted(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    _as_a_terminal(monkeypatch)
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model"], input="gpt-4o\n")
+
+    assert result.exit_code == 0
+    assert "gpt-5-mini" in result.stdout  # the prompt shows the value in force
+    assert cli._load_settings().llm.model == "gpt-4o"
+
+
+def test_config_set_prompt_leaves_the_setting_alone_on_an_empty_answer(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    _as_a_terminal(monkeypatch)
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model"], input="\n")
+
+    assert result.exit_code == 0
+    assert "unchanged" in result.stdout
+    assert not path.exists()
+
+
+def test_config_set_prompt_rejects_a_bad_value_and_asks_again(monkeypatch, tmp_path) -> None:
+    """A typo must not abort the prompt — the point of prompting is to fix it."""
+
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    _as_a_terminal(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "llm.timeout_seconds"], input="abc\n30\n"
+    )
+
+    assert result.exit_code == 0
+    assert "invalid value for llm.timeout_seconds" in result.stdout
+    assert cli._load_settings().llm.timeout_seconds == 30.0
+
+
+def test_config_set_rejects_an_unknown_key_before_prompting(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    _as_a_terminal(monkeypatch)
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.mdoel"], input="gpt-5\n")
+
+    assert result.exit_code == 3
+    assert "did you mean llm.model" in result.stdout
+
+
+def test_config_set_without_a_value_needs_a_terminal(monkeypatch, tmp_path) -> None:
+    """In a pipe or in CI there is nobody to answer, so fail instead of reading stdin."""
+
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model"], input="gpt-5\n")
+
+    assert result.exit_code == 3
+    assert "needs a terminal" in result.stdout
+
+
+def test_config_set_with_a_value_still_works_without_a_terminal(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+
+    assert result.exit_code == 0
+    assert cli._load_settings().llm.model == "gpt-5"
+
+
+def test_config_init_walks_every_setting_and_writes_only_the_answers(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    monkeypatch.delenv("AGENT_WORKLOG_REPORT__TIMEZONE", raising=False)
+    _as_a_terminal(monkeypatch)
+    settings = config_store.setting_keys()
+    answers = {"report.timezone": "Europe/Berlin", "llm.model": "gpt-4o"}
+    keystrokes = "".join(f"{answers.get(setting.key, '')}\n" for setting in settings)
+
+    result = CliRunner().invoke(cli.app, ["config", "init"], input=keystrokes)
+
+    assert result.exit_code == 0, result.stdout
+    # Every setting was offered, not just the two that were answered.
+    for setting in settings:
+        assert setting.key in result.stdout
+    assert config_store.stored_values(path) == {
+        "AGENT_WORKLOG_REPORT__TIMEZONE": "Europe/Berlin",
+        "AGENT_WORKLOG_LLM__MODEL": "gpt-4o",
+    }
+    assert "Wrote 2 settings" in result.stdout
+
+
+def test_config_init_writes_nothing_when_every_answer_is_empty(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    _as_a_terminal(monkeypatch)
+    keystrokes = "\n" * len(config_store.setting_keys())
+
+    result = CliRunner().invoke(cli.app, ["config", "init"], input=keystrokes)
+
+    assert result.exit_code == 0
+    assert not path.exists()
+    assert "Wrote 0 settings" in result.stdout
+
+
+def test_config_init_needs_a_terminal(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = CliRunner().invoke(cli.app, ["config", "init"], input="\n" * 20)
+
+    assert result.exit_code == 3
+    assert "needs a terminal" in result.stdout
+    # The way out of a non-interactive shell differs per command, so the
+    # message must point at `config set`, not at "pass the value".
+    assert "config set" in result.stdout

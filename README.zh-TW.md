@@ -139,7 +139,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `doctor` | 檢查目前選用的 harness 與 `git` 是否就緒。 |
 | `scan` | 顯示哪些工作階段落在指定期間內，以及它們如何分組成 repository。 |
 | `report` | 產生指定期間的 Markdown 報告。 |
-| `config` | 顯示與編輯設定檔：`path`、`list`、`set`、`unset`。 |
+| `config` | 顯示與編輯設定檔：`path`、`list`、`init`、`set`、`unset`。 |
 
 `scan` 與 `report` 共用這些選項：
 
@@ -189,11 +189,23 @@ In Progress 各最多五條，不輸出 Key Files、Directories、Sessions、Bra
 Agent Worklog 的每項設定都先讀環境變數，環境變數沒有設定的部分則讀設定檔。每項設定的
 順序是：環境變數、設定檔、預設值。
 
-設定一次就會寫進設定檔：
+若要一次完成設定，`config init` 會逐項詢問每個設定，並在中括號內顯示目前生效的值。
+按 Enter 即保留該值：
+
+```
+$ agent-worklog config init
+Press Enter to keep the value in brackets. Every setting is optional.
+report.timezone [Asia/Taipei]:
+llm.model [gpt-5-mini]: gpt-5
+Wrote 1 setting to /home/dev/.config/agent-worklog/config.env
+```
+
+也可以逐項寫進設定檔：
 
 ```bash
 agent-worklog config set llm.model gpt-5
 agent-worklog config set report.timezone Europe/Berlin
+agent-worklog config set llm.model            # 省略數值即會詢問
 agent-worklog config list
 ```
 

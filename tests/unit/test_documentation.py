@@ -133,3 +133,26 @@ def test_privacy_doc_warns_about_raw_export_and_dry_run() -> None:
     assert "raw" in privacy
     assert "--dry-run" in privacy
     assert "--allow-remote-llm" in privacy
+
+
+def test_readmes_document_the_interactive_config_commands() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        assert "agent-worklog config init" in text
+        assert "`path`, `list`, `init`, `set`, `unset`" in text or (
+            "`path`、`list`、`init`、`set`、`unset`" in text
+        )
+
+
+def test_configuration_doc_explains_what_an_empty_answer_means() -> None:
+    """The prompt's Enter key and `config set <key> ""` mean different things."""
+
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "agent-worklog config init" in configuration
+    assert 'an empty answer means "leave this as it is", not "erase it"' in configuration
+    # Prompting in CI must fail rather than read stdin. Asserted without the
+    # surrounding line break, so reflowing the paragraph does not break it.
+    assert "rather than reading from stdin" in configuration

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Callable
 from datetime import datetime
 from enum import StrEnum
@@ -649,13 +650,106 @@ def _warn_if_shadowed(
         )
 
 
+def _stdin_is_a_terminal() -> bool:
+    """Whether anyone is on the other end to answer a prompt."""
+
+    return sys.stdin.isatty()
+
+
+def _require_a_terminal(message: str) -> None:
+    """Refuse to prompt into a pipe.
+
+    In CI or a shell pipeline nobody can answer, and quietly eating piped
+    stdin would be a stranger failure than saying so. The caller supplies
+    the whole message because the way out differs per command.
+    """
+
+    if not _stdin_is_a_terminal():
+        raise ConfigurationError(message)
+
+
+def _values_in_force(path: Path) -> dict[str, str]:
+    """The value each setting currently resolves to, whatever its source."""
+
+    return {row.key: row.value for row in config_store.describe_settings(path)}
+
+
+def _ask_for_value(setting: config_store.SettingKey, current: str) -> str | None:
+    """Prompt for one setting, returning None when the user leaves it alone.
+
+    Every setting is optional, so an empty answer means "no change" rather
+    than "store an empty value" — `config unset` is how a setting goes back
+    to its default. A rejected answer re-asks instead of aborting: a typo
+    partway through `config init` must not discard the answers before it.
+    """
+
+    while True:
+        answer = typer.prompt(f"{setting.key} [{current}]", default="", show_default=False)
+        answer = answer.strip()
+        if not answer:
+            return None
+        try:
+            config_store.validate_value(setting, answer)
+        except ConfigurationError as exc:
+            typer.echo(f"  {exc}")
+            continue
+        return answer
+
+
+@config_app.command("init")
+def config_init() -> None:
+    """Walk every setting, keeping what is in force unless you type a new value."""
+
+    reporter = ConsoleReporter()
+    path = config_store.config_file_path()
+    written = 0
+    try:
+        _require_a_terminal(
+            "config init needs a terminal; use config set to write settings non-interactively"
+        )
+        reporter.message(f"Settings file: {path}")
+        reporter.message(
+            "Press Enter to keep the value in brackets. Every setting is optional."
+        )
+        current = _values_in_force(path)
+        for setting in config_store.setting_keys():
+            answer = _ask_for_value(setting, current.get(setting.key, setting.default))
+            if answer is None:
+                continue
+            config_store.set_value(setting.key, answer, path=path)
+            _warn_if_shadowed(reporter, setting)
+            written += 1
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+    reporter.message(f"Wrote {written} setting{'' if written == 1 else 's'} to {path}")
+
+
 @config_app.command("set")
-def config_set(key: str, value: str) -> None:
-    """Set one setting. An empty value restores its default."""
+def config_set(
+    key: str,
+    value: Annotated[str | None, typer.Argument()] = None,
+) -> None:
+    """Set one setting. Omit the value to be asked for it; an empty value restores
+    the default."""
 
     reporter = ConsoleReporter()
     path = config_store.config_file_path()
     try:
+        if value is None:
+            # Resolve the key before prompting: asking for a value and only
+            # then rejecting the key wastes the answer.
+            setting = config_store.resolve_key(key)
+            _require_a_terminal(
+                f"asking for {setting.key} needs a terminal; "
+                "pass the value as an argument instead"
+            )
+            current = _values_in_force(path).get(setting.key, setting.default)
+            answer = _ask_for_value(setting, current)
+            if answer is None:
+                reporter.message(f"{setting.key} unchanged; still {current}")
+                return
+            value = answer
         if value == "":
             # Every setting is optional, so "no value" is a real answer: drop
             # the entry rather than storing an empty string the model would

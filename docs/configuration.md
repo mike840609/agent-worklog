@@ -19,10 +19,38 @@ shell it was set in:
 ```bash
 agent-worklog config path                        # where the file is
 agent-worklog config list                        # every setting, value, and source
+agent-worklog config init                        # walk through every setting
 agent-worklog config set llm.model gpt-5         # write one setting
+agent-worklog config set llm.model               # ask for the value
 agent-worklog config set llm.model ""            # empty value: back to the default
 agent-worklog config unset llm.model             # same thing, spelled out
 ```
+
+## Setting values interactively
+
+`agent-worklog config init` walks through every setting in turn, showing the value in
+force in brackets:
+
+```
+$ agent-worklog config init
+Settings file: /home/dev/.config/agent-worklog/config.env
+Press Enter to keep the value in brackets. Every setting is optional.
+report.timezone [Asia/Taipei]:
+llm.model [gpt-5-mini]: gpt-5
+Wrote 1 setting to /home/dev/.config/agent-worklog/config.env
+```
+
+Pressing Enter leaves a setting alone; nothing is written for it. Only the settings you
+answer are recorded, so a run where you answer nothing writes no file at all. Use
+`config unset` to take a setting that is already in the file back to its default —
+an empty answer means "leave this as it is", not "erase it".
+
+`agent-worklog config set <key>` with no value asks for that one setting the same way.
+A value the settings would reject is refused and asked again, so a typo partway through
+`config init` does not throw away the answers before it.
+
+Both need a terminal. In a pipeline or in CI there is nobody to answer, so they exit
+with code 3 rather than reading from stdin; pass the value as an argument there.
 
 Keys are the lowercase, dot-separated form of the variable name, so
 `AGENT_WORKLOG_LLM__MODEL` is `llm.model` and
