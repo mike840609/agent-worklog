@@ -61,6 +61,7 @@ class ReportService:
         usage_days: int | None = None,
         detail: DetailLevel = DetailLevel.FULL,
         progress: ProgressReporter | None = None,
+        initial_warnings: list[str] | None = None,
     ) -> None:
         self._scan_service = scan_service
         self._summarizer = summarizer
@@ -72,6 +73,7 @@ class ReportService:
         self._usage_days = usage_days
         self._detail = detail
         self._progress = progress if progress is not None else NullProgressReporter()
+        self._initial_warnings = list(initial_warnings or [])
 
     def _repository_evidence(self, scan: ScanResult) -> list[RepositoryEvidence]:
         child_counts = count_child_sessions_by_repository(scan.resolved_sessions)
@@ -117,7 +119,7 @@ class ReportService:
         if not dry_run and not force and destination.exists():
             raise ReportOutputError(f"report already exists: {destination}")
         scan = self._scan_service.scan()
-        warnings = list(scan.warnings)
+        warnings = [*self._initial_warnings, *scan.warnings]
         evidence_items = self._repository_evidence(scan)
         summaries: list[RepositorySummary] = []
         self._progress.start(
