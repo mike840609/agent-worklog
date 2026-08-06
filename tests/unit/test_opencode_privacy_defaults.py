@@ -17,7 +17,12 @@ from agent_worklog.process import CommandResult
 class FakeRunner:
     calls: list[list[str]] = field(default_factory=list)
 
-    def run(self, args: list[str]) -> CommandResult:
+    def run(
+        self,
+        args: list[str],
+        *,
+        stdout_path: object = None,
+    ) -> CommandResult:
         self.calls.append(args)
         return CommandResult(returncode=0, stdout='{"messages": []}', stderr="")
 

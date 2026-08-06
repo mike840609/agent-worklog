@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from typer.testing import CliRunner
@@ -18,7 +19,12 @@ class PrivacyModeRunner:
     sanitized: bool
     export_calls: list[list[str]] = field(default_factory=list)
 
-    def run(self, args: list[str]) -> CommandResult:
+    def run(
+        self,
+        args: list[str],
+        *,
+        stdout_path: Path | None = None,
+    ) -> CommandResult:
         if args[:2] == ["opencode", "db"]:
             rows = [
                 {
