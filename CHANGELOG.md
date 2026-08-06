@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 - 2026-08-06
+
+- OpenCode exports are raw by default.
+- `--sanitize/--no-sanitize` and the nested environment setting control OpenCode redaction.
+- Remote LLM summaries require `--allow-remote-llm` per invocation.
+- `--no-llm` and `--allow-remote-llm` are mutually exclusive.
+- Sanitized placeholders are omitted while database session metadata is retained.
+
+
 All notable changes to this project are documented in this file.
 
 ## Unreleased

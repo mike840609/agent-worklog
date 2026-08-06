@@ -78,7 +78,7 @@ harnesses, it can:
 - Python 3.11 or newer.
 - Git available as `git`.
 - One coding-agent harness: OpenCode (default), Claude Code, or Codex. OpenCode needs an
-  `opencode` executable that provides `opencode db` and `opencode export --sanitize`;
+  `opencode` executable that provides `opencode db` and `opencode export`;
   Claude Code and Codex need no CLI, only a readable transcript store
   (`~/.claude/projects` or `~/.codex`).
 
@@ -155,6 +155,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `--until ISO` | Ends the period at an exact time. Requires `--since`. |
 | `--harness NAME` | Harness to read sessions from: `opencode` (default), `claude-code`, or `codex`. |
 | `--root-only` | Leaves out child and subagent sessions. |
+| `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |
 | `--verbose` | Also shows export, fallback, and LLM warnings. For `scan`, also lists each repository's session titles and working folders. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
 
@@ -171,6 +172,7 @@ stderr so stdout contains only Markdown.
 | `--force` | Replaces the output file if it already exists. |
 | `--dry-run` | Prints the Markdown instead of writing a file. |
 | `--no-llm` | Creates the summary without an external LLM. |
+| `--allow-remote-llm` | Explicitly allows extracted, locally redacted evidence to be sent to the configured OpenAI-compatible endpoint for this invocation. |
 | `--detail LEVEL` | How much detail the report contains: `full` (default) or `brief`. |
 
 `--detail brief` produces a short report for a status update: it keeps the
@@ -203,6 +205,7 @@ Agent Worklog uses environment variables for its settings. Variable names start 
 export AGENT_WORKLOG_REPORT__TIMEZONE="Asia/Taipei"
 export AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY="reports"
 export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE="opencode"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE="false"
 export AGENT_WORKLOG_LLM__MODEL="gpt-5-mini"
 export AGENT_WORKLOG_LLM__BASE_URL="https://api.openai.com/v1/"
 export AGENT_WORKLOG_LLM__ENABLED="false"
@@ -214,10 +217,11 @@ for a complete list of settings.
 
 ## Privacy
 
-Agent Worklog requests OpenCode exports with `--sanitize`, redacts common secret patterns
-before any report or LLM request, and caps every piece of supporting information at 300
-characters. Reports may still contain private goals, filenames, commands, and full working
-paths — always review a report before sharing it.
+OpenCode exports are raw by default so reports retain useful work details. Agent Worklog
+redacts common secret patterns locally and uses the rule-based summarizer unless each report
+invocation explicitly includes `--allow-remote-llm`. Use `--sanitize` for OpenCode's stronger
+redaction, which intentionally removes most work evidence. Reports may still contain private
+goals, filenames, commands, and full working paths — always review a report before sharing it.
 
 See
 [Privacy and security](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md)

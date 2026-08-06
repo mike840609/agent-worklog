@@ -124,3 +124,11 @@ agent-worklog report --period last-week --no-llm
 
 CLI period and output options apply to the current invocation. Environment settings
 provide defaults for harness execution, timezone, output directory, and LLM behavior.
+
+## OpenCode export privacy
+
+`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE` defaults to `false`.
+Set it to `true` to request `opencode export --sanitize`. The CLI flags
+`--sanitize` and `--no-sanitize` override this setting for one invocation.
+Remote LLM authorization is intentionally not configurable: each report that may
+transmit evidence must include `--allow-remote-llm`.

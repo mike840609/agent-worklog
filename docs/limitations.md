@@ -55,3 +55,10 @@ full, including the ones that apply only to a specific harness.
   contributes no goal. Agent Worklog cannot tell a genuine request apart from the rest of
   that envelope without parsing an undocumented format, and it would rather lose the goal
   than mis-attribute one.
+
+## OpenCode sanitized reports
+
+OpenCode's `--sanitize` replaces conversation text, tool input and output, paths, and
+patches with redaction placeholders. Agent Worklog cannot restore that content. It
+filters placeholders and keeps available database metadata, repository grouping,
+session counts, and usage statistics, but detailed goals and outcomes are unavailable.
