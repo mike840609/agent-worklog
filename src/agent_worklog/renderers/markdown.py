@@ -57,3 +57,39 @@ class MarkdownRenderer:
             full=detail is DetailLevel.FULL,
         )
         return f"{output.rstrip()}\n"
+
+
+def render_narrative(report: WorklogReport, *, timezone: str) -> str:
+    """Wrap a narrative body under the standard worklog header.
+
+    The narrative prose from `opencode run` is rendered verbatim below the
+    shared header so a narrative report and a structured report read as the same
+    artifact; usage and warnings render in the same positions as the template.
+    """
+
+    lines = [
+        "# Engineering Worklog",
+        "",
+        "**Period:** "
+        f"{report.period.since.strftime('%Y-%m-%d %H:%M')} – "
+        f"{report.period.until.strftime('%Y-%m-%d %H:%M')}",
+        f"**Timezone:** {timezone}",
+        f"**Generated:** {report.generated_at.strftime('%Y-%m-%d %H:%M')}",
+        "",
+        report.narrative_text or "",
+    ]
+    if report.usage_text:
+        lines += ["", "## Usage"]
+        if report.usage_days:
+            lines += [
+                "",
+                "Window: the last "
+                f"{report.usage_days} days ending at generation time. It contains "
+                "the report period but does not match it exactly, because OpenCode "
+                "reports usage only for a window ending now.",
+            ]
+        lines += ["", "```text", report.usage_text, "```"]
+    if report.warnings:
+        lines += ["", "## Warnings"]
+        lines += [f"- {warning}" for warning in report.warnings]
+    return "\n".join(lines).rstrip() + "\n"

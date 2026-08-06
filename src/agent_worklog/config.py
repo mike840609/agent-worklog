@@ -11,6 +11,8 @@ class OpenCodeCliSettings(BaseModel):
 
     executable: str = "opencode"
     timeout_seconds: float = 30.0
+    run_timeout_seconds: float = 600.0
+    model: str = ""
     sanitize: bool = False
 
 

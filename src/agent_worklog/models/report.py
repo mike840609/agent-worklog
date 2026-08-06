@@ -33,6 +33,7 @@ class WorklogReport(BaseModel):
     generated_at: datetime
     period: DateRange
     repositories: list[RepositorySummary]
+    narrative_text: str | None = None
     usage_text: str | None = None
     usage_days: int | None = None
     warnings: list[str] = Field(default_factory=list)
