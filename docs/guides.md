@@ -107,3 +107,11 @@ agent-worklog report --period last-week --no-llm --dry-run
 
 Use `--verbose` to show export and LLM fallback warnings. Use `--quiet` to show only the
 output path after a successful report.
+
+## OpenCode privacy modes
+
+`agent-worklog report --days 7` uses raw OpenCode export and local rule-based
+summarization. Add `--sanitize` to ask OpenCode to redact the export; the report
+then retains repository and session metadata but most work details are unavailable.
+Add `--allow-remote-llm` only when extracted evidence may be sent to the configured
+OpenAI-compatible endpoint. `--no-llm` and `--allow-remote-llm` cannot be combined.

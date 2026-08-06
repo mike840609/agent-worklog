@@ -46,10 +46,12 @@ class OpenCodeCliSource(HarnessSessionSource):
         runner: Runner,
         executable: str = "opencode",
         root_only: bool = False,
+        sanitize: bool = False,
     ) -> None:
         self._runner = runner
         self._executable = executable
         self._root_only = root_only
+        self._sanitize = sanitize
 
     def discover(self, period: DateRange) -> list[SessionDescriptor]:
         since_ms = int(period.since.timestamp() * 1000)
@@ -98,9 +100,10 @@ class OpenCodeCliSource(HarnessSessionSource):
         return descriptors
 
     def load(self, descriptor: SessionDescriptor) -> AgentSession:
-        result = self._runner.run(
-            [self._executable, "export", descriptor.session_id, "--sanitize"]
-        )
+        args = [self._executable, "export", descriptor.session_id]
+        if self._sanitize:
+            args.append("--sanitize")
+        result = self._runner.run(args)
         if result.returncode != 0:
             detail = result.stderr.strip() or f"OpenCode export failed for {descriptor.session_id}"
             raise SessionParseError(detail)
