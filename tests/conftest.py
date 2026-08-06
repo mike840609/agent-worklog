@@ -76,6 +76,7 @@ def _millis(value: datetime) -> int:
 @dataclass
 class AcceptanceCommandRunner:
     export_calls: list[list[str]] = field(default_factory=list)
+    run_calls: list[list[str]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.rows = [
@@ -161,6 +162,14 @@ class AcceptanceCommandRunner:
         }
 
     def run(self, args: list[str], *, stdout_path: Path | None = None) -> CommandResult:
+        if args[:2] == ["opencode", "run"]:
+            self.run_calls.append(args)
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    "# Weekly Engineering Review\n\nNARRATIVE_ACCEPTANCE_MARKER\n",
+                    encoding="utf-8",
+                )
+            return CommandResult(0, "", "")
         if args[:2] == ["opencode", "db"]:
             return CommandResult(0, json.dumps(self.rows), "")
         if args[:2] == ["opencode", "stats"]:
