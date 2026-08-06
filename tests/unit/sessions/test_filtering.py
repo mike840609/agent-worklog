@@ -33,7 +33,7 @@ def test_old_session_with_in_range_activity_is_included() -> None:
     assert [item.activity_id for item in filtered.activities] == ["a1"]
 
 
-def test_metadata_only_session_uses_session_timestamp() -> None:
+def test_opencode_metadata_only_session_uses_session_timestamp() -> None:
     session = AgentSession(
         harness="opencode",
         session_id="s1",
@@ -50,6 +50,21 @@ def test_metadata_only_session_uses_session_timestamp() -> None:
 
     assert filtered is not None
     assert filtered.activities == []
+
+
+def test_non_opencode_metadata_only_session_is_excluded() -> None:
+    session = AgentSession(
+        harness="codex",
+        session_id="s1",
+        updated_at=datetime(2026, 7, 22, tzinfo=TZ),
+        activities=[],
+    )
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ),
+        until=datetime(2026, 7, 27, tzinfo=TZ),
+    )
+
+    assert filter_session_to_period(session, period) is None
 
 
 def test_metadata_only_session_outside_period_is_excluded() -> None:
