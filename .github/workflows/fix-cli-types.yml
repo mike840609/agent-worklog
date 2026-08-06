@@ -1,0 +1,195 @@
+name: Fix CLI type-safe calls
+
+on:
+  push:
+    branches:
+      - feat/opencode-raw-export-default
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/opencode-raw-export-default
+
+      - name: Replace dynamic keyword calls
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/agent_worklog/cli.py")
+          text = path.read_text(encoding="utf-8")
+
+          old = '''    usage_provider, days = _usage_provider(settings, period, harness, now)
+    scan_kwargs: dict[str, object] = {
+        "harness": harness,
+        "progress": progress,
+    }
+    if sanitize:
+        scan_kwargs["sanitize"] = True
+
+    return ReportService(
+        scan_service=_build_scan_service(
+            settings,
+            period,
+            root_only,
+            **scan_kwargs,
+        ),
+'''
+          new = '''    usage_provider, days = _usage_provider(settings, period, harness, now)
+    if sanitize:
+        scan_service = _build_scan_service(
+            settings,
+            period,
+            root_only,
+            harness=harness,
+            sanitize=True,
+            progress=progress,
+        )
+    else:
+        scan_service = _build_scan_service(
+            settings,
+            period,
+            root_only,
+            harness=harness,
+            progress=progress,
+        )
+
+    return ReportService(
+        scan_service=scan_service,
+'''
+          if old not in text:
+              raise SystemExit("report service scan kwargs block not found")
+          text = text.replace(old, new, 1)
+
+          old = '''        build_kwargs: dict[str, object] = {
+            "harness": harness,
+        }
+        if effective_sanitize:
+            build_kwargs["sanitize"] = True
+        with reporter.progress() as progress:
+            build_kwargs["progress"] = progress
+            result = _build_scan_service(
+                settings,
+                selected_period,
+                root_only,
+                **build_kwargs,
+            ).scan()
+'''
+          new = '''        with reporter.progress() as progress:
+            if effective_sanitize:
+                service = _build_scan_service(
+                    settings,
+                    selected_period,
+                    root_only,
+                    harness=harness,
+                    sanitize=True,
+                    progress=progress,
+                )
+            else:
+                service = _build_scan_service(
+                    settings,
+                    selected_period,
+                    root_only,
+                    harness=harness,
+                    progress=progress,
+                )
+            result = service.scan()
+'''
+          if old not in text:
+              raise SystemExit("scan command kwargs block not found")
+          text = text.replace(old, new, 1)
+
+          old = '''        build_kwargs: dict[str, object] = {
+            "now": now,
+            "harness": harness,
+            "detail": detail,
+        }
+        if effective_sanitize:
+            build_kwargs["sanitize"] = True
+        if allow_remote_llm:
+            build_kwargs["allow_remote_llm"] = True
+        with reporter.progress() as progress:
+            build_kwargs["progress"] = progress
+            service = _build_report_service(
+                settings,
+                selected_period,
+                output_path,
+                no_llm,
+                root_only,
+                **build_kwargs,
+            )
+'''
+          new = '''        with reporter.progress() as progress:
+            if effective_sanitize and allow_remote_llm:
+                service = _build_report_service(
+                    settings,
+                    selected_period,
+                    output_path,
+                    no_llm,
+                    root_only,
+                    now=now,
+                    harness=harness,
+                    sanitize=True,
+                    allow_remote_llm=True,
+                    detail=detail,
+                    progress=progress,
+                )
+            elif effective_sanitize:
+                service = _build_report_service(
+                    settings,
+                    selected_period,
+                    output_path,
+                    no_llm,
+                    root_only,
+                    now=now,
+                    harness=harness,
+                    sanitize=True,
+                    detail=detail,
+                    progress=progress,
+                )
+            elif allow_remote_llm:
+                service = _build_report_service(
+                    settings,
+                    selected_period,
+                    output_path,
+                    no_llm,
+                    root_only,
+                    now=now,
+                    harness=harness,
+                    allow_remote_llm=True,
+                    detail=detail,
+                    progress=progress,
+                )
+            else:
+                service = _build_report_service(
+                    settings,
+                    selected_period,
+                    output_path,
+                    no_llm,
+                    root_only,
+                    now=now,
+                    harness=harness,
+                    detail=detail,
+                    progress=progress,
+                )
+'''
+          if old not in text:
+              raise SystemExit("report command kwargs block not found")
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/agent_worklog/cli.py
+          git commit -m "refactor: use type-safe privacy option calls"
+          git push origin HEAD:feat/opencode-raw-export-default
