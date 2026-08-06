@@ -1,4 +1,4 @@
-"""Map sanitized OpenCode exports into canonical session models."""
+"""Map OpenCode exports into canonical session models."""
 
 from __future__ import annotations
 
@@ -20,6 +20,19 @@ from agent_worklog.models.session import (
 
 def _as_mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _is_redacted_placeholder(value: object) -> bool:
+    return isinstance(value, str) and value.strip().startswith("[redacted:")
+
+
+def _usable_export_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped or _is_redacted_placeholder(stripped):
+        return None
+    return stripped
 
 
 def _parse_timestamp(value: object) -> datetime | None:
@@ -107,7 +120,7 @@ def _tool_content(part: Mapping[str, Any]) -> str:
 
 
 class OpenCodeExportMapper:
-    """Convert a sanitized OpenCode export to an AgentSession."""
+    """Convert an OpenCode export to an AgentSession."""
 
     def map(self, payload: object, descriptor: SessionDescriptor) -> AgentSession:
         if not isinstance(payload, Mapping):
@@ -141,8 +154,8 @@ class OpenCodeExportMapper:
                 part_type = part.get("type")
                 activity_id = f"{message_id}:{part_index}"
                 if part_type == "text":
-                    text = part.get("text", "")
-                    if not isinstance(text, str) or not text:
+                    text = _usable_export_string(part.get("text"))
+                    if text is None:
                         continue
                     activity_type = (
                         ActivityType.USER_MESSAGE
@@ -158,6 +171,9 @@ class OpenCodeExportMapper:
                         )
                     )
                 elif part_type == "tool":
+                    content = _tool_content(part)
+                    if not content or _is_redacted_placeholder(content):
+                        continue
                     tool_name = part.get("tool", part.get("name"))
                     call_id = part.get("callID", part.get("call_id"))
                     activities.append(
@@ -165,15 +181,23 @@ class OpenCodeExportMapper:
                             activity_id=activity_id,
                             activity_type=ActivityType.TOOL_CALL,
                             timestamp=timestamp,
-                            content=_tool_content(part),
+                            content=content,
                             tool_name=tool_name if isinstance(tool_name, str) else None,
                             tool_call_id=call_id if isinstance(call_id, str) else None,
                             metadata={"state": part.get("state", {})},
                         )
                     )
 
-        title = export_info.get("title", payload.get("title"))
-        directory = export_info.get("directory", payload.get("directory"))
+        title = (
+            _usable_export_string(export_info.get("title"))
+            or _usable_export_string(payload.get("title"))
+            or descriptor.title
+        )
+        directory = (
+            _usable_export_string(export_info.get("directory"))
+            or _usable_export_string(payload.get("directory"))
+            or descriptor.working_directory_hint
+        )
         parent_id = export_info.get("parentID", export_info.get("parent_id"))
         created_at = _first_timestamp(
             export_time.get("created"),
@@ -195,14 +219,10 @@ class OpenCodeExportMapper:
             parent_session_id=(
                 parent_id if isinstance(parent_id, str) else descriptor.parent_session_id
             ),
-            title=title if isinstance(title, str) else descriptor.title,
+            title=title,
             created_at=created_at,
             updated_at=updated_at,
-            working_directory=(
-                directory
-                if isinstance(directory, str)
-                else descriptor.working_directory_hint
-            ),
+            working_directory=directory,
             project_id_hint=(
                 project_id if isinstance(project_id, str) else descriptor.project_id_hint
             ),
