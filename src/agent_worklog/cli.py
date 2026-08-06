@@ -147,12 +147,64 @@ def _require_enabled_harness(settings: AppSettings, harness: Harness) -> None:
         )
 
 
+def _validate_privacy_options(
+    *,
+    harness: Harness,
+    sanitize: bool | None,
+    no_llm: bool = False,
+    allow_remote_llm: bool = False,
+) -> None:
+    if sanitize is not None and harness is not Harness.OPENCODE:
+        raise typer.BadParameter(
+            "--sanitize and --no-sanitize are supported only with --harness opencode"
+        )
+    if no_llm and allow_remote_llm:
+        raise typer.BadParameter(
+            "--no-llm and --allow-remote-llm cannot be used together"
+        )
+
+
+def _effective_sanitize(
+    settings: AppSettings,
+    harness: Harness,
+    override: bool | None,
+) -> bool:
+    if harness is not Harness.OPENCODE:
+        return False
+    if override is not None:
+        return override
+    return settings.harnesses.opencode.cli.sanitize
+
+
+def _remote_llm_selection(
+    *,
+    settings: AppSettings,
+    api_key: str | None,
+    no_llm: bool,
+    allow_remote_llm: bool,
+) -> tuple[bool, list[str]]:
+    if no_llm or not allow_remote_llm:
+        return False, []
+    if not settings.llm.enabled:
+        return False, [
+            "remote LLM requested but LLM support is disabled; "
+            "used deterministic fallback"
+        ]
+    if not api_key:
+        return False, [
+            f"remote LLM requested but {settings.llm.api_key_env} is not set; "
+            "used deterministic fallback"
+        ]
+    return True, []
+
+
 def _build_scan_service(
     settings: AppSettings,
     period: DateRange,
     root_only: bool = False,
     *,
     harness: Harness = Harness.OPENCODE,
+    sanitize: bool = False,
     progress: ProgressReporter | None = None,
 ) -> ScanService:
     _require_enabled_harness(settings, harness)
@@ -174,6 +226,7 @@ def _build_scan_service(
             runner=CommandRunner(timeout_seconds=cli_settings.timeout_seconds),
             executable=cli_settings.executable,
             root_only=root_only,
+            sanitize=sanitize,
         )
     return ScanService(
         source=source,
@@ -219,6 +272,8 @@ def _build_report_service(
     *,
     now: datetime,
     harness: Harness = Harness.OPENCODE,
+    sanitize: bool = False,
+    allow_remote_llm: bool = False,
     detail: DetailLevel = DetailLevel.FULL,
     progress: ProgressReporter | None = None,
 ) -> ReportService:
@@ -226,7 +281,14 @@ def _build_report_service(
 
     summarizer = RuleBasedSummarizer()
     api_key = os.environ.get(settings.llm.api_key_env)
-    if settings.llm.enabled and not no_llm and api_key:
+    remote_enabled, initial_warnings = _remote_llm_selection(
+        settings=settings,
+        api_key=api_key,
+        no_llm=no_llm,
+        allow_remote_llm=allow_remote_llm,
+    )
+    if remote_enabled:
+        assert api_key is not None
         summarizer = OpenAICompatibleSummarizer(
             model=settings.llm.model,
             api_key=api_key,
@@ -236,14 +298,19 @@ def _build_report_service(
         )
 
     usage_provider, days = _usage_provider(settings, period, harness, now)
+    scan_kwargs: dict[str, object] = {
+        "harness": harness,
+        "progress": progress,
+    }
+    if sanitize:
+        scan_kwargs["sanitize"] = True
 
     return ReportService(
         scan_service=_build_scan_service(
             settings,
             period,
             root_only,
-            harness=harness,
-            progress=progress,
+            **scan_kwargs,
         ),
         summarizer=summarizer,
         renderer=MarkdownRenderer(),
@@ -254,6 +321,7 @@ def _build_report_service(
         usage_days=days,
         detail=detail,
         progress=progress,
+        initial_warnings=initial_warnings,
     )
 
 
@@ -304,6 +372,14 @@ def scan(
         "--root-only",
         help="Exclude child/subagent sessions.",
     ),
+    sanitize: bool | None = typer.Option(
+        None,
+        "--sanitize/--no-sanitize",
+        help=(
+            "Ask OpenCode to redact exported session content. "
+            "Disabled by default. OpenCode only."
+        ),
+    ),
     harness: Harness = _HARNESS_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
@@ -311,9 +387,11 @@ def scan(
     """Find coding-agent sessions and group them by Git repository."""
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
+    _validate_privacy_options(harness=harness, sanitize=sanitize)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        effective_sanitize = _effective_sanitize(settings, harness, sanitize)
         now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
             days=days,
@@ -323,13 +401,18 @@ def scan(
             timezone=settings.report.timezone,
             now=now,
         )
+        build_kwargs: dict[str, object] = {
+            "harness": harness,
+        }
+        if effective_sanitize:
+            build_kwargs["sanitize"] = True
         with reporter.progress() as progress:
+            build_kwargs["progress"] = progress
             result = _build_scan_service(
                 settings,
                 selected_period,
                 root_only,
-                harness=harness,
-                progress=progress,
+                **build_kwargs,
             ).scan()
             if result.loaded_session_count == 0:
                 raise NoSessionsError(
@@ -361,6 +444,22 @@ def report(
     output: Annotated[Path | None, typer.Option("--output")] = None,
     dry_run: bool = typer.Option(False, "--dry-run"),
     no_llm: bool = typer.Option(False, "--no-llm"),
+    allow_remote_llm: bool = typer.Option(
+        False,
+        "--allow-remote-llm",
+        help=(
+            "Allow extracted work evidence to be sent to the configured "
+            "OpenAI-compatible endpoint for this invocation."
+        ),
+    ),
+    sanitize: bool | None = typer.Option(
+        None,
+        "--sanitize/--no-sanitize",
+        help=(
+            "Ask OpenCode to redact exported session content. "
+            "Disabled by default. OpenCode only."
+        ),
+    ),
     force: bool = typer.Option(False, "--force"),
     harness: Harness = _HARNESS_OPTION,
     detail: DetailLevel = _DETAIL_OPTION,
@@ -370,9 +469,16 @@ def report(
     """Generate a Markdown engineering worklog."""
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
+    _validate_privacy_options(
+        harness=harness,
+        sanitize=sanitize,
+        no_llm=no_llm,
+        allow_remote_llm=allow_remote_llm,
+    )
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        effective_sanitize = _effective_sanitize(settings, harness, sanitize)
         now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
             days=days,
@@ -383,17 +489,24 @@ def report(
             now=now,
         )
         output_path = output or _default_output_path(settings, selected_period)
+        build_kwargs: dict[str, object] = {
+            "now": now,
+            "harness": harness,
+            "detail": detail,
+        }
+        if effective_sanitize:
+            build_kwargs["sanitize"] = True
+        if allow_remote_llm:
+            build_kwargs["allow_remote_llm"] = True
         with reporter.progress() as progress:
+            build_kwargs["progress"] = progress
             service = _build_report_service(
                 settings,
                 selected_period,
                 output_path,
                 no_llm,
                 root_only,
-                now=now,
-                harness=harness,
-                detail=detail,
-                progress=progress,
+                **build_kwargs,
             )
             result = service.generate(force=force, dry_run=dry_run)
             if not result.report.repositories:
