@@ -137,13 +137,25 @@ agent-worklog doctor --harness codex
 agent-worklog report --harness codex --period last-week --no-llm
 ```
 
+Prefer a guided walk-through instead of flags? `run` asks the same questions one at a
+time — which harness, which period, how much detail — then previews the scan for your
+approval before writing the report:
+
+```bash
+agent-worklog run
+```
+
+`run` and `config init` need an interactive terminal, so they refuse to run when stdin
+is not a terminal; the `scan` and `report` commands cover the non-interactive route.
+
 ## Command reference
 
 | Command | What it does |
-|---|---|
+|---|---|---|
 | `doctor` | Checks that the selected harness and `git` are ready to use. |
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
+| `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
 | `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
 `scan` and `report` share these options:

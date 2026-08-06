@@ -13,6 +13,16 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Add `agent-worklog run`, an interactive wizard that asks the harness, the period, the
+  detail level, and the pruning questions one at a time, previews the scan for approval,
+  and only then writes the report. It reuses the settings catalog and prompt seams the
+  `config` commands added, so it needs no list it must maintain itself.
+- Previewed scans are reused rather than re-run: `run` scans once, shows the grouping for
+  a yes-or-no review, and passes that same `ScanResult` into report generation so nothing
+  is scanned a second time.
+- Refuse to prompt when stdin is not a terminal, with exit code 3 and a message naming
+  the non-interactive alternative. A `run` piped in CI fails fast instead of hanging.
+
 - Add `agent-worklog config init`, which walks every setting in turn showing the value
   in force, and let `agent-worklog config set <key>` ask for the value when it is left
   out. Both derive their prompts from the same settings catalog `config list` uses, so

@@ -114,11 +114,13 @@ class ReportService:
         *,
         force: bool = False,
         dry_run: bool = False,
+        scan: ScanResult | None = None,
     ) -> ReportGenerationResult:
         destination = self._output_path.expanduser()
         if not dry_run and not force and destination.exists():
             raise ReportOutputError(f"report already exists: {destination}")
-        scan = self._scan_service.scan()
+        if scan is None:
+            scan = self._scan_service.scan()
         warnings = [*self._initial_warnings, *scan.warnings]
         evidence_items = self._repository_evidence(scan)
         summaries: list[RepositorySummary] = []
