@@ -70,6 +70,7 @@ def test_report_refuses_overwrite_without_force(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -101,6 +102,7 @@ def test_report_supports_previous_calendar_week(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -139,29 +141,24 @@ def test_until_requires_since() -> None:
     assert result.exit_code == 2
 
 
-def test_no_llm_never_constructs_http_summarizer(
+def test_no_llm_builds_a_deterministic_report_service(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "secret-key")
     def build_scan(
         settings,
         period,
         root_only=False,
         *,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
     ):
         return object()
 
     monkeypatch.setattr(cli, "_build_scan_service", build_scan)
 
-    def fail_constructor(**kwargs):
-        raise AssertionError("LLM summarizer must not be constructed")
-
-    monkeypatch.setattr(cli, "OpenAICompatibleSummarizer", fail_constructor, raising=False)
-
-    service = cli._build_report_service(
+    no_llm_service = cli._build_report_service(
         cli.AppSettings(),
         DateRange.previous_week(now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ)),
         tmp_path / "report.md",
@@ -169,7 +166,18 @@ def test_no_llm_never_constructs_http_summarizer(
         now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
     )
 
-    assert service is not None
+    assert no_llm_service._narrative is False
+
+    narrative_service = cli._build_report_service(
+        cli.AppSettings(),
+        DateRange.previous_week(now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ)),
+        tmp_path / "report.md",
+        False,
+        now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+    )
+
+    assert narrative_service._narrative is True
+    assert narrative_service._opencode_runner is not None
 
 
 def test_days_window_uses_a_single_clock_read(
@@ -244,6 +252,7 @@ def test_report_passes_root_only_to_the_report_service(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -371,6 +380,7 @@ def test_dry_run_keeps_progress_out_of_stdout(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -419,6 +429,7 @@ def test_report_passes_the_detail_level_to_the_report_service(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -460,6 +471,7 @@ def test_report_defaults_to_full_detail(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
