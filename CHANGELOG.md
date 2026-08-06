@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Add `agent-worklog config init`, which walks every setting in turn showing the value
+  in force, and let `agent-worklog config set <key>` ask for the value when it is left
+  out. Both derive their prompts from the same settings catalog `config list` uses, so
+  a new field in the settings model is offered without a wizard script to maintain.
+- Treat an empty answer at a prompt as "leave this setting alone" rather than as the
+  empty value `config set <key> ""` writes. Nothing is recorded for a setting you press
+  Enter on, so a walkthrough you answer nothing in writes no file at all; `config unset`
+  stays the way to take a setting already in the file back to its default.
+- Ask again instead of aborting when a prompted value is one the settings would reject,
+  so a typo partway through `config init` does not discard the answers before it.
+- Refuse to prompt when stdin is not a terminal, with exit code 3 and a message naming
+  the non-interactive way to do the same thing. In CI or a pipeline there is nobody to
+  answer, and consuming piped stdin would be a stranger failure than saying so.
+
 ## 0.7.0 - 2026-08-06
 
 - `report` now defaults to a narrative weekly review written by the locally installed
