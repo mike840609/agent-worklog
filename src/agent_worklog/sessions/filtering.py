@@ -17,13 +17,16 @@ def filter_session_to_period(
 ) -> AgentSession | None:
     """Return a copy containing only session data inside the period.
 
-    A metadata-only session is retained when its own timestamp is in range. This
-    allows intentionally sanitized exports to contribute repository grouping and
-    session metadata without inventing activities. Sessions that originally had
-    activities still require at least one timestamped activity inside the period.
+    An OpenCode metadata-only session is retained when its own timestamp is in
+    range. This allows intentionally sanitized exports to contribute repository
+    grouping and session metadata without inventing activities. Other harnesses,
+    and sessions that originally had activities, still require at least one
+    timestamped activity inside the period.
     """
 
     if not session.activities:
+        if session.harness != "opencode":
+            return None
         return deepcopy(session) if _session_timestamp_in_period(session, period) else None
 
     activities = [
