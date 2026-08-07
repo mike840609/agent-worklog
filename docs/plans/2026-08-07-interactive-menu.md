@@ -510,7 +510,9 @@ git commit -m "feat(cli): open a menu when no subcommand is named"
 - Consumes: `_ask_harness(settings: AppSettings) -> Harness`, `_load_settings() -> AppSettings`, `doctor(harness, verbose, quiet)`, `scan(days, period, since, until, root_only, sanitize, harness, verbose, quiet)`.
 - Produces: nothing new. This task only adds branches to `_interactive_menu`.
 
-Both commands declare `harness: Harness = _HARNESS_OPTION`, and `_HARNESS_OPTION` is a `typer.Option(...)` object, not a `Harness`. It only becomes a real value when Typer invokes the command, so calling `doctor()` bare would pass the option object through. Every parameter must therefore be passed explicitly. The rest default to plain `None` or `False`, so passing those values literally reproduces the command-line defaults.
+Both commands declare `harness: Harness = _HARNESS_OPTION`, and `_HARNESS_OPTION` is a `typer.Option(...)` object, not a `Harness`. It only becomes a real value when Typer invokes the command, so calling `doctor()` bare would pass the option object through. Every parameter must therefore be passed explicitly.
+
+The period cannot be left unset either. `scan` has no default period: `_resolve_period` raises `typer.BadParameter` unless exactly one of `days`, `period`, or `since` is given, so `days=period=since=None` is a usage error, not a default. The menu passes `period="last-week"` — the window `run` picks when its period question is answered with Enter. The remaining parameters do default to plain `None` or `False`, so passing those values literally reproduces the command-line defaults.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -565,10 +567,10 @@ def test_bare_invocation_runs_scan_against_the_chosen_harness(
 
     assert result.exit_code == 0, result.stdout
     assert seen["harness"] is cli.Harness.CLAUDE_CODE
-    # The menu keeps every other option at its command-line default; the
-    # period questions belong to `run`, not here.
+    # `scan` rejects a call with no period at all, so the menu names the last
+    # full week; every other option keeps its command-line default.
+    assert seen["period"] == "last-week"
     assert seen["days"] is None
-    assert seen["period"] is None
     assert seen["since"] is None
     assert seen["until"] is None
     assert seen["root_only"] is False
@@ -634,11 +636,14 @@ In `_interactive_menu`, insert these two branches after the `answer == "2"` bran
                 if answer == "3":
                     doctor(harness=harness, verbose=False, quiet=False)
                 else:
-                    # Every option but the harness keeps its command-line
-                    # default; `run` is the way to a custom period.
+                    # `scan` has no default period: `_resolve_period` demands
+                    # exactly one of days/period/since, so the menu names the
+                    # last full week — the window pressing Enter at `run`'s
+                    # period question chooses. `run` remains the way to any
+                    # other period. Every other option keeps its default.
                     scan(
                         days=None,
-                        period=None,
+                        period="last-week",
                         since=None,
                         until=None,
                         root_only=False,
