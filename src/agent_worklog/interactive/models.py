@@ -16,6 +16,7 @@ class Screen(StrEnum):
     SESSION_REVIEW = "session_review"
     SESSION_BROWSER = "session_browser"
     REPORT_RESULT = "report_result"
+    REPORT_PREVIEW = "report_preview"
     RECOVERABLE_ERROR = "recoverable_error"
     EXIT = "exit"
 
