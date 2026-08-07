@@ -9,7 +9,7 @@ from typing import Protocol, Self
 
 from rich.console import Console
 
-from agent_worklog.errors import AgentWorklogError, HarnessSourceError
+from agent_worklog.errors import AgentWorklogError
 from agent_worklog.interactive.input import Key, KeyPress
 from agent_worklog.interactive.models import ReportDraft, Screen
 from agent_worklog.interactive.render import (
