@@ -8,8 +8,14 @@ from pathlib import Path
 from rich.console import Console
 from rich.text import Text
 
+from agent_worklog.interactive.density import (
+    is_subagent,
+    repository_meta,
+    session_meta,
+)
 from agent_worklog.interactive.models import ReportDraft
 from agent_worklog.interactive.selection import SelectionMark, SelectionState
+from agent_worklog.models.session import AgentSession
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.scan import ScanResult
@@ -63,6 +69,38 @@ def _print_viewport_line(
         no_wrap=True,
         overflow="ellipsis",
     )
+
+
+def _print_viewport_text(console: Console, text: Text) -> None:
+    """Print a pre-composed row, truncating rather than wrapping."""
+    console.print(text, no_wrap=True, overflow="ellipsis")
+
+
+def _session_row(
+    session: AgentSession,
+    *,
+    prefix: str,
+    mark: str | None,
+    title: str,
+    selected: bool,
+) -> Text:
+    """Compose one session row with dim subagent/density metadata before the title."""
+    row_style = "bold" if selected else ""
+    text = Text(prefix, style=row_style)
+    if mark is not None:
+        text.append(f"     {mark}", style=row_style)
+    else:
+        text.append("     ", style=row_style)
+    tag: list[str] = []
+    if is_subagent(session):
+        tag.append("[sub]")
+    density = session_meta(session)
+    if density:
+        tag.append(density)
+    if tag:
+        text.append(f" {' '.join(tag)}", style="dim")
+    text.append(f" {title}", style=row_style)
+    return text
 
 
 def _period_label(period: DateRange) -> str:
@@ -171,6 +209,12 @@ def _session_titles(scan: ScanResult) -> dict[str, str]:
     }
 
 
+def _sessions_by_id(scan: ScanResult) -> dict[str, AgentSession]:
+    return {
+        item.session.session_id: item.session for item in scan.resolved_sessions
+    }
+
+
 def _visible_window(
     rows: list[VisibleRow],
     *,
@@ -217,9 +261,9 @@ def render_session_review(
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
     titles = _session_titles(selection.scan)
+    sessions = _sessions_by_id(selection.scan)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
-        style = "bold" if index == cursor else ""
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories
             arrow = "▼" if expanded else "▶"
@@ -230,18 +274,26 @@ def render_session_review(
             )
             total = len(selection.scan.sessions_by_repository[row.repository_id])
             name = _repository_display_name(selection.scan, row.repository_id)
-            _print_viewport_line(
-                console,
+            text = Text(
                 f"{prefix} {arrow} {mark} {name}   {selected} / {total}",
-                style=style,
+                style="bold" if index == cursor else "",
             )
+            density = repository_meta(row.repository_id, selection.scan)
+            if density:
+                text.append(f"   {density}", style="dim")
+            _print_viewport_text(console, text)
         else:
             assert row.session_id is not None
             mark = "●" if row.session_id in selection.selected_session_ids else "○"
-            _print_viewport_line(
+            _print_viewport_text(
                 console,
-                f"{prefix}     {mark} {titles[row.session_id]}",
-                style=style,
+                _session_row(
+                    sessions[row.session_id],
+                    prefix=prefix,
+                    mark=mark,
+                    title=titles[row.session_id],
+                    selected=index == cursor,
+                ),
             )
     if hidden_below:
         _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
@@ -281,25 +333,33 @@ def render_session_browser(
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
     titles = _session_titles(scan)
+    sessions = _sessions_by_id(scan)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
-        style = "bold" if index == cursor else ""
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories
             arrow = "▼" if expanded else "▶"
             name = _repository_display_name(scan, row.repository_id)
             count = len(scan.sessions_by_repository[row.repository_id])
-            _print_viewport_line(
-                console,
+            text = Text(
                 f"{prefix} {arrow} {name}   {count}",
-                style=style,
+                style="bold" if index == cursor else "",
             )
+            density = repository_meta(row.repository_id, scan)
+            if density:
+                text.append(f"   {density}", style="dim")
+            _print_viewport_text(console, text)
         else:
             assert row.session_id is not None
-            _print_viewport_line(
+            _print_viewport_text(
                 console,
-                f"{prefix}     {titles[row.session_id]}",
-                style=style,
+                _session_row(
+                    sessions[row.session_id],
+                    prefix=prefix,
+                    mark=None,
+                    title=titles[row.session_id],
+                    selected=index == cursor,
+                ),
             )
     if hidden_below:
         _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")

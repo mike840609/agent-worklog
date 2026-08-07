@@ -13,6 +13,7 @@ from agent_worklog.interactive.render import (
     render_recoverable_error,
     render_report_result,
     render_report_setup,
+    render_session_browser,
     render_session_review,
 )
 from agent_worklog.interactive.selection import SelectionState
@@ -21,7 +22,7 @@ from agent_worklog.models.repository import (
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
+from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.services.scan import ScanResult
 
@@ -174,3 +175,85 @@ def test_recoverable_error_renders_safe_detail_and_options() -> None:
     assert "Could not read OpenCode sessions" in text
     assert "session store missing" in text
     assert "❯ Back" in text
+
+
+def _dense_resolved(
+    session_id: str,
+    repo: str,
+    *,
+    last_day: int,
+    volume: int,
+    subagent: bool = False,
+) -> ResolvedSession:
+    activities = [
+        SessionActivity(
+            activity_id=f"{session_id}:m{i}",
+            activity_type=ActivityType.USER_MESSAGE if i == 0 else ActivityType.ASSISTANT_MESSAGE,
+            timestamp=datetime(2026, 8, last_day, tzinfo=TZ),
+            content="hi",
+        )
+        for i in range(volume)
+    ]
+    return ResolvedSession(
+        session=AgentSession(
+            harness="opencode",
+            session_id=session_id,
+            title=f"Meta {session_id}",
+            parent_session_id="parent" if subagent else None,
+            created_at=datetime(2026, 8, last_day, tzinfo=TZ),
+            activities=activities,
+        ),
+        repository=RepositoryIdentity(
+            repository_id=repo,
+            display_name=repo,
+            identity_type=RepositoryIdentityType.PATH_FALLBACK,
+            working_directory=f"/tmp/{repo}",
+            resolution_method="test",
+        ),
+    )
+
+
+def test_session_review_renders_density_and_subagent_tag() -> None:
+    console, stream = _console()
+    items = [
+        _dense_resolved("d1", "repo-x", last_day=5, volume=2, subagent=True),
+        _dense_resolved("d2", "repo-x", last_day=4, volume=1),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+    state = SelectionState.from_scan(scan)
+
+    render_session_review(console, state, expanded_repositories={"repo-x"}, cursor=1)
+
+    text = stream.getvalue()
+    assert "Aug 5 · 2 msgs" in text
+    assert "Aug 4 · 1 msgs" in text
+    assert "[sub]" in text
+
+
+def test_session_browser_renders_repository_and_session_density() -> None:
+    console, stream = _console()
+    items = [
+        _dense_resolved("d1", "repo-a", last_day=3, volume=1),
+        _dense_resolved("d2", "repo-a", last_day=5, volume=2),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-a": items},
+    )
+
+    render_session_browser(console, scan, expanded_repositories={"repo-a"}, cursor=0)
+
+    text = stream.getvalue()
+    assert "Aug 3–5 · 3 msgs" in text
+    assert "Aug 5 · 2 msgs" in text
