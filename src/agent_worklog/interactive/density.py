@@ -1,0 +1,70 @@
+"""Per-row information density for the interactive session lists."""
+
+from datetime import datetime
+
+from agent_worklog.models.session import ActivityType, AgentSession
+from agent_worklog.services.scan import ScanResult
+
+_MESSAGE_TYPES = frozenset({ActivityType.USER_MESSAGE, ActivityType.ASSISTANT_MESSAGE})
+
+
+def message_volume(session: AgentSession) -> int:
+    """Count user- and assistant-message activities in a session."""
+    return sum(activity.activity_type in _MESSAGE_TYPES for activity in session.activities)
+
+
+def last_activity_at(session: AgentSession) -> datetime | None:
+    """Return the latest activity timestamp, or updated_at/created_at when the
+    session has no activities at all."""
+    timestamps = [
+        activity.timestamp for activity in session.activities if activity.timestamp is not None
+    ]
+    if timestamps:
+        return max(timestamps)
+    if session.activities:
+        return None
+    return session.updated_at or session.created_at
+
+
+def is_subagent(session: AgentSession) -> bool:
+    """Return whether this session was spawned as a subagent."""
+    return session.parent_session_id is not None
+
+
+def session_meta(session: AgentSession) -> str:
+    """Render density for one session row, e.g. ``Aug 5 · 12 msgs``."""
+    parts: list[str] = []
+    timestamp = last_activity_at(session)
+    if timestamp is not None:
+        parts.append(_day_label(timestamp))
+    volume = message_volume(session)
+    if timestamp is not None and volume:
+        parts.append(f"{volume} msgs")
+    return " · ".join(parts)
+
+
+def repository_meta(repository_id: str, scan: ScanResult) -> str:
+    """Render density for a repository row, e.g. ``Aug 3–5 · 240 msgs``."""
+    sessions = scan.sessions_by_repository[repository_id]
+    dates = [
+        timestamp for item in sessions if (timestamp := last_activity_at(item.session)) is not None
+    ]
+    if not dates:
+        return ""
+    parts = [_span_label(min(dates), max(dates))]
+    volume = sum(message_volume(item.session) for item in sessions)
+    if volume:
+        parts.append(f"{volume} msgs")
+    return " · ".join(parts)
+
+
+def _day_label(timestamp: datetime) -> str:
+    return f"{timestamp:%b} {timestamp.day}"
+
+
+def _span_label(first: datetime, last: datetime) -> str:
+    if first.date() == last.date():
+        return _day_label(first)
+    if first.year == last.year and first.month == last.month:
+        return f"{first:%b} {first.day}–{last.day}"
+    return f"{_day_label(first)} – {_day_label(last)}"
