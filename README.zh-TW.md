@@ -43,17 +43,47 @@ pipx install agent-worklog
 
 ## 快速開始
 
-不帶任何參數執行，直接從選單挑：
+不帶任何參數執行，就會進入可以用方向鍵操作的終端選單：
 
-```
+```text
 $ agent-worklog
-What do you want to do?
-  1  Generate a report
-  2  Scan sessions
-  3  Check setup (doctor)
-  4  Edit settings
-  q  Quit
-Choice:
+Agent Worklog
+Turn coding-agent sessions into engineering reports
+
+❯ Generate Report
+  Browse Sessions
+  Check Setup
+  Settings
+
+↑↓ / jk Navigate   Enter Select   q Quit
+```
+
+選擇產生報告後會先看到設定摘要，不需要從頭回答一連串問題。這就是原本
+**Generate a report** 動作的新版互動方式。進入 **Review sessions** 後會依 repository
+分組；在 repository 上按 `Space` 可整組選取或取消，展開後也可以逐一切換 session。
+
+```text
+Generate Report
+
+Harness      OpenCode
+Period       Aug 03 – Aug 10
+Detail       Full
+Subagents    Included
+Narrative    Enabled
+Sanitize     Off
+Dry run      Off
+
+❯ Review sessions
+  Harness
+  Period
+  Detail
+  Subagents
+  Narrative
+  Sanitize
+  Dry run
+  Back
+
+↑↓ / jk Navigate   Enter Edit   r Review   b Back
 ```
 
 或直接下指令：
@@ -75,7 +105,7 @@ agent-worklog report --period last-week --no-llm
 `--harness codex`；敘事式預設對所有 harness 一致，會讀取該 harness 的工作階段，並同樣
 呼叫本機的 `opencode run`。
 
-想被一步步問、而不是背旗標的話，`run` 指令會依序問同樣的問題，並在寫出報告前先預覽掃描
+如果仍想使用逐題詢問的線性流程，`run` 指令會依序問同樣的問題，並在寫出報告前先預覽掃描
 結果：
 
 ```bash
