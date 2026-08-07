@@ -840,7 +840,14 @@ def run(
             harness=harness,
             sanitize=sanitize if harness is Harness.OPENCODE else None,
         )
-        output_path, force = _ask_output_path(settings, period)
+        if dry_run:
+            # A dry run writes nothing, so asking where to write it — and
+            # whether to overwrite a file it will never touch — is a question
+            # with no answer that matters. A path is still needed downstream, so
+            # take the default one, unforced.
+            output_path, force = _default_output_path(settings, period), False
+        else:
+            output_path, force = _ask_output_path(settings, period)
 
         with reporter.progress() as progress:
             scan_service = _build_scan_service(
@@ -946,11 +953,15 @@ def _interactive_menu() -> None:
                 if answer == "3":
                     doctor(harness=harness, verbose=False, quiet=False)
                 else:
-                    # Every option but the harness keeps its command-line
-                    # default; `run` is the way to a custom period.
+                    # `scan` has no default period: `_resolve_period` demands
+                    # exactly one of days/period/since, so leaving all three
+                    # unset is a usage error, not a default. The menu therefore
+                    # names the last full week — the window pressing Enter at
+                    # `run`'s period question chooses. `run` remains the way to
+                    # any other period.
                     scan(
                         days=None,
-                        period=None,
+                        period="last-week",
                         since=None,
                         until=None,
                         root_only=False,

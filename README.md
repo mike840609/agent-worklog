@@ -147,9 +147,11 @@ Choice:
 ```
 
 Each entry runs the matching command, asking only the questions that command
-cannot answer for itself. Use `agent-worklog --help` for the command list, and
-run a subcommand directly in scripts — with no terminal to prompt at, the menu
-exits with status 3 rather than reading from stdin.
+cannot answer for itself. `Scan sessions` asks which harness and then scans the
+last full week; use `run`, or `scan` with its own flags, for any other period.
+Use `agent-worklog --help` for the command list, and run a subcommand directly
+in scripts — with no terminal to prompt at, the menu exits with status 3 rather
+than reading from stdin.
 
 ## Command reference
 

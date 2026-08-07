@@ -1,3 +1,4 @@
+import inspect
 import os
 import sys
 from datetime import datetime, timedelta
@@ -1198,6 +1199,102 @@ def test_run_dry_run_prints_without_writing(
     assert "Report written to" not in result.stdout
 
 
+def test_a_dry_run_does_not_ask_where_to_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dry run writes nothing, so the output question has no answer that matters.
+
+    Asking it would have the user decide whether to overwrite a file the command
+    is never going to touch.
+    """
+
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    output_path = tmp_path / "worklog.md"
+    seen: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=2,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            seen["force"] = force
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=WorklogReport(
+                    generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                    period=self.period,
+                    repositories=[
+                        RepositorySummary(
+                            repository_id="git:github.com/mike/agent-worklog",
+                            display_name="Agent Worklog",
+                        )
+                    ],
+                ),
+            )
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        allow_remote_llm,
+        detail,
+        progress,
+    ):
+        seen["output_path"] = output_path
+        return StubReportService(output_path, period)
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    # `_answer_for_run` wires the output question to an answer; replace that with
+    # a failure, since a dry run must not reach it at all.
+    monkeypatch.setattr(
+        cli,
+        "_ask_output_path",
+        lambda settings, period: pytest.fail("a dry run must not ask where to write"),
+    )
+    monkeypatch.setattr(cli, "_default_output_path", lambda settings, period: output_path)
+    monkeypatch.setattr(
+        cli, "_build_scan_service", lambda *args, **kwargs: StubScanService()
+    )
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run", "--dry-run"])
+
+    assert result.exit_code == 0, result.stdout
+    # The default path is used, unforced, and the report is printed not written.
+    assert seen["output_path"] == output_path
+    assert seen["force"] is False
+    assert not output_path.exists()
+    assert "# Engineering Worklog" in result.stdout
+
+
 def test_bare_invocation_runs_the_report_wizard(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
@@ -1261,8 +1358,21 @@ def test_the_menu_asks_again_after_an_answer_it_does_not_know(
     assert result.stdout.count("Generate a report") >= 2
 
 
+def _nothing_dispatches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail on any dispatched command, so a mis-routed answer cannot slip past.
+
+    Guarding only one of the four would let a quit answer that reached a
+    different entry pass the test.
+    """
+
+    for name in ("config_init", "run", "doctor", "scan"):
+        monkeypatch.setattr(
+            cli, name, lambda *args, **kwargs: pytest.fail("nothing should run")
+        )
+
+
 def test_the_menu_quits_without_doing_anything(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli, "config_init", lambda: pytest.fail("nothing should run"))
+    _nothing_dispatches(monkeypatch)
     _as_a_terminal(monkeypatch)
 
     result = runner.invoke(cli.app, [], input="q\n")
@@ -1271,7 +1381,7 @@ def test_the_menu_quits_without_doing_anything(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_an_empty_answer_quits_the_menu(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli, "config_init", lambda: pytest.fail("nothing should run"))
+    _nothing_dispatches(monkeypatch)
     _as_a_terminal(monkeypatch)
 
     result = runner.invoke(cli.app, [], input="\n")
@@ -1452,14 +1562,96 @@ def test_bare_invocation_runs_scan_against_the_chosen_harness(
 
     assert result.exit_code == 0, result.stdout
     assert seen["harness"] is cli.Harness.CLAUDE_CODE
-    # The menu keeps every other option at its command-line default; the
-    # period questions belong to `run`, not here.
+    # `scan` has no default period — leaving days/period/since all unset is a
+    # usage error — so the menu names the last full week, as `run` does when its
+    # period question is answered with Enter. Everything else keeps the
+    # command-line default; the period questions belong to `run`, not here.
     assert seen["days"] is None
-    assert seen["period"] is None
+    assert seen["period"] == "last-week"
     assert seen["since"] is None
     assert seen["until"] is None
     assert seen["root_only"] is False
     assert seen["sanitize"] is None
+
+
+def test_the_menu_runs_the_real_scan_command_over_the_last_week(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drive the real `scan` from the menu, stubbing only the service layer.
+
+    The other menu tests replace the dispatched command with a stub, so they
+    assert the argument list but never execute it. That cannot catch an argument
+    list `scan` itself rejects — and `scan` has no default period, so an
+    all-`None` period is a `typer.BadParameter`, not a default. Patching
+    `_build_scan_service` is the seam the non-menu `scan` tests already use.
+    """
+
+    captured: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    def build(
+        settings,
+        period,
+        root_only=False,
+        *,
+        harness=cli.Harness.OPENCODE,
+        sanitize=False,
+        progress=None,
+    ):
+        captured["period"] = period
+        captured["harness"] = harness
+        return StubScanService()
+
+    monkeypatch.setattr(cli, "_build_scan_service", build)
+    _as_a_terminal(monkeypatch)
+
+    # "4" chooses the scan; the empty answer keeps the default harness.
+    result = runner.invoke(cli.app, [], input="4\n\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert captured["harness"] is cli.Harness.OPENCODE
+    assert captured["period"] == DateRange.previous_week(
+        now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ)
+    )
+    # The scan ran to completion and rendered its table.
+    assert "Agent Worklog Scan" in result.stdout
+
+
+def test_the_menu_passes_every_parameter_of_the_commands_it_dispatches() -> None:
+    """Guard against signature drift in the commands the menu calls directly.
+
+    Calling a Typer command function in Python bypasses Typer's parameter
+    processing, so any argument the menu leaves out arrives as a
+    `typer.OptionInfo` rather than a value. Typer types `typer.Option` as `Any`
+    and every parameter has a default, so neither pyright nor ruff notices.
+    Adding an option to one of these commands must therefore fail here until the
+    menu's call is updated too.
+    """
+
+    assert set(inspect.signature(cli.scan).parameters) == {
+        "days",
+        "period",
+        "since",
+        "until",
+        "root_only",
+        "sanitize",
+        "harness",
+        "verbose",
+        "quiet",
+    }
+    assert set(inspect.signature(cli.doctor).parameters) == {"harness", "verbose", "quiet"}
+    assert set(inspect.signature(cli.run).parameters) == {"verbose", "dry_run"}
 
 
 def test_the_menu_reports_a_configuration_error_from_the_harness_question(

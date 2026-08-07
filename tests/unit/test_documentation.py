@@ -192,7 +192,13 @@ def test_readmes_document_the_interactive_menu() -> None:
         # Running the command bare now prompts rather than printing help, so
         # both the menu and the way to still get help must be documented.
         assert "agent-worklog --help" in text
-        assert "Generate a report" in text or "產生報告" in text
+        # Asserted in English for both READMEs, because the zh-TW one keeps the
+        # terminal block untranslated — that is what the terminal really prints.
+        # An `or "產生報告" in text` alternative was dropped: that phrase already
+        # appears in an unrelated zh-TW privacy bullet, so the moment anyone
+        # translated the block the assertion would pass off that line and stop
+        # guarding the zh-TW README at all.
+        assert "Generate a report" in text
 
 
 def test_readmes_document_the_run_dry_run_option() -> None:

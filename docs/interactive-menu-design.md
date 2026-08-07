@@ -35,8 +35,11 @@ the prompt helpers, and which in turn stacks on the interactive `config init`.
 - A curses or full-screen TUI. The menu is a numbered prompt.
 - A config sub-menu offering `init` vs `set` vs `unset`. The menu means "walk
   the settings", which `config init` already is.
-- A custom period prompt for the menu's `scan`. The default period covers it,
-  and `run` or `scan --since/--until` cover the rest.
+- A custom period prompt for the menu's `scan`. `scan` has no default period —
+  `_resolve_period` demands exactly one of `--days`, `--period`, or `--since` —
+  so the menu passes `period="last-week"` explicitly, matching the window `run`
+  chooses when its period question is answered with Enter. `run` or
+  `scan --since/--until` cover the rest.
 - A menu-wide dry-run switch. Three of the four actions either write nothing or
   already have an escape.
 - Looping back to the menu after an action completes.
@@ -112,21 +115,25 @@ value, for the same reason: a typo should not throw away the session.
 a Typer `OptionInfo`, not a `Harness`, so it only becomes a real value when Typer
 invokes the command. Calling `doctor()` bare would pass the `OptionInfo` through.
 The menu therefore resolves the harness itself with the existing
-`_ask_harness(settings)` helper, which returns a `Harness` and only prompts when
-more than one harness is enabled, and passes every other parameter explicitly:
+`_ask_harness(settings)` helper, which echoes the enabled harnesses, prompts for
+one, and returns a `Harness`. Every other parameter is passed explicitly:
 
 ```python
 harness = _ask_harness(settings)
 doctor(harness=harness, verbose=False, quiet=False)
 scan(
-    days=None, period=None, since=None, until=None,
+    days=None, period="last-week", since=None, until=None,
     root_only=False, sanitize=None,
     harness=harness, verbose=False, quiet=False,
 )
 ```
 
-The remaining parameters all default to `None` or `False` as plain Python values,
-so passing them literally reproduces the CLI default behavior.
+The period is named rather than left unset because `scan` has no default period:
+`_resolve_period` raises `typer.BadParameter` unless exactly one of `days`,
+`period`, or `since` is given, so `days=period=since=None` is a usage error, not
+a default. `last-week` is the window `run` picks when its period question is
+answered with Enter. The remaining parameters do default to `None` or `False` as
+plain Python values, so passing those literally reproduces the CLI default.
 
 ### Dry run on the report path
 
@@ -147,6 +154,11 @@ dry run the command prints the report content instead of
 `Report written to {path}`. This makes `agent-worklog run --dry-run` work from
 the command line too, matching `report --dry-run`.
 
+A dry run also skips `_ask_output_path` and takes `_default_output_path` with
+`force=False`. Nothing is written, so asking where to write it — and whether to
+overwrite a file that will never be touched — is a question whose answer cannot
+matter.
+
 The menu asks `Dry run - print the report instead of writing a file? [y/N]`
 before calling `run`.
 
@@ -165,7 +177,7 @@ agent-worklog (no args)
         1 -> _ask_yes(dry run) -> run(verbose=False, dry_run=...)
         2 -> config_init()
         3 -> _ask_harness() -> doctor(harness=..., verbose=False, quiet=False)
-        4 -> _ask_harness() -> scan(harness=..., ...defaults)
+        4 -> _ask_harness() -> scan(harness=..., period="last-week", ...)
         q -> return
 ```
 
@@ -236,7 +248,12 @@ runner and the guard would otherwise be untestable.
 - Menu `1` with a yes to dry run prints the report and writes no file.
 - Menu `2` runs the settings walk.
 - Menu `3` runs doctor against the answered harness.
-- Menu `4` runs scan against the answered harness.
+- Menu `4` runs scan against the answered harness, over the last full week. One
+  such test drives the real `scan` command with only `_build_scan_service`
+  stubbed, so a menu argument list `scan` would reject cannot pass.
+- The menu's argument lists name every parameter of the commands they call, so
+  a new option on `scan`, `doctor`, or `run` cannot silently reach the menu as a
+  `typer.OptionInfo`.
 - An unrecognized answer reprints the choices and asks again.
 - `q` exits 0 without doing anything.
 - An empty answer exits 0 without doing anything.
@@ -246,6 +263,8 @@ runner and the guard would otherwise be untestable.
 - `agent-worklog <subcommand>` still dispatches normally and shows no menu.
 - `agent-worklog --help` still prints help.
 - `run --dry-run` from the command line writes no file and prints the report.
+- `run --dry-run` never reaches the output-path question, and takes the default
+  path unforced.
 
 Each new documentation assertion is checked against the pre-change docs to
 confirm it fails without the content it guards.
