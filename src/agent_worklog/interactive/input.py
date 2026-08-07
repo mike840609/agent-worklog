@@ -114,9 +114,9 @@ def _windows_restore(token: object) -> None:
 def _windows_read() -> str:
     import msvcrt
 
-    first = msvcrt.getwch()  # type: ignore[attr-defined]
+    first = msvcrt.getwch() or ""  # type: ignore[attr-defined]
     if first in {"\x00", "\xe0"}:
-        second = msvcrt.getwch()  # type: ignore[attr-defined]
+        second = msvcrt.getwch() or ""  # type: ignore[attr-defined]
         mapping = {
             "H": "\x1b[A",
             "P": "\x1b[B",
