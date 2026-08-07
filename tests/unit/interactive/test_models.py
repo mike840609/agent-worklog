@@ -4,8 +4,15 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from agent_worklog.interactive.models import ReportDraft
+from agent_worklog.models.repository import (
+    RepositoryIdentity,
+    RepositoryIdentityType,
+    ResolvedSession,
+)
+from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.renderers.markdown import DetailLevel
+from agent_worklog.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -83,3 +90,49 @@ def test_setting_same_scan_identity_value_does_not_clear_cache() -> None:
 
     assert draft.scan is scan
     assert draft.selected_session_ids == {"ses-a", "ses-b"}
+
+
+def _resolved(session_id: str, *, title: str | None, activity_count: int) -> ResolvedSession:
+    return ResolvedSession(
+        session=AgentSession(
+            harness="opencode",
+            session_id=session_id,
+            title=title,
+            working_directory="/tmp/repo-a",
+            activities=[
+                SessionActivity(
+                    activity_id=f"{session_id}-{i}",
+                    activity_type=ActivityType.USER_MESSAGE,
+                )
+                for i in range(activity_count)
+            ],
+        ),
+        repository=RepositoryIdentity(
+            repository_id="repo-a",
+            display_name="repo-a",
+            identity_type=RepositoryIdentityType.PATH_FALLBACK,
+            working_directory="/tmp/repo-a",
+            resolution_method="test",
+        ),
+    )
+
+
+def test_set_scan_deselects_noise_sessions_but_keeps_substantive_work() -> None:
+    draft = ReportDraft(harness="opencode", period=_period(20))
+    sessions = [
+        _resolved("ses-real", title="Fix sanitize export bug", activity_count=40),
+        _resolved("ses-untitled", title=None, activity_count=40),
+        _resolved("ses-thin", title="Quick check", activity_count=1),
+    ]
+    scan = ScanResult(
+        period=_period(20),
+        candidate_session_count=3,
+        loaded_session_count=3,
+        failed_session_count=0,
+        resolved_sessions=sessions,
+        sessions_by_repository={"repo-a": sessions},
+    )
+
+    draft.set_scan(scan)
+
+    assert draft.selected_session_ids == {"ses-real"}

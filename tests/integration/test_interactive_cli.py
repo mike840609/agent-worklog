@@ -17,7 +17,7 @@ from agent_worklog.models.repository import (
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
+from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.services.scan import ScanResult
 
@@ -57,6 +57,13 @@ def _scan() -> ScanResult:
             session_id="ses-1",
             title="Session 1",
             working_directory="/tmp/repo-a",
+            activities=[
+                SessionActivity(
+                    activity_id=f"act-{i}",
+                    activity_type=ActivityType.USER_MESSAGE,
+                )
+                for i in range(5)
+            ],
         ),
         repository=RepositoryIdentity(
             repository_id="repo-a",

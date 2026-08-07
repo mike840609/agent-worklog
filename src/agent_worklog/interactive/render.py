@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.text import Text
 
 from agent_worklog.interactive.models import ReportDraft
-from agent_worklog.interactive.selection import SelectionMark, SelectionState
+from agent_worklog.interactive.selection import SelectionMark, SelectionState, noise_reason
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.scan import ScanResult
@@ -306,6 +306,10 @@ def render_session_review(
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
     titles = _session_titles(selection.scan)
+    noise_labels = {
+        item.session.session_id: noise_reason(item.session)
+        for item in selection.scan.resolved_sessions
+    }
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
         style = "bold" if index == cursor else ""
@@ -327,9 +331,11 @@ def render_session_review(
         else:
             assert row.session_id is not None
             mark = "●" if row.session_id in selection.selected_session_ids else "○"
+            reason = noise_labels[row.session_id]
+            suffix = f"   {reason}" if reason else ""
             _print_viewport_line(
                 console,
-                f"{prefix}     {mark} {titles[row.session_id]}",
+                f"{prefix}     {mark} {titles[row.session_id]}{suffix}",
                 style=style,
             )
     if hidden_below:
