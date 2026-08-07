@@ -154,7 +154,7 @@ def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) 
     console.print()
     _print_viewport_line(
         console,
-        "↑↓ / jk Navigate   ←→ / hl Change   Enter Edit   r Review   ? Help   b Back",
+        "↑↓ / jk Navigate   ←→ / hl Change   Enter Edit   r Review   ? Help   b Back   q Main menu",
         style="dim",
     )
 
