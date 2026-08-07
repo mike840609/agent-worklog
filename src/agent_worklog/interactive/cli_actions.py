@@ -31,29 +31,39 @@ def _new_draft() -> ReportDraft:
 
 
 def _choose_harness(current: str) -> str:
-    """Keep the draft's current harness on Enter; opt into the existing chooser."""
+    """Cycle to the next enabled harness without leaving the key-driven UI."""
 
     from agent_worklog import cli
 
     settings = cli._load_settings()
-    answer = cli._prompt(f"Harness [{current}; Enter=keep, c=change]")
-    if not answer:
+    enabled = [harness.value for harness in cli._enabled_harnesses(settings)]
+    if not enabled:
         return current
-    return cli._ask_harness(settings).value
+    try:
+        index = enabled.index(current)
+    except ValueError:
+        return enabled[0]
+    return enabled[(index + 1) % len(enabled)]
 
 
 def _choose_period(current: DateRange) -> DateRange:
-    """Keep the draft's current period on Enter; opt into the existing chooser."""
+    """Cycle through useful built-in periods without opening a typed prompt."""
 
     from agent_worklog import cli
 
     settings = cli._load_settings()
-    current_label = f"{current.since:%Y-%m-%d}..{current.until:%Y-%m-%d}"
-    answer = cli._prompt(f"Period [{current_label}; Enter=keep, c=change]")
-    if not answer:
-        return current
     now = cli._now_in_timezone(settings.report.timezone)
-    return cli._ask_period(settings.report.timezone, now)
+    periods = [
+        DateRange.previous_week(now=now),
+        DateRange.from_days(days=7, now=now),
+        DateRange.from_days(days=14, now=now),
+        DateRange.from_days(days=30, now=now),
+    ]
+    try:
+        index = periods.index(current)
+    except ValueError:
+        return periods[0]
+    return periods[(index + 1) % len(periods)]
 
 
 def _scan(draft: ReportDraft) -> ScanResult:
