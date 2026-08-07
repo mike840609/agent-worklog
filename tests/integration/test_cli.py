@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 import agent_worklog.cli as cli
 from agent_worklog import config_store
-from agent_worklog.errors import ReportOutputError
+from agent_worklog.errors import ConfigurationError, ReportOutputError
 from agent_worklog.models.report import RepositorySummary, WorklogReport
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.progress import NullProgressReporter, ProgressStage
@@ -1402,3 +1402,79 @@ def test_run_walks_the_real_prompts_on_defaults(
     assert captured["no_llm"] is False
     assert captured["root_only"] is False
     assert captured["detail"] is cli.DetailLevel.FULL
+
+
+def test_bare_invocation_runs_doctor_against_the_chosen_harness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def stub_doctor(*, harness, verbose: bool, quiet: bool) -> None:
+        seen["harness"] = harness
+        seen["verbose"] = verbose
+        seen["quiet"] = quiet
+
+    monkeypatch.setattr(cli, "doctor", stub_doctor)
+    monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.OPENCODE)
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="3\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert seen == {
+        "harness": cli.Harness.OPENCODE,
+        "verbose": False,
+        "quiet": False,
+    }
+
+
+def test_bare_invocation_runs_scan_against_the_chosen_harness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def stub_scan(
+        *, days, period, since, until, root_only, sanitize, harness, verbose, quiet
+    ) -> None:
+        seen["harness"] = harness
+        seen["days"] = days
+        seen["period"] = period
+        seen["since"] = since
+        seen["until"] = until
+        seen["root_only"] = root_only
+        seen["sanitize"] = sanitize
+
+    monkeypatch.setattr(cli, "scan", stub_scan)
+    monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.CLAUDE_CODE)
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="4\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert seen["harness"] is cli.Harness.CLAUDE_CODE
+    # The menu keeps every other option at its command-line default; the
+    # period questions belong to `run`, not here.
+    assert seen["days"] is None
+    assert seen["period"] is None
+    assert seen["since"] is None
+    assert seen["until"] is None
+    assert seen["root_only"] is False
+    assert seen["sanitize"] is None
+
+
+def test_the_menu_reports_a_configuration_error_from_the_harness_question(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every harness disabled must exit 3, not raise through the callback."""
+
+    def refuse(settings):
+        raise ConfigurationError("every harness is disabled by configuration")
+
+    monkeypatch.setattr(cli, "_ask_harness", refuse)
+    monkeypatch.setattr(cli, "doctor", lambda **kwargs: pytest.fail("must not run"))
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="3\n")
+
+    assert result.exit_code == 3
+    assert "every harness is disabled by configuration" in result.stdout

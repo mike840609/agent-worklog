@@ -907,6 +907,8 @@ def run(
 _MENU_CHOICES = """What do you want to do?
   1  Generate a report
   2  Edit settings
+  3  Check setup (doctor)
+  4  Scan sessions
   q  Quit"""
 
 
@@ -937,6 +939,26 @@ def _interactive_menu() -> None:
                 return
             if answer == "2":
                 config_init()
+                return
+            if answer in {"3", "4"}:
+                settings = _load_settings()
+                harness = _ask_harness(settings)
+                if answer == "3":
+                    doctor(harness=harness, verbose=False, quiet=False)
+                else:
+                    # Every option but the harness keeps its command-line
+                    # default; `run` is the way to a custom period.
+                    scan(
+                        days=None,
+                        period=None,
+                        since=None,
+                        until=None,
+                        root_only=False,
+                        sanitize=None,
+                        harness=harness,
+                        verbose=False,
+                        quiet=False,
+                    )
                 return
             typer.echo("  choose one of the listed options")
     except ConfigurationError as exc:
