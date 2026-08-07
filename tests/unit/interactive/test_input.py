@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
+
 import pytest
 
-from agent_worklog.interactive.input import Key, KeyPress, TerminalInput, normalize_posix_sequence
+from agent_worklog.interactive.input import (
+    Key,
+    KeyPress,
+    TerminalInput,
+    _windows_read,
+    normalize_posix_sequence,
+)
 
 
 def test_arrow_enter_space_escape_and_char_sequences_normalize() -> None:
@@ -43,3 +52,19 @@ def test_read_key_normalizes_the_injected_reader() -> None:
     )
 
     assert terminal.read_key() == KeyPress(key=Key.UP)
+
+
+def test_windows_adapter_translates_extended_arrow_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    values = iter(["\xe0", "H", "\xe0", "P"])
+    fake_msvcrt = SimpleNamespace(getwch=lambda: next(values))
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    assert normalize_posix_sequence(_windows_read()) == KeyPress(key=Key.UP)
+    assert normalize_posix_sequence(_windows_read()) == KeyPress(key=Key.DOWN)
+
+
+def test_windows_adapter_preserves_regular_character(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_msvcrt = SimpleNamespace(getwch=lambda: "q")
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    assert _windows_read() == "q"
