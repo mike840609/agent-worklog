@@ -7,13 +7,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, Self
 
+import typer
 from rich.console import Console
 
-from agent_worklog.errors import AgentWorklogError, ReportOutputError
+from agent_worklog.errors import (
+    AgentWorklogError,
+    ReportAlreadyExistsError,
+    ReportOutputError,
+)
 from agent_worklog.interactive.input import Key, KeyPress
 from agent_worklog.interactive.models import ReportDraft, Screen
 from agent_worklog.interactive.render import (
+    build_filtered_rows,
     build_visible_rows,
+    main_menu_options,
+    recoverable_error_detail_capacity,
+    render_help,
     render_main_menu,
     render_recoverable_error,
     render_report_preview,
@@ -21,7 +30,9 @@ from agent_worklog.interactive.render import (
     render_report_setup,
     render_session_browser,
     render_session_review,
+    report_preview_capacity,
     report_result_options,
+    report_setup_options,
 )
 from agent_worklog.interactive.selection import SelectionState
 from agent_worklog.models.time_range import DateRange
@@ -66,6 +77,7 @@ class _ErrorState:
     title: str
     detail: str
     selected: int = 0
+    detail_offset: int = 0
 
 
 @dataclass
@@ -84,6 +96,9 @@ class _State:
     expanded_repositories: set[str] | None = None
     error: _ErrorState | None = None
     review_message: str | None = None
+    search_query: str = ""
+    searching: bool = False
+    help_return_screen: Screen | None = None
 
     def expansions(self) -> set[str]:
         if self.expanded_repositories is None:
@@ -99,7 +114,11 @@ def _read_key(input_source: KeySource) -> KeyPress:
 
 
 def _char(key: KeyPress, value: str) -> bool:
-    return key.char is not None and key.char.casefold() == value
+    return key.char is not None and key.char.casefold() == value.casefold()
+
+
+def _exact_char(key: KeyPress, value: str) -> bool:
+    return key.char == value
 
 
 def _move(cursor: int, key: KeyPress, count: int) -> int:
@@ -119,6 +138,11 @@ def _clear_if_terminal(console: Console) -> None:
         console.clear()
 
 
+def _reset_search(state: _State) -> None:
+    state.search_query = ""
+    state.searching = False
+
+
 def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.draft = actions.new_draft()
     state.setup_cursor = 0
@@ -128,6 +152,7 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.review_message = None
     state.preview_offset = 0
     state.expanded_repositories = set()
+    _reset_search(state)
     state.screen = Screen.REPORT_SETUP
 
 
@@ -161,16 +186,14 @@ def _load_browse(
     state.browser_cursor = 0
     state.error = None
     state.expanded_repositories = set()
+    _reset_search(state)
     state.screen = Screen.SESSION_BROWSER
 
 
 def _begin_browse(state: _State, actions: InteractiveActions) -> None:
-    draft = actions.new_draft()
-    draft.set_harness(actions.choose_harness(draft.harness))
-    if draft.harness != "opencode":
-        draft.set_sanitize(False)
-    draft.set_period(actions.choose_period(draft.period))
-    _load_browse(state, actions, draft)
+    """Browse with configured defaults; edits happen inside the key-driven screens."""
+
+    _load_browse(state, actions, actions.new_draft())
 
 
 def _review(state: _State, actions: InteractiveActions) -> None:
@@ -206,12 +229,19 @@ def _review(state: _State, actions: InteractiveActions) -> None:
     state.review_message = None
     valid_repositories = set(cached_scan.sessions_by_repository)
     state.expanded_repositories = state.expansions() & valid_repositories
+    _reset_search(state)
     state.screen = Screen.SESSION_REVIEW
 
 
+def _open_help(state: _State) -> None:
+    state.help_return_screen = state.screen
+    state.screen = Screen.HELP
+
+
 def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
-    state.main_cursor = _move(state.main_cursor, key, 4)
-    if key.key in {Key.ESCAPE, Key.CTRL_C} or _char(key, "q"):
+    options = main_menu_options()
+    state.main_cursor = _move(state.main_cursor, key, len(options))
+    if key.key is Key.ESCAPE or _char(key, "q"):
         state.screen = Screen.EXIT
         return
     if key.char in {"1", "2", "3", "4"}:
@@ -228,9 +258,8 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
         _begin_browse(state, actions)
     elif state.main_cursor == 2:
         draft = actions.new_draft()
-        harness = actions.choose_harness(draft.harness)
         try:
-            lines = actions.doctor(harness)
+            lines = actions.doctor(draft.harness)
         except AgentWorklogError as exc:
             detail = f"ERROR: {exc}"
         else:
@@ -261,23 +290,14 @@ def _clear_expansions_if_scan_was_invalidated(
         state.expanded_repositories = set()
 
 
-def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
+def _edit_setup_choice(
+    state: _State,
+    actions: InteractiveActions,
+    *,
+    choice: int,
+) -> None:
     assert state.draft is not None
     draft = state.draft
-    state.setup_cursor = _move(state.setup_cursor, key, 9)
-    if key.key is Key.CTRL_C or _char(key, "q"):
-        state.screen = Screen.MAIN
-        return
-    if key.key is Key.ESCAPE or _char(key, "b"):
-        state.screen = Screen.MAIN
-        return
-    if _char(key, "r"):
-        _review(state, actions)
-        return
-    if key.key is not Key.ENTER:
-        return
-
-    choice = state.setup_cursor
     had_scan = draft.scan is not None
     if choice == 0:
         _review(state, actions)
@@ -304,15 +324,104 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
     _clear_expansions_if_scan_was_invalidated(state, draft, had_scan=had_scan)
 
 
-def _browser_key(state: _State, key: KeyPress) -> None:
-    assert state.browser_scan is not None
-    rows = build_visible_rows(state.browser_scan, state.expansions())
-    state.browser_cursor = _move(state.browser_cursor, key, len(rows))
-    if key.key is Key.CTRL_C or _char(key, "q"):
+def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
+    options = report_setup_options()
+    state.setup_cursor = _move(state.setup_cursor, key, len(options))
+    if _char(key, "q"):
         state.screen = Screen.MAIN
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = Screen.MAIN
+        return
+    if _char(key, "r"):
+        _review(state, actions)
+        return
+    horizontal_edit = key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
+    if key.key is not Key.ENTER and not horizontal_edit:
+        return
+    _edit_setup_choice(state, actions, choice=state.setup_cursor)
+
+
+def _tree_rows(scan: ScanResult, state: _State) -> list:
+    if state.search_query:
+        return build_filtered_rows(scan, state.expansions(), query=state.search_query)
+    return build_visible_rows(scan, state.expansions())
+
+
+def _expand_tree_row(state: _State, rows: list, cursor_name: str) -> None:
+    if not rows:
+        return
+    cursor = getattr(state, cursor_name)
+    cursor = min(cursor, len(rows) - 1)
+    row = rows[cursor]
+    if row.kind == "repository":
+        state.expansions().add(row.repository_id)
+
+
+def _collapse_tree_row(state: _State, rows: list, cursor_name: str) -> None:
+    if not rows:
+        return
+    cursor = min(getattr(state, cursor_name), len(rows) - 1)
+    row = rows[cursor]
+    expanded = state.expansions()
+    if row.kind == "repository":
+        expanded.discard(row.repository_id)
+        return
+    expanded.discard(row.repository_id)
+    for index in range(cursor, -1, -1):
+        candidate = rows[index]
+        if candidate.kind == "repository" and candidate.repository_id == row.repository_id:
+            setattr(state, cursor_name, index)
+            return
+
+
+def _search_input(state: _State, key: KeyPress, cursor_name: str) -> bool:
+    if not state.searching:
+        return False
+    if key.key is Key.ESCAPE:
+        _reset_search(state)
+    elif key.key in {Key.BACKSPACE, Key.DELETE}:
+        state.search_query = state.search_query[:-1]
+    elif key.key is Key.ENTER:
+        state.searching = False
+    elif key.char is not None and key.char.isprintable():
+        state.search_query += key.char
+    else:
+        return True
+    setattr(state, cursor_name, 0)
+    return True
+
+
+def _begin_search(state: _State, cursor_name: str) -> None:
+    state.search_query = ""
+    state.searching = True
+    setattr(state, cursor_name, 0)
+
+
+def _browser_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
+    assert state.browser_scan is not None
+    if _search_input(state, key, "browser_cursor"):
+        return
+    if _exact_char(key, "/"):
+        _begin_search(state, "browser_cursor")
+        return
+    if _exact_char(key, "R"):
+        assert state.draft is not None
+        _load_browse(state, actions, state.draft)
+        return
+    rows = _tree_rows(state.browser_scan, state)
+    state.browser_cursor = _move(state.browser_cursor, key, len(rows))
+    if _char(key, "q"):
+        state.screen = Screen.MAIN
+        return
+    if key.key is Key.ESCAPE or _char(key, "b"):
+        state.screen = Screen.MAIN
+        return
+    if key.key is Key.RIGHT or _char(key, "l"):
+        _expand_tree_row(state, rows, "browser_cursor")
+        return
+    if key.key is Key.LEFT or _char(key, "h"):
+        _collapse_tree_row(state, rows, "browser_cursor")
         return
     if key.key is not Key.ENTER or not rows:
         return
@@ -324,7 +433,7 @@ def _browser_key(state: _State, key: KeyPress) -> None:
         expanded.remove(row.repository_id)
     else:
         expanded.add(row.repository_id)
-    visible_count = len(build_visible_rows(state.browser_scan, expanded))
+    visible_count = len(_tree_rows(state.browser_scan, state))
     state.browser_cursor = min(state.browser_cursor, max(0, visible_count - 1))
 
 
@@ -345,10 +454,17 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
     filtered_scan = state.selection.filtered_scan()
     try:
         result = actions.generate(state.draft, filtered_scan, force)
-    except ReportOutputError as exc:
-        conflict = not force and str(exc).startswith("report already exists:")
+    except ReportAlreadyExistsError as exc:
         state.error = _ErrorState(
-            kind="report-output-conflict" if conflict else "report-output",
+            kind="report-output-conflict",
+            title="Could not write report",
+            detail=str(exc),
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    except ReportOutputError as exc:
+        state.error = _ErrorState(
+            kind="report-output",
             title="Could not write report",
             detail=str(exc),
         )
@@ -370,18 +486,47 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
     state.screen = Screen.REPORT_RESULT
 
 
+def _rescan_review(state: _State, actions: InteractiveActions) -> None:
+    assert state.draft is not None
+    assert state.selection is not None
+    selected = set(state.selection.selected_session_ids)
+    state.draft.scan = None
+    _review(state, actions)
+    if state.screen is not Screen.SESSION_REVIEW or state.selection is None:
+        return
+    available = {
+        item.session.session_id for item in state.selection.scan.resolved_sessions
+    }
+    state.selection.selected_session_ids = selected & available
+    _sync_selection(state)
+
+
 def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
     assert state.draft is not None
     assert state.selection is not None
-    rows = build_visible_rows(state.selection.scan, state.expansions())
+    if _search_input(state, key, "review_cursor"):
+        return
+    if _exact_char(key, "/"):
+        _begin_search(state, "review_cursor")
+        return
+    if _exact_char(key, "R"):
+        _rescan_review(state, actions)
+        return
+    rows = _tree_rows(state.selection.scan, state)
     state.review_cursor = _move(state.review_cursor, key, len(rows))
-    if key.key is Key.CTRL_C or _char(key, "q"):
+    if _char(key, "q"):
         _sync_selection(state)
         state.screen = Screen.MAIN
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
         _sync_selection(state)
         state.screen = Screen.REPORT_SETUP
+        return
+    if key.key is Key.RIGHT or _char(key, "l"):
+        _expand_tree_row(state, rows, "review_cursor")
+        return
+    if key.key is Key.LEFT or _char(key, "h"):
+        _collapse_tree_row(state, rows, "review_cursor")
         return
     if _char(key, "a"):
         state.selection.select_all()
@@ -393,7 +538,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         _sync_selection(state)
         state.review_message = None
         return
-    if _char(key, "g"):
+    if _exact_char(key, "g"):
         _generate(state, actions, force=False)
         return
     if key.key is Key.SPACE and rows:
@@ -416,7 +561,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
                 expanded.add(row.repository_id)
             state.review_cursor = min(
                 state.review_cursor,
-                max(0, len(build_visible_rows(state.selection.scan, expanded)) - 1),
+                max(0, len(_tree_rows(state.selection.scan, state)) - 1),
             )
 
 
@@ -446,12 +591,37 @@ def _error_back_screen(error: _ErrorState) -> Screen:
     return Screen.MAIN
 
 
-def _error_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
+def _scroll_error_detail(error: _ErrorState, key: KeyPress, console: Console) -> bool:
+    lines = error.detail.splitlines() or [""]
+    capacity = recoverable_error_detail_capacity(console.size.height, len(_error_options(error)))
+    page = max(1, capacity)
+    max_offset = max(0, len(lines) - 1)
+    if key.key is Key.PAGE_UP:
+        error.detail_offset = max(0, error.detail_offset - page)
+    elif key.key is Key.PAGE_DOWN:
+        error.detail_offset = min(max_offset, error.detail_offset + page)
+    elif key.key is Key.HOME:
+        error.detail_offset = 0
+    elif key.key is Key.END:
+        error.detail_offset = max_offset
+    else:
+        return False
+    return True
+
+
+def _error_key(
+    state: _State,
+    key: KeyPress,
+    actions: InteractiveActions,
+    console: Console,
+) -> None:
     assert state.error is not None
     error = state.error
+    if _scroll_error_detail(error, key, console):
+        return
     options = _error_options(error)
     error.selected = _move(error.selected, key, len(options))
-    if key.key is Key.CTRL_C or _char(key, "q"):
+    if _char(key, "q"):
         state.screen = Screen.MAIN
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
@@ -478,10 +648,10 @@ def _error_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
     else:
         state.draft.set_period(actions.choose_period(state.draft.period))
     state.selection = None
-    state.error = None
     if error.kind.startswith("browse"):
         _load_browse(state, actions, state.draft)
     else:
+        state.error = None
         state.expanded_repositories = set()
         state.screen = Screen.REPORT_SETUP
 
@@ -491,7 +661,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
     assert state.result is not None
     options = report_result_options(dry_run=state.draft.dry_run)
     state.result_cursor = _move(state.result_cursor, key, len(options))
-    if key.key in {Key.ESCAPE, Key.CTRL_C} or _char(key, "q") or _char(key, "b"):
+    if key.key is Key.ESCAPE or _char(key, "q") or _char(key, "b"):
         state.screen = Screen.MAIN
         return
     if key.key is not Key.ENTER:
@@ -512,6 +682,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
         state.setup_cursor = 0
         state.preview_offset = 0
         state.expanded_repositories = set()
+        _reset_search(state)
         state.screen = Screen.REPORT_SETUP
     else:
         detail = (
@@ -529,19 +700,37 @@ def _result_key(state: _State, key: KeyPress) -> None:
 
 def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
     assert state.result is not None
-    if key.key is Key.CTRL_C or _char(key, "q"):
+    if _char(key, "q"):
         state.screen = Screen.MAIN
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = Screen.REPORT_RESULT
         return
     lines = state.result.content.splitlines() or [""]
-    capacity = max(1, console.size.height - 6)
-    max_offset = max(0, len(lines) - capacity)
+    capacity = report_preview_capacity(console.size.height)
+    max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
+    page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):
         state.preview_offset = max(0, state.preview_offset - 1)
     elif key.key is Key.DOWN or _char(key, "j"):
         state.preview_offset = min(max_offset, state.preview_offset + 1)
+    elif key.key is Key.PAGE_UP:
+        state.preview_offset = max(0, state.preview_offset - page)
+    elif key.key is Key.PAGE_DOWN:
+        state.preview_offset = min(max_offset, state.preview_offset + page)
+    elif key.key is Key.HOME or _exact_char(key, "g"):
+        state.preview_offset = 0
+    elif key.key is Key.END or _exact_char(key, "G"):
+        state.preview_offset = max_offset
+
+
+def _help_key(state: _State, key: KeyPress) -> None:
+    if _char(key, "q"):
+        state.screen = Screen.MAIN
+        return
+    if key.key in {Key.ESCAPE, Key.ENTER} or _char(key, "b") or _exact_char(key, "?"):
+        state.screen = state.help_return_screen or Screen.MAIN
+        state.help_return_screen = None
 
 
 def _render(state: _State, console: Console) -> None:
@@ -558,6 +747,8 @@ def _render(state: _State, console: Console) -> None:
             state.browser_scan,
             expanded_repositories=state.expansions(),
             cursor=state.browser_cursor,
+            query=state.search_query,
+            searching=state.searching,
         )
     elif state.screen is Screen.SESSION_REVIEW:
         assert state.selection is not None
@@ -567,6 +758,8 @@ def _render(state: _State, console: Console) -> None:
             expanded_repositories=state.expansions(),
             cursor=state.review_cursor,
             message=state.review_message,
+            query=state.search_query,
+            searching=state.searching,
         )
     elif state.screen is Screen.REPORT_RESULT:
         assert state.draft is not None
@@ -595,7 +788,61 @@ def _render(state: _State, console: Console) -> None:
             detail=state.error.detail,
             options=_error_options(state.error),
             selected=state.error.selected,
+            detail_offset=state.error.detail_offset,
         )
+    elif state.screen is Screen.HELP:
+        render_help(console)
+
+
+def _idle_interrupt(state: _State) -> None:
+    """Treat Ctrl-C while waiting for a key like the screen's normal Back action."""
+
+    if state.screen is Screen.MAIN:
+        state.screen = Screen.EXIT
+    elif state.screen is Screen.REPORT_SETUP:
+        state.screen = Screen.MAIN
+    elif state.screen is Screen.SESSION_BROWSER:
+        state.screen = Screen.MAIN
+    elif state.screen is Screen.SESSION_REVIEW:
+        if state.selection is not None and state.draft is not None:
+            _sync_selection(state)
+        state.screen = Screen.REPORT_SETUP
+    elif state.screen is Screen.REPORT_RESULT:
+        state.screen = Screen.MAIN
+    elif state.screen is Screen.REPORT_PREVIEW:
+        state.screen = Screen.REPORT_RESULT
+    elif state.screen is Screen.RECOVERABLE_ERROR and state.error is not None:
+        state.screen = _error_back_screen(state.error)
+    elif state.screen is Screen.HELP:
+        state.screen = state.help_return_screen or Screen.MAIN
+        state.help_return_screen = None
+
+
+def _dispatch(
+    state: _State,
+    key: KeyPress,
+    actions: InteractiveActions,
+    console: Console,
+) -> None:
+    if _exact_char(key, "?") and state.screen is not Screen.HELP:
+        _open_help(state)
+        return
+    if state.screen is Screen.MAIN:
+        _main_key(state, key, actions)
+    elif state.screen is Screen.REPORT_SETUP:
+        _setup_key(state, key, actions)
+    elif state.screen is Screen.SESSION_BROWSER:
+        _browser_key(state, key, actions)
+    elif state.screen is Screen.SESSION_REVIEW:
+        _review_key(state, key, actions)
+    elif state.screen is Screen.REPORT_RESULT:
+        _result_key(state, key)
+    elif state.screen is Screen.REPORT_PREVIEW:
+        _preview_key(state, key, console)
+    elif state.screen is Screen.RECOVERABLE_ERROR:
+        _error_key(state, key, actions, console)
+    elif state.screen is Screen.HELP:
+        _help_key(state, key)
 
 
 def run_interactive(
@@ -612,18 +859,13 @@ def run_interactive(
         try:
             key = _read_key(input_source)
         except KeyboardInterrupt:
-            return
-        if state.screen is Screen.MAIN:
-            _main_key(state, key, actions)
-        elif state.screen is Screen.REPORT_SETUP:
-            _setup_key(state, key, actions)
-        elif state.screen is Screen.SESSION_BROWSER:
-            _browser_key(state, key)
-        elif state.screen is Screen.SESSION_REVIEW:
-            _review_key(state, key, actions)
-        elif state.screen is Screen.REPORT_RESULT:
-            _result_key(state, key)
-        elif state.screen is Screen.REPORT_PREVIEW:
-            _preview_key(state, key, console)
-        elif state.screen is Screen.RECOVERABLE_ERROR:
-            _error_key(state, key, actions)
+            _idle_interrupt(state)
+            continue
+        origin = state.screen
+        try:
+            _dispatch(state, key, actions, console)
+        except (KeyboardInterrupt, typer.Abort):
+            # Actions run outside terminal cbreak mode. Cancelling a scan, report
+            # generation, or typed legacy settings editor returns to the screen
+            # that launched it instead of terminating the whole interactive app.
+            state.screen = origin
