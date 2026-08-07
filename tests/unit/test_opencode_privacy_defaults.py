@@ -17,7 +17,12 @@ from agent_worklog.process import CommandResult
 class FakeRunner:
     calls: list[list[str]] = field(default_factory=list)
 
-    def run(self, args: list[str]) -> CommandResult:
+    def run(
+        self,
+        args: list[str],
+        *,
+        stdout_path: object = None,
+    ) -> CommandResult:
         self.calls.append(args)
         return CommandResult(returncode=0, stdout='{"messages": []}', stderr="")
 
@@ -116,55 +121,3 @@ def test_effective_sanitize_uses_setting_and_cli_override(
 def test_sanitize_is_rejected_for_non_opencode(harness: cli.Harness) -> None:
     with pytest.raises(typer.BadParameter, match="supported only"):
         cli._validate_privacy_options(harness=harness, sanitize=True)
-
-
-def test_no_llm_conflicts_with_remote_authorization() -> None:
-    with pytest.raises(typer.BadParameter, match="cannot be used together"):
-        cli._validate_privacy_options(
-            harness=cli.Harness.OPENCODE,
-            sanitize=None,
-            no_llm=True,
-            allow_remote_llm=True,
-        )
-
-
-def test_remote_llm_requires_explicit_authorization() -> None:
-    settings = AppSettings()
-
-    assert cli._remote_llm_selection(
-        settings=settings,
-        api_key="secret",
-        no_llm=False,
-        allow_remote_llm=False,
-    ) == (False, [])
-    assert cli._remote_llm_selection(
-        settings=settings,
-        api_key="secret",
-        no_llm=False,
-        allow_remote_llm=True,
-    ) == (True, [])
-
-
-def test_remote_llm_reports_unavailable_configuration() -> None:
-    settings = AppSettings()
-
-    assert cli._remote_llm_selection(
-        settings=settings,
-        api_key=None,
-        no_llm=False,
-        allow_remote_llm=True,
-    ) == (
-        False,
-        ["remote LLM requested but OPENAI_API_KEY is not set; used deterministic fallback"],
-    )
-
-    settings.llm.enabled = False
-    assert cli._remote_llm_selection(
-        settings=settings,
-        api_key="secret",
-        no_llm=False,
-        allow_remote_llm=True,
-    ) == (
-        False,
-        ["remote LLM requested but LLM support is disabled; used deterministic fallback"],
-    )

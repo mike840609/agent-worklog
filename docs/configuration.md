@@ -19,13 +19,13 @@ shell it was set in:
 ```bash
 agent-worklog config path                        # where the file is
 agent-worklog config list                        # every setting, value, and source
-agent-worklog config set llm.model gpt-5         # write one setting
-agent-worklog config set llm.model ""            # empty value: back to the default
-agent-worklog config unset llm.model             # same thing, spelled out
+agent-worklog config set opencode.cli.model deepseek-r1   # write one setting
+agent-worklog config set opencode.cli.model ""            # empty value: back to the default
+agent-worklog config unset opencode.cli.model             # same thing, spelled out
 ```
 
 Keys are the lowercase, dot-separated form of the variable name, so
-`AGENT_WORKLOG_LLM__MODEL` is `llm.model` and
+`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL` is `opencode.cli.model` and
 `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` is
 `harnesses.opencode.cli.executable`. `config list` shows every setting's key, its
 current value, whether that value came from the environment, the file, or the default,
@@ -38,17 +38,13 @@ The file is a `config.env` in the user configuration directory — run
 foreign variables and secrets that have nothing to do with Agent Worklog into the same
 file. The file is created readable and writable only by its owner on macOS and Linux.
 
-The settings file is not a place for secrets: like any environment variable,
-`AGENT_WORKLOG_LLM__API_KEY_ENV` names an environment variable that holds a key rather
-than holding the key itself (see the LLM settings section below), and the same applies
-to every other setting. `config list` prints every value — including whatever you put
-in the file — unredacted, by design: these are your own settings, shown at your own
-request.
+`config list` prints every value — including whatever you put in the file — unredacted,
+by design: these are your own settings, shown at your own request.
 
-An exported variable always beats the file, so `AGENT_WORKLOG_LLM__ENABLED=false
-agent-worklog report --period last-week` still works with a file that enables the LLM.
-`config set` and `config unset` say so when the setting they just touched is already
-exported.
+An exported variable always beats the file, so
+`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL=deepseek-r1 agent-worklog report` still
+wins over a file that sets the same key. `config set` and `config unset` say so when
+the setting they just touched is already exported.
 
 `config set` refuses an unknown key and a value the settings would reject, so a typo
 fails at the moment you make it rather than on the next report. Both exit with code 3.
@@ -129,36 +125,25 @@ agent-worklog doctor --harness codex
 
 The `--output` CLI option overrides the configured output directory for one invocation.
 
-## LLM settings
+## OpenCode run settings
+
+The default narrative report runs the locally installed `opencode run`. These
+settings control that invocation. An empty `MODEL` uses opencode's default model.
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_LLM__ENABLED` | `true` | Allows LLM use when a key is available. |
-| `AGENT_WORKLOG_LLM__PROVIDER` | `openai-compatible` | Provider label. |
-| `AGENT_WORKLOG_LLM__MODEL` | `gpt-5-mini` | Model sent to the endpoint. |
-| `AGENT_WORKLOG_LLM__BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL. |
-| `AGENT_WORKLOG_LLM__API_KEY_ENV` | `OPENAI_API_KEY` | Name of the environment variable containing the key. |
-| `AGENT_WORKLOG_LLM__TIMEOUT_SECONDS` | `60` | HTTP timeout per attempt. |
+| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | The `opencode` executable used for export, stats, and the narrative report. |
+| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS` | `600.0` | How long a single `opencode run` may take before Agent Worklog falls back to the structured report. |
+| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL` | `""` | Optional model passed as `--model` to `opencode run`. Empty means opencode's default. |
 
-To use a company endpoint without placing its key in an Agent Worklog setting:
+To pin a specific model for report narratives:
 
 ```bash
-export COMPANY_LLM_API_KEY="..."
-export AGENT_WORKLOG_LLM__API_KEY_ENV="COMPANY_LLM_API_KEY"
-export AGENT_WORKLOG_LLM__BASE_URL="https://llm.example.com/v1/"
-export AGENT_WORKLOG_LLM__MODEL="company-summary-model"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL="gpt-5.3"
 agent-worklog report --period last-week
 ```
 
-Agent Worklog reads the value named by `API_KEY_ENV`; it does not log that value.
-
-To disable external summarization globally:
-
-```bash
-export AGENT_WORKLOG_LLM__ENABLED="false"
-```
-
-To disable it for one command:
+To disable the narrative for one command and emit the deterministic structured report:
 
 ```bash
 agent-worklog report --period last-week --no-llm
@@ -167,13 +152,13 @@ agent-worklog report --period last-week --no-llm
 ## Precedence
 
 For each setting, Agent Worklog takes the environment variable, then the settings file,
-then the default. CLI period and output options apply to the current invocation only and
-override the settings that back them.
+then the default. CLI period and output options apply to the current invocation only
+and override the settings that back them. Environment settings provide defaults for
+harness execution, timezone, output directory, and the narrative `opencode run`
+invocation.
 
 ## OpenCode export privacy
 
 `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE` defaults to `false`.
 Set it to `true` to request `opencode export --sanitize`. The CLI flags
 `--sanitize` and `--no-sanitize` override this setting for one invocation.
-Remote LLM authorization is intentionally not configurable: each report that may
-transmit evidence must include `--allow-remote-llm`.

@@ -1,6 +1,6 @@
 [project]
 name = "agent-worklog"
-version = "0.6.0"
+version = "0.7.0"
 description = "Turn coding-agent sessions into repository-based engineering reports"
 readme = "README.md"
 license = { text = "MIT" }
@@ -13,7 +13,6 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-  "httpx>=0.28,<1",
   "Jinja2>=3.1,<4",
   "platformdirs>=4,<5",
   "pydantic>=2.10,<3",

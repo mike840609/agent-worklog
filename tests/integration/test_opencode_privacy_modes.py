@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from typer.testing import CliRunner
@@ -17,8 +18,19 @@ TZ = ZoneInfo("Asia/Taipei")
 class PrivacyModeRunner:
     sanitized: bool
     export_calls: list[list[str]] = field(default_factory=list)
+    run_calls: list[list[str]] = field(default_factory=list)
 
-    def run(self, args: list[str]) -> CommandResult:
+    def run(
+        self,
+        args: list[str],
+        *,
+        stdout_path: Path | None = None,
+    ) -> CommandResult:
+        if args[:2] == ["opencode", "run"]:
+            self.run_calls.append(args)
+            if stdout_path is not None:
+                stdout_path.write_text("Weekly review narrative\n", encoding="utf-8")
+            return CommandResult(0, "", "")
         if args[:2] == ["opencode", "db"]:
             rows = [
                 {
@@ -117,16 +129,10 @@ def test_sanitized_mode_uses_flag_and_db_metadata(monkeypatch) -> None:
     assert "[redacted:" not in result.stdout
 
 
-def test_api_key_alone_does_not_enable_remote_llm(monkeypatch) -> None:
+def test_narrative_uses_local_opencode_run(monkeypatch) -> None:
     runner = PrivacyModeRunner(sanitized=False)
     _fixed_clock(monkeypatch)
-    monkeypatch.setenv("OPENAI_API_KEY", "secret-key")
     monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: runner)
-
-    def fail_constructor(**kwargs):
-        raise AssertionError("remote LLM must require --allow-remote-llm")
-
-    monkeypatch.setattr(cli, "OpenAICompatibleSummarizer", fail_constructor)
 
     result = CliRunner().invoke(
         cli.app,
@@ -134,5 +140,21 @@ def test_api_key_alone_does_not_enable_remote_llm(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0, result.stdout
-    assert "Fix privacy defaults" in result.stdout
+    assert "Weekly review narrative" in result.stdout
+    assert any(call[:2] == ["opencode", "run"] for call in runner.run_calls)
     assert runner.export_calls == [["opencode", "export", "privacy-session"]]
+
+
+def test_no_llm_never_invokes_opencode_run(monkeypatch) -> None:
+    runner = PrivacyModeRunner(sanitized=False)
+    _fixed_clock(monkeypatch)
+    monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: runner)
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["report", "--period", "last-week", "--no-llm", "--dry-run"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "Fix privacy defaults" in result.stdout
+    assert runner.run_calls == []

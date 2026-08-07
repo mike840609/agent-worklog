@@ -32,8 +32,10 @@ skip_unless_permissions_enforced = pytest.mark.skipif(
 def test_setting_keys_cover_the_leaves_of_the_settings_tree() -> None:
     keys = {setting.key: setting for setting in setting_keys()}
 
-    assert keys["llm.model"].variable == "AGENT_WORKLOG_LLM__MODEL"
-    assert keys["llm.model"].default == "gpt-5-mini"
+    assert keys["harnesses.opencode.cli.model"].variable == (
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL"
+    )
+    assert keys["harnesses.opencode.cli.model"].default == ""
     assert keys["harnesses.opencode.cli.executable"].variable == (
         "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE"
     )
@@ -49,7 +51,7 @@ def test_setting_key_defaults_are_rendered_the_way_a_user_types_them() -> None:
     assert keys["harnesses.claude_code.projects_directory"].default == str(
         Path.home() / ".claude" / "projects"
     )
-    assert keys["llm.timeout_seconds"].default == "60.0"
+    assert keys["harnesses.opencode.cli.run_timeout_seconds"].default == "600.0"
 
 
 def test_config_file_path_follows_an_explicit_override(
@@ -73,9 +75,9 @@ def test_config_file_path_defaults_into_the_user_config_directory(
 
 def test_resolve_key_suggests_the_closest_key_for_a_typo() -> None:
     with pytest.raises(ConfigurationError) as error:
-        resolve_key("llm.mdoel")
+        resolve_key("harnesses.opencode.cli.mdoel")
 
-    assert "did you mean llm.model" in str(error.value)
+    assert "did you mean harnesses.opencode.cli.model" in str(error.value)
 
 
 def test_resolve_key_rejects_a_key_with_no_close_match() -> None:
@@ -84,12 +86,14 @@ def test_resolve_key_rejects_a_key_with_no_close_match() -> None:
 
 
 def test_validate_value_rejects_a_timeout_that_is_not_a_number() -> None:
-    with pytest.raises(ConfigurationError, match="invalid value for llm.timeout_seconds"):
-        validate_value(resolve_key("llm.timeout_seconds"), "abc")
+    with pytest.raises(
+        ConfigurationError, match="invalid value for harnesses.opencode.cli.run_timeout_seconds"
+    ):
+        validate_value(resolve_key("harnesses.opencode.cli.run_timeout_seconds"), "abc")
 
 
 def test_validate_value_accepts_the_boolean_spellings_env_settings_use() -> None:
-    validate_value(resolve_key("llm.enabled"), "false")
+    validate_value(resolve_key("harnesses.opencode.enabled"), "false")
     validate_value(resolve_key("harnesses.codex.enabled"), "true")
 
 
@@ -103,22 +107,26 @@ def settings_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_set_value_writes_the_environment_variable_form(settings_file: Path) -> None:
-    set_value("llm.model", "gpt-5")
+    set_value("harnesses.opencode.cli.model", "gpt-5")
 
-    assert stored_values(settings_file) == {"AGENT_WORKLOG_LLM__MODEL": "gpt-5"}
+    assert stored_values(settings_file) == {
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5"
+    }
 
 
 def test_set_value_creates_an_owner_only_file(settings_file: Path) -> None:
-    set_value("llm.model", "gpt-5")
+    set_value("harnesses.opencode.cli.model", "gpt-5")
 
     assert settings_file.stat().st_mode & 0o777 == 0o600
 
 
 def test_set_value_replaces_an_earlier_entry_for_the_same_key(settings_file: Path) -> None:
-    set_value("llm.model", "gpt-5")
-    set_value("llm.model", "gpt-5-mini")
+    set_value("harnesses.opencode.cli.model", "gpt-5")
+    set_value("harnesses.opencode.cli.model", "gpt-5-mini")
 
-    assert stored_values(settings_file) == {"AGENT_WORKLOG_LLM__MODEL": "gpt-5-mini"}
+    assert stored_values(settings_file) == {
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5-mini"
+    }
 
 
 def test_set_value_keeps_a_value_containing_spaces_intact(settings_file: Path) -> None:
@@ -133,7 +141,7 @@ def test_set_value_refuses_a_bad_value_without_creating_the_file(
     settings_file: Path,
 ) -> None:
     with pytest.raises(ConfigurationError):
-        set_value("llm.timeout_seconds", "abc")
+        set_value("harnesses.opencode.cli.run_timeout_seconds", "abc")
 
     assert not settings_file.exists()
 
@@ -141,62 +149,65 @@ def test_set_value_refuses_a_bad_value_without_creating_the_file(
 def test_unset_value_removes_the_entry_and_reports_that_it_did(
     settings_file: Path,
 ) -> None:
-    set_value("llm.model", "gpt-5")
+    set_value("harnesses.opencode.cli.model", "gpt-5")
 
-    setting, removed = unset_value("llm.model")
+    setting, removed = unset_value("harnesses.opencode.cli.model")
 
-    assert (setting.key, removed) == ("llm.model", True)
+    assert (setting.key, removed) == ("harnesses.opencode.cli.model", True)
     assert stored_values(settings_file) == {}
 
 
 def test_unset_value_on_a_key_that_was_never_set_is_a_quiet_no_op(
     settings_file: Path,
 ) -> None:
-    setting, removed = unset_value("llm.model")
+    setting, removed = unset_value("harnesses.opencode.cli.model")
 
-    assert (setting.key, removed) == ("llm.model", False)
+    assert (setting.key, removed) == ("harnesses.opencode.cli.model", False)
 
 
 def test_describe_settings_reports_where_each_value_comes_from(
     settings_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    set_value("llm.model", "gpt-5")
+    set_value("harnesses.opencode.cli.model", "gpt-5")
     monkeypatch.setenv("AGENT_WORKLOG_REPORT__TIMEZONE", "UTC")
-    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
 
     rows = {row.key: row for row in describe_settings()}
 
-    assert (rows["llm.model"].value, rows["llm.model"].source) == ("gpt-5", "file")
-    assert rows["llm.model"].default == "gpt-5-mini"
+    assert (
+        rows["harnesses.opencode.cli.model"].value,
+        rows["harnesses.opencode.cli.model"].source,
+    ) == ("gpt-5", "file")
+    assert rows["harnesses.opencode.cli.model"].default == ""
     assert (rows["report.timezone"].value, rows["report.timezone"].source) == (
         "UTC",
         "environment",
     )
-    assert (rows["llm.provider"].value, rows["llm.provider"].source) == (
-        "openai-compatible",
-        "default",
-    )
+    assert (
+        rows["harnesses.opencode.cli.executable"].value,
+        rows["harnesses.opencode.cli.executable"].source,
+    ) == ("opencode", "default")
 
 
 def test_describe_settings_lets_the_environment_win_over_the_file(
     settings_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    set_value("llm.model", "from-file")
-    monkeypatch.setenv("AGENT_WORKLOG_LLM__MODEL", "from-environment")
+    set_value("harnesses.opencode.cli.model", "from-file")
+    monkeypatch.setenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
 
     rows = {row.key: row for row in describe_settings()}
 
-    assert (rows["llm.model"].value, rows["llm.model"].source) == (
-        "from-environment",
-        "environment",
-    )
+    assert (
+        rows["harnesses.opencode.cli.model"].value,
+        rows["harnesses.opencode.cli.model"].source,
+    ) == ("from-environment", "environment")
 
 
 def test_describe_settings_works_without_a_settings_file(settings_file: Path) -> None:
     rows = {row.key: row for row in describe_settings()}
 
     assert not settings_file.exists()
-    assert rows["llm.model"].source == "default"
+    assert rows["harnesses.opencode.cli.model"].source == "default"
 
 
 # --- IMPORTANT 2: filesystem errors must raise ConfigurationError, not a raw
@@ -215,7 +226,7 @@ def test_set_value_raises_configuration_error_on_an_unwritable_directory(
     directory.chmod(0o500)  # read + execute only: no write, no create
     try:
         with pytest.raises(ConfigurationError):
-            set_value("llm.model", "gpt-5")
+            set_value("harnesses.opencode.cli.model", "gpt-5")
     finally:
         directory.chmod(0o700)  # restore so pytest can clean up tmp_path
 
@@ -224,7 +235,7 @@ def test_set_value_raises_configuration_error_on_an_unwritable_directory(
 def test_describe_settings_raises_configuration_error_on_an_unreadable_file(
     settings_file: Path,
 ) -> None:
-    set_value("llm.model", "gpt-5")
+    set_value("harnesses.opencode.cli.model", "gpt-5")
     settings_file.chmod(0o000)
     try:
         with pytest.raises(ConfigurationError):
@@ -241,7 +252,7 @@ def test_set_value_keeps_the_mode_of_a_preexisting_file(settings_file: Path) -> 
     settings_file.write_text("", encoding="utf-8")
     settings_file.chmod(0o644)
 
-    set_value("llm.model", "gpt-5")
+    set_value("harnesses.opencode.cli.model", "gpt-5")
 
     assert settings_file.stat().st_mode & 0o777 == 0o644
 
@@ -257,6 +268,8 @@ def test_set_value_creates_a_missing_config_directory(
     path = tmp_path / "nested" / "config.env"
     monkeypatch.setenv(CONFIG_FILE_VARIABLE, str(path))
 
-    set_value("llm.model", "gpt-5")
+    set_value("harnesses.opencode.cli.model", "gpt-5")
 
-    assert stored_values(path) == {"AGENT_WORKLOG_LLM__MODEL": "gpt-5"}
+    assert stored_values(path) == {
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5"
+    }

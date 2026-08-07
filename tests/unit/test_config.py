@@ -14,6 +14,31 @@ def test_settings_use_opencode_cli_and_taipei_defaults() -> None:
     assert settings.report.output_directory == Path("reports")
 
 
+def test_opencode_run_timeout_and_model_defaults() -> None:
+    settings = AppSettings()
+
+    assert settings.harnesses.opencode.cli.run_timeout_seconds == 600.0
+    assert settings.harnesses.opencode.cli.model == ""
+
+
+def test_opencode_run_timeout_and_model_are_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS",
+        "120.0",
+    )
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL",
+        "gpt-5.3",
+    )
+
+    settings = AppSettings()
+
+    assert settings.harnesses.opencode.cli.run_timeout_seconds == 120.0
+    assert settings.harnesses.opencode.cli.model == "gpt-5.3"
+
+
 def test_claude_code_projects_directory_defaults_under_home() -> None:
     from pathlib import Path
 

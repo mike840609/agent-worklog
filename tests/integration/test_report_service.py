@@ -17,6 +17,7 @@ from agent_worklog.progress import ProgressReporter, ProgressStage
 from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
 from agent_worklog.services.report import ReportService
 from agent_worklog.services.scan import ScanResult, ScanService
+from agent_worklog.summarizers.opencode_run import OpenCodeRunError
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 from tests.integration.test_scan_service import FakeSource, StaticResolver
 from tests.progress import RecordingProgressReporter
@@ -55,6 +56,46 @@ def service(
         usage_days=10 if usage_provider is not None else None,
         detail=detail,
         progress=progress,
+    )
+
+
+class FakeOpenCodeRunner:
+    def __init__(self, narrative: str = "NARRATIVE BODY") -> None:
+        self._narrative = narrative
+        self.failures: list[OpenCodeRunError] = []
+        self.calls: list[dict[str, str]] = []
+
+    def run(self, *, transcript: str, prompt: str, title: str) -> str:
+        self.calls.append({"transcript": transcript, "prompt": prompt, "title": title})
+        if self.failures:
+            raise self.failures.pop(0)
+        return self._narrative
+
+
+def narrative_service(
+    source: FakeSource,
+    output: Path,
+    *,
+    runner: FakeOpenCodeRunner,
+    usage_provider: Callable[[ScanResult], str] | None = None,
+) -> ReportService:
+    return ReportService(
+        scan_service=ScanService(
+            source=source,
+            period=period(),
+            resolver=StaticResolver(),
+        ),
+        summarizer=RuleBasedSummarizer(),
+        renderer=MarkdownRenderer(),
+        period=period(),
+        output_path=output,
+        now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        usage_provider=usage_provider,
+        usage_days=10 if usage_provider is not None else None,
+        narrative=True,
+        opencode_runner=runner,
+        include_subagents=True,
+        sanitized=False,
     )
 
 
@@ -340,3 +381,82 @@ def test_report_dry_run_skips_write_after_usage_failure(tmp_path: Path) -> None:
     assert ProgressStage.RENDERING_REPORT in started
     assert ProgressStage.WRITING_REPORT not in started
     assert any("usage statistics unavailable" in warning for warning in result.warnings)
+
+
+def test_narrative_mode_emits_the_narrative_body(tmp_path: Path) -> None:
+    source = FakeSource()
+    output = tmp_path / "report.md"
+    runner = FakeOpenCodeRunner()
+
+    result = narrative_service(source, output, runner=runner).generate(force=False)
+
+    assert result.report.narrative_text == "NARRATIVE BODY"
+    assert result.report.repositories == []
+    content = output.read_text()
+    assert "# Engineering Worklog" in content
+    assert "NARRATIVE BODY" in content
+
+
+def test_narrative_mode_feeds_a_grouped_transcript(tmp_path: Path) -> None:
+    source = FakeSource()
+    runner = FakeOpenCodeRunner()
+
+    narrative_service(
+        source, tmp_path / "report.md", runner=runner
+    ).generate(force=False)
+
+    assert len(runner.calls) == 1
+    transcript = runner.calls[0]["transcript"]
+    assert "# Agent Worklog sessions grouped by repository" in transcript
+    assert "## Project:" in transcript
+    assert "Subagent sessions included: yes" in transcript
+    assert "OpenCode" in runner.calls[0]["prompt"]
+
+
+def test_narrative_failure_falls_back_to_the_structured_report(
+    tmp_path: Path,
+) -> None:
+    source = FakeSource()
+    output = tmp_path / "report.md"
+    runner = FakeOpenCodeRunner()
+    runner.failures.append(OpenCodeRunError("opencode run failed"))
+
+    result = narrative_service(source, output, runner=runner).generate(force=False)
+
+    assert result.report.narrative_text is None
+    assert result.report.repositories
+    assert any(
+        "opencode run unavailable" in warning for warning in result.warnings
+    )
+    content = output.read_text()
+    assert "## Repositories" in content
+    assert "NARRATIVE BODY" not in content
+
+
+def test_narrative_mode_render_usage_and_warnings(tmp_path: Path) -> None:
+    source = FakeSource()
+    output = tmp_path / "report.md"
+    runner = FakeOpenCodeRunner()
+
+    result = narrative_service(
+        source,
+        output,
+        runner=runner,
+        usage_provider=lambda _scan: "gpt-5-mini  1234 tokens",
+    ).generate(force=False)
+
+    assert result.report.usage_text == "gpt-5-mini  1234 tokens"
+    content = output.read_text()
+    assert "## Usage" in content
+    assert "gpt-5-mini  1234 tokens" in content
+
+
+def test_narrative_mode_is_off_by_default(tmp_path: Path) -> None:
+    source = FakeSource()
+    output = tmp_path / "report.md"
+
+    result = service(source, output).generate(force=False)
+
+    assert result.report.narrative_text is None
+    assert result.report.repositories
+    assert "## Repositories" in output.read_text()

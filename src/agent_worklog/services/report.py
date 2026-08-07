@@ -14,12 +14,22 @@ from agent_worklog.models.evidence import RepositoryEvidence, SessionEvidence
 from agent_worklog.models.report import RepositorySummary, WorklogReport
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.progress import NullProgressReporter, ProgressReporter, ProgressStage
-from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
+from agent_worklog.renderers.markdown import (
+    DetailLevel,
+    MarkdownRenderer,
+    render_narrative,
+)
 from agent_worklog.security.redactor import redact_text, redact_value
 from agent_worklog.security.secure_files import atomic_secure_write
 from agent_worklog.services.scan import ScanResult, ScanService
 from agent_worklog.sessions.hierarchy import count_child_sessions_by_repository
 from agent_worklog.summarizers.base import RepositorySummarizer
+from agent_worklog.summarizers.opencode_run import (
+    OpenCodeRunError,
+    OpenCodeRunner,
+    build_summary_prompt,
+)
+from agent_worklog.summarizers.transcript import build_grouped_transcript
 
 
 class Renderer(Protocol):
@@ -62,6 +72,10 @@ class ReportService:
         detail: DetailLevel = DetailLevel.FULL,
         progress: ProgressReporter | None = None,
         initial_warnings: list[str] | None = None,
+        narrative: bool = False,
+        opencode_runner: OpenCodeRunner | None = None,
+        include_subagents: bool = False,
+        sanitized: bool = False,
     ) -> None:
         self._scan_service = scan_service
         self._summarizer = summarizer
@@ -74,6 +88,10 @@ class ReportService:
         self._detail = detail
         self._progress = progress if progress is not None else NullProgressReporter()
         self._initial_warnings = list(initial_warnings or [])
+        self._narrative = narrative
+        self._opencode_runner = opencode_runner
+        self._include_subagents = include_subagents
+        self._sanitized = sanitized
 
     def _repository_evidence(self, scan: ScanResult) -> list[RepositoryEvidence]:
         child_counts = count_child_sessions_by_repository(scan.resolved_sessions)
@@ -109,17 +127,25 @@ class ReportService:
             self._progress.advance(completed)
         return repositories
 
-    def generate(
+    def _collect_usage(
         self,
-        *,
-        force: bool = False,
-        dry_run: bool = False,
-    ) -> ReportGenerationResult:
-        destination = self._output_path.expanduser()
-        if not dry_run and not force and destination.exists():
-            raise ReportOutputError(f"report already exists: {destination}")
-        scan = self._scan_service.scan()
-        warnings = [*self._initial_warnings, *scan.warnings]
+        scan: ScanResult,
+        warnings: list[str],
+    ) -> str | None:
+        if self._usage_provider is None:
+            return None
+        self._progress.start(ProgressStage.COLLECTING_USAGE)
+        try:
+            return redact_text(self._usage_provider(scan))
+        except HarnessSourceError as exc:
+            warnings.append(f"usage statistics unavailable: {exc}")
+            return None
+
+    def _structured_report(
+        self,
+        scan: ScanResult,
+        warnings: list[str],
+    ) -> WorklogReport:
         evidence_items = self._repository_evidence(scan)
         summaries: list[RepositorySummary] = []
         self._progress.start(
@@ -133,14 +159,8 @@ class ReportService:
                 warnings.extend(cast(list[str], drain_warnings()))
             self._progress.advance(completed)
         summaries.sort(key=lambda item: item.display_name.casefold())
-        usage_text: str | None = None
-        if self._usage_provider is not None:
-            self._progress.start(ProgressStage.COLLECTING_USAGE)
-            try:
-                usage_text = redact_text(self._usage_provider(scan))
-            except HarnessSourceError as exc:
-                warnings.append(f"usage statistics unavailable: {exc}")
-        report = WorklogReport(
+        usage_text = self._collect_usage(scan, warnings)
+        return WorklogReport(
             generated_at=self._now_factory(),
             period=self._period,
             repositories=summaries,
@@ -148,8 +168,76 @@ class ReportService:
             usage_days=self._usage_days if usage_text else None,
             warnings=[redact_text(warning) for warning in warnings],
         )
+
+    def _narrative_report(
+        self,
+        scan: ScanResult,
+        warnings: list[str],
+    ) -> WorklogReport:
+        if self._opencode_runner is None:
+            raise OpenCodeRunError(
+                "no local opencode run driver configured for narrative mode"
+            )
+        self._progress.start(ProgressStage.SUMMARIZING_REPOSITORIES, total=1)
+        transcript = build_grouped_transcript(
+            sessions_by_repository=scan.sessions_by_repository,
+            period=self._period,
+            generated_at=self._now_factory(),
+            include_subagents=self._include_subagents,
+            sanitized=self._sanitized,
+        )
+        days = self._usage_days or max(1, (self._period.until - self._period.since).days)
+        narrative = self._opencode_runner.run(
+            transcript=transcript,
+            prompt=build_summary_prompt(days),
+            title=(
+                f"Agent Worklog - {self._period.since.date().isoformat()} "
+                f"to {self._period.until.date().isoformat()}"
+            ),
+        )
+        self._progress.advance(1)
+        usage_text = self._collect_usage(scan, warnings)
+        return WorklogReport(
+            generated_at=self._now_factory(),
+            period=self._period,
+            repositories=[],
+            narrative_text=narrative,
+            usage_text=usage_text,
+            usage_days=self._usage_days if usage_text else None,
+            warnings=[redact_text(warning) for warning in warnings],
+        )
+
+    def generate(
+        self,
+        *,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> ReportGenerationResult:
+        destination = self._output_path.expanduser()
+        if not dry_run and not force and destination.exists():
+            raise ReportOutputError(f"report already exists: {destination}")
+        scan = self._scan_service.scan()
+        warnings = [*self._initial_warnings, *scan.warnings]
+        narrative_content = self._narrative
+        if self._narrative:
+            try:
+                report = self._narrative_report(scan, warnings)
+            except OpenCodeRunError as exc:
+                warnings.append(
+                    f"opencode run unavailable; used structured fallback ({exc})"
+                )
+                report = self._structured_report(scan, warnings)
+                narrative_content = False
+        else:
+            report = self._structured_report(scan, warnings)
         self._progress.start(ProgressStage.RENDERING_REPORT)
-        content = redact_text(self._renderer.render(report, detail=self._detail))
+        if narrative_content:
+            timezone = getattr(
+                self._period.since.tzinfo, "key", str(self._period.since.tzinfo)
+            )
+            content = redact_text(render_narrative(report, timezone=timezone))
+        else:
+            content = redact_text(self._renderer.render(report, detail=self._detail))
         if not dry_run:
             self._progress.start(ProgressStage.WRITING_REPORT)
             atomic_secure_write(self._output_path, content, force=force)

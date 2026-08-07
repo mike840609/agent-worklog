@@ -40,8 +40,8 @@ full, including the ones that apply only to a specific harness.
 ## Codex
 
 - A Codex report shows goals, changed files, and token usage. It does not list commands.
-  A command recorded through `exec_command` reaches the optional LLM summary and nothing
-  else; with `--no-llm` it is not in the report at all.
+  A command recorded through `exec_command` reaches the narrative `opencode run` summary
+  and nothing else; with `--no-llm` it is not in the report at all.
 - Commands run from inside Codex's `exec` tool are not recorded even that far. `exec`
   takes a JavaScript program rather than a command, so there is no command to record.
 - No Codex report claims that a command passed or failed. Codex records exit codes only

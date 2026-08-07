@@ -70,6 +70,7 @@ def test_report_refuses_overwrite_without_force(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -101,6 +102,7 @@ def test_report_supports_previous_calendar_week(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -139,29 +141,24 @@ def test_until_requires_since() -> None:
     assert result.exit_code == 2
 
 
-def test_no_llm_never_constructs_http_summarizer(
+def test_no_llm_builds_a_deterministic_report_service(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "secret-key")
     def build_scan(
         settings,
         period,
         root_only=False,
         *,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
     ):
         return object()
 
     monkeypatch.setattr(cli, "_build_scan_service", build_scan)
 
-    def fail_constructor(**kwargs):
-        raise AssertionError("LLM summarizer must not be constructed")
-
-    monkeypatch.setattr(cli, "OpenAICompatibleSummarizer", fail_constructor, raising=False)
-
-    service = cli._build_report_service(
+    no_llm_service = cli._build_report_service(
         cli.AppSettings(),
         DateRange.previous_week(now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ)),
         tmp_path / "report.md",
@@ -169,7 +166,18 @@ def test_no_llm_never_constructs_http_summarizer(
         now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
     )
 
-    assert service is not None
+    assert no_llm_service._narrative is False
+
+    narrative_service = cli._build_report_service(
+        cli.AppSettings(),
+        DateRange.previous_week(now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ)),
+        tmp_path / "report.md",
+        False,
+        now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+    )
+
+    assert narrative_service._narrative is True
+    assert narrative_service._opencode_runner is not None
 
 
 def test_days_window_uses_a_single_clock_read(
@@ -244,6 +252,7 @@ def test_report_passes_root_only_to_the_report_service(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -371,6 +380,7 @@ def test_dry_run_keeps_progress_out_of_stdout(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -419,6 +429,7 @@ def test_report_passes_the_detail_level_to_the_report_service(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -460,6 +471,7 @@ def test_report_defaults_to_full_detail(
         *,
         now,
         harness=cli.Harness.OPENCODE,
+        sanitize=False,
         progress=None,
         detail=cli.DetailLevel.FULL,
     ):
@@ -507,9 +519,14 @@ def test_config_path_prints_the_settings_file(monkeypatch, tmp_path) -> None:
 
 def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
-    path.write_text("AGENT_WORKLOG_LLM__MODEL='stored-model'\n", encoding="utf-8")
+    path.write_text(
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='stored-model'\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    monkeypatch.delenv(
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False
+    )
     # A second setting, set through the environment rather than the file, so the
     # source column is pinned independently: "environment" collides with nothing
     # else in the output, unlike "file" which also appears in the footer's
@@ -524,10 +541,11 @@ def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_pa
     assert result.exit_code == 0
     assert "Every setting is optional" in result.stdout
 
-    llm_row = next(line for line in result.stdout.splitlines() if "llm.model" in line)
-    assert "stored-model" in llm_row
-    assert "file" in llm_row
-    assert "gpt-5-mini" in llm_row
+    model_row = next(
+        line for line in result.stdout.splitlines() if "harnesses.opencode.cli.model" in line
+    )
+    assert "stored-model" in model_row
+    assert "file" in model_row
 
     timezone_row = next(
         line for line in result.stdout.splitlines() if "report.timezone" in line
@@ -546,21 +564,21 @@ def test_help_lists_the_config_command() -> None:
 def test_config_set_writes_the_value_and_the_next_load_reads_it(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
 
-    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+    result = CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"])
 
     assert result.exit_code == 0
-    assert cli._load_settings().llm.model == "gpt-5"
+    assert cli._load_settings().harnesses.opencode.cli.model == "gpt-5"
 
 
 def test_config_set_rejects_an_unknown_key(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
 
-    result = CliRunner().invoke(cli.app, ["config", "set", "llm.mdoel", "gpt-5"])
+    result = CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.mdoel", "gpt-5"])
 
     assert result.exit_code == 3
-    assert "did you mean llm.model" in result.stdout
+    assert "did you mean harnesses.opencode.cli.model" in result.stdout
 
 
 def test_config_set_rejects_a_value_the_settings_model_would_reject(
@@ -570,37 +588,37 @@ def test_config_set_rejects_a_value_the_settings_model_would_reject(
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
 
     result = CliRunner().invoke(
-        cli.app, ["config", "set", "llm.timeout_seconds", "abc"]
+        cli.app, ["config", "set", "harnesses.opencode.cli.run_timeout_seconds", "abc"]
     )
 
     assert result.exit_code == 3
-    assert "invalid value for llm.timeout_seconds" in result.stdout
+    assert "invalid value for harnesses.opencode.cli.run_timeout_seconds" in result.stdout
     assert not path.exists()
 
 
 def test_config_set_with_an_empty_value_restores_the_default(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
-    CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"])
 
-    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", ""])
+    result = CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", ""])
 
     assert result.exit_code == 0
-    assert "gpt-5-mini" in result.stdout
-    assert cli._load_settings().llm.model == "gpt-5-mini"
+    assert "using default" in result.stdout
+    assert cli._load_settings().harnesses.opencode.cli.model == ""
 
 
 def test_config_unset_restores_the_default(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
-    CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"])
 
-    result = CliRunner().invoke(cli.app, ["config", "unset", "llm.model"])
+    result = CliRunner().invoke(cli.app, ["config", "unset", "harnesses.opencode.cli.model"])
 
     assert result.exit_code == 0
-    assert cli._load_settings().llm.model == "gpt-5-mini"
+    assert cli._load_settings().harnesses.opencode.cli.model == ""
 
 
 def test_config_unset_of_an_unset_key_says_the_default_is_already_in_use(
@@ -609,7 +627,7 @@ def test_config_unset_of_an_unset_key_says_the_default_is_already_in_use(
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
     monkeypatch.setenv("COLUMNS", "200")
 
-    result = CliRunner().invoke(cli.app, ["config", "unset", "llm.model"])
+    result = CliRunner().invoke(cli.app, ["config", "unset", "harnesses.opencode.cli.model"])
 
     assert result.exit_code == 0
     assert "already using default" in result.stdout
@@ -621,13 +639,13 @@ def test_config_set_warns_when_the_environment_overrides_the_write(
     """Without this note the write is a silent no-op for the whole shell."""
 
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
-    monkeypatch.setenv("AGENT_WORKLOG_LLM__MODEL", "from-environment")
+    monkeypatch.setenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
     monkeypatch.setenv("COLUMNS", "200")
 
-    result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+    result = CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"])
 
     assert result.exit_code == 0
-    assert "AGENT_WORKLOG_LLM__MODEL" in result.stdout
+    assert "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL" in result.stdout
     assert "takes precedence" in result.stdout
 
 
@@ -651,7 +669,9 @@ def test_config_set_exits_3_instead_of_a_traceback_on_an_unwritable_directory(
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(directory / "config.env"))
     directory.chmod(0o500)
     try:
-        result = CliRunner().invoke(cli.app, ["config", "set", "llm.model", "gpt-5"])
+        result = CliRunner().invoke(
+            cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"]
+        )
     finally:
         directory.chmod(0o700)  # restore so pytest can clean up tmp_path
 
@@ -664,7 +684,9 @@ def test_config_list_exits_3_instead_of_a_traceback_on_an_unreadable_file(
     monkeypatch, tmp_path
 ) -> None:
     path = tmp_path / "config.env"
-    path.write_text("AGENT_WORKLOG_LLM__MODEL='gpt-5'\n", encoding="utf-8")
+    path.write_text(
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='gpt-5'\n", encoding="utf-8"
+    )
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
     path.chmod(0o000)
     try:

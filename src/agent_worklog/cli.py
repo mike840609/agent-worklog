@@ -37,7 +37,7 @@ from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.doctor import run_doctor
 from agent_worklog.services.report import ReportService
 from agent_worklog.services.scan import ScanResult, ScanService
-from agent_worklog.summarizers.openai_compatible import OpenAICompatibleSummarizer
+from agent_worklog.summarizers.opencode_run import OpenCodeRunner
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
 
 
@@ -168,16 +168,10 @@ def _validate_privacy_options(
     *,
     harness: Harness,
     sanitize: bool | None,
-    no_llm: bool = False,
-    allow_remote_llm: bool = False,
 ) -> None:
     if sanitize is not None and harness is not Harness.OPENCODE:
         raise typer.BadParameter(
             "--sanitize and --no-sanitize are supported only with --harness opencode"
-        )
-    if no_llm and allow_remote_llm:
-        raise typer.BadParameter(
-            "--no-llm and --allow-remote-llm cannot be used together"
         )
 
 
@@ -191,28 +185,6 @@ def _effective_sanitize(
     if override is not None:
         return override
     return settings.harnesses.opencode.cli.sanitize
-
-
-def _remote_llm_selection(
-    *,
-    settings: AppSettings,
-    api_key: str | None,
-    no_llm: bool,
-    allow_remote_llm: bool,
-) -> tuple[bool, list[str]]:
-    if no_llm or not allow_remote_llm:
-        return False, []
-    if not settings.llm.enabled:
-        return False, [
-            "remote LLM requested but LLM support is disabled; "
-            "used deterministic fallback"
-        ]
-    if not api_key:
-        return False, [
-            f"remote LLM requested but {settings.llm.api_key_env} is not set; "
-            "used deterministic fallback"
-        ]
-    return True, []
 
 
 def _build_scan_service(
@@ -290,48 +262,28 @@ def _build_report_service(
     now: datetime,
     harness: Harness = Harness.OPENCODE,
     sanitize: bool = False,
-    allow_remote_llm: bool = False,
     detail: DetailLevel = DetailLevel.FULL,
     progress: ProgressReporter | None = None,
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
-    summarizer = RuleBasedSummarizer()
-    api_key = os.environ.get(settings.llm.api_key_env)
-    remote_enabled, initial_warnings = _remote_llm_selection(
-        settings=settings,
-        api_key=api_key,
-        no_llm=no_llm,
-        allow_remote_llm=allow_remote_llm,
+    cli_settings = settings.harnesses.opencode.cli
+    opencode_runner = OpenCodeRunner(
+        runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
+        executable=cli_settings.executable,
+        model=cli_settings.model,
     )
-    if remote_enabled:
-        assert api_key is not None
-        summarizer = OpenAICompatibleSummarizer(
-            model=settings.llm.model,
-            api_key=api_key,
-            base_url=settings.llm.base_url,
-            timeout_seconds=settings.llm.timeout_seconds,
-            fallback=RuleBasedSummarizer(),
-        )
+    summarizer = RuleBasedSummarizer()
 
     usage_provider, days = _usage_provider(settings, period, harness, now)
-    if sanitize:
-        scan_service = _build_scan_service(
-            settings,
-            period,
-            root_only,
-            harness=harness,
-            sanitize=True,
-            progress=progress,
-        )
-    else:
-        scan_service = _build_scan_service(
-            settings,
-            period,
-            root_only,
-            harness=harness,
-            progress=progress,
-        )
+    scan_service = _build_scan_service(
+        settings,
+        period,
+        root_only,
+        harness=harness,
+        sanitize=sanitize,
+        progress=progress,
+    )
 
     return ReportService(
         scan_service=scan_service,
@@ -344,7 +296,10 @@ def _build_report_service(
         usage_days=days,
         detail=detail,
         progress=progress,
-        initial_warnings=initial_warnings,
+        narrative=not no_llm,
+        opencode_runner=opencode_runner,
+        include_subagents=not root_only,
+        sanitized=sanitize,
     )
 
 
@@ -472,14 +427,10 @@ def report(
     ),
     output: Annotated[Path | None, typer.Option("--output")] = None,
     dry_run: bool = typer.Option(False, "--dry-run"),
-    no_llm: bool = typer.Option(False, "--no-llm"),
-    allow_remote_llm: bool = typer.Option(
+    no_llm: bool = typer.Option(
         False,
-        "--allow-remote-llm",
-        help=(
-            "Allow extracted work evidence to be sent to the configured "
-            "OpenAI-compatible endpoint for this invocation."
-        ),
+        "--no-llm",
+        help="Skip the narrative report; emit the structured report without invoking opencode.",
     ),
     sanitize: bool | None = typer.Option(
         None,
@@ -498,12 +449,7 @@ def report(
     """Generate a Markdown engineering worklog."""
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
-    _validate_privacy_options(
-        harness=harness,
-        sanitize=sanitize,
-        no_llm=no_llm,
-        allow_remote_llm=allow_remote_llm,
-    )
+    _validate_privacy_options(harness=harness, sanitize=sanitize)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
@@ -519,60 +465,20 @@ def report(
         )
         output_path = output or _default_output_path(settings, selected_period)
         with reporter.progress() as progress:
-            if effective_sanitize and allow_remote_llm:
-                service = _build_report_service(
-                    settings,
-                    selected_period,
-                    output_path,
-                    no_llm,
-                    root_only,
-                    now=now,
-                    harness=harness,
-                    sanitize=True,
-                    allow_remote_llm=True,
-                    detail=detail,
-                    progress=progress,
-                )
-            elif effective_sanitize:
-                service = _build_report_service(
-                    settings,
-                    selected_period,
-                    output_path,
-                    no_llm,
-                    root_only,
-                    now=now,
-                    harness=harness,
-                    sanitize=True,
-                    detail=detail,
-                    progress=progress,
-                )
-            elif allow_remote_llm:
-                service = _build_report_service(
-                    settings,
-                    selected_period,
-                    output_path,
-                    no_llm,
-                    root_only,
-                    now=now,
-                    harness=harness,
-                    allow_remote_llm=True,
-                    detail=detail,
-                    progress=progress,
-                )
-            else:
-                service = _build_report_service(
-                    settings,
-                    selected_period,
-                    output_path,
-                    no_llm,
-                    root_only,
-                    now=now,
-                    harness=harness,
-                    detail=detail,
-                    progress=progress,
-                )
+            service = _build_report_service(
+                settings,
+                selected_period,
+                output_path,
+                no_llm,
+                root_only,
+                now=now,
+                harness=harness,
+                sanitize=effective_sanitize,
+                detail=detail,
+                progress=progress,
+            )
             result = service.generate(force=force, dry_run=dry_run)
-            if not result.report.repositories:
+            if not result.report.repositories and not result.report.narrative_text:
                 raise NoSessionsError(
                     f"no {harness.value} activity found in the requested period"
                 )

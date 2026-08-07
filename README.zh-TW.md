@@ -37,7 +37,7 @@ harness，都可以：
 - 讓 child 與 subagent 工作階段連結到正確的 repository，或使用 `--root-only` 排除它們。
 - 在報告中列出每個 repository 的工作階段標題與工作資料夾。
 - 在所選 harness 提供資料時，依模型彙整 token 使用量。
-- 在產生報告或送資料給選用的 LLM 之前，先檢查工作階段資訊中常見的機密字串樣式。
+- 在產生報告或呼叫本機敘事式 `opencode run` 之前，先檢查工作階段資訊中常見的機密字串樣式。
 
 ## 系統需求
 
@@ -83,7 +83,13 @@ agent-worklog doctor
 agent-worklog scan --period last-week
 ```
 
-不使用外部 LLM，直接產生 Markdown 報告：
+產生 Markdown 報告；預設會在本機執行 `opencode run` 來撰寫敘事式週報：
+
+```bash
+agent-worklog report --period last-week
+```
+
+要改為決定性的結構化報告，加上 `--no-llm`：
 
 ```bash
 agent-worklog report --period last-week --no-llm
@@ -92,7 +98,8 @@ agent-worklog report --period last-week --no-llm
 預設輸出會寫到 `reports/` 底下。
 
 上面三個指令預設都是 `--harness opencode`。要用 Claude Code 或 Codex 的話，各自加上
-`--harness claude-code` 或 `--harness codex` 即可，不需要安裝 OpenCode：
+`--harness claude-code` 或 `--harness codex` 即可，不需要安裝 OpenCode
+（結構化的 `--no-llm` 報告對所有 harness 都可用）：
 
 ```bash
 agent-worklog doctor --harness claude-code
@@ -121,7 +128,7 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `--harness NAME` | 讀取工作階段所用的 harness：`opencode`（預設）、`claude-code` 或 `codex`。 |
 | `--root-only` | 排除 child 與 subagent 工作階段。 |
 | `--sanitize / --no-sanitize` | 開啟或關閉 OpenCode 匯出去敏；預設使用 raw export。僅適用 OpenCode。 |
-| `--verbose` | 同時顯示匯出、備援與 LLM 相關的警告。用於 `scan` 時，也會列出每個 repository 的工作階段標題與工作目錄。 |
+| `--verbose` | 同時顯示匯出、備援與敘事式摘要相關的警告。用於 `scan` 時，也會列出每個 repository 的工作階段標題與工作目錄。 |
 | `--quiet` | `scan` 只顯示工作階段數量，`report` 只顯示輸出路徑。 |
 
 `scan` 與 `report` 執行時會顯示暫時性的進度狀態，指出目前所在階段。處理工作階段與
@@ -135,8 +142,7 @@ repository 時也會顯示 `已完成數/總數`。`--quiet` 會隱藏進度狀�
 | `--output PATH` | 寫到指定檔案，而不是預設資料夾。 |
 | `--force` | 輸出檔案已存在時直接覆寫。 |
 | `--dry-run` | 直接印出 Markdown，不寫入檔案。 |
-| `--no-llm` | 不使用外部 LLM 產生摘要。 |
-| `--allow-remote-llm` | 本次執行明確允許把本機去敏後的 evidence 傳送到設定的 OpenAI-compatible endpoint。 |
+| `--no-llm` | 跳過本機 `opencode run` 的敘事式報告，直接輸出決定性的結構化報告。 |
 | `--detail LEVEL` | 報告的詳細程度：`full`（預設）或 `brief`。 |
 
 `--detail brief` 會產生適合貼進週報的簡短報告：保留標頭，每個 repository 保留
@@ -161,7 +167,7 @@ Agent Worklog 的每項設定都先讀環境變數，環境變數沒有設定的
 設定一次就會寫進設定檔：
 
 ```bash
-agent-worklog config set llm.model gpt-5
+agent-worklog config set opencode.cli.model deepseek-r1
 agent-worklog config set report.timezone Europe/Berlin
 agent-worklog config list
 ```
@@ -170,7 +176,7 @@ agent-worklog config list
 每項設定都是選填的：值留空即回到預設值，`unset` 也是同樣的效果。
 
 ```bash
-agent-worklog config set llm.model ""
+agent-worklog config set opencode.cli.model ""
 agent-worklog config unset report.timezone
 ```
 
@@ -185,9 +191,8 @@ export AGENT_WORKLOG_REPORT__TIMEZONE="Asia/Taipei"
 export AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY="reports"
 export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE="opencode"
 export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE="false"
-export AGENT_WORKLOG_LLM__MODEL="gpt-5-mini"
-export AGENT_WORKLOG_LLM__BASE_URL="https://api.openai.com/v1/"
-export AGENT_WORKLOG_LLM__ENABLED="false"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS="600.0"
+export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL=""
 ```
 
 完整設定清單請見
@@ -196,7 +201,8 @@ export AGENT_WORKLOG_LLM__ENABLED="false"
 ## 隱私
 
 OpenCode 預設使用 raw export，讓報告保留可用的工作細節。Agent Worklog 會先在本機清理
-常見機密，且除非本次指令明確加入 `--allow-remote-llm`，否則只使用規則式摘要。需要
+常見機密，然後把分組、去敏後的原始 transcript 交給本機安裝的 `opencode run` 撰寫敘事式
+週報；資料不會離開本機，也不需要 API key。要決定性的結構化報告可用 `--no-llm`。需要
 OpenCode 強力遮蔽時可加入 `--sanitize`，但這會刻意移除大部分工作 evidence。報告仍可能
 包含私人目標、檔名、指令與完整路徑——分享前請務必檢查。
 
@@ -222,7 +228,7 @@ OpenCode 強力遮蔽時可加入 `--sanitize`，但這會刻意移除大部分�
 目前支援的工具是 OpenCode、Claude Code 與 Codex，用 `--harness` 挑選。報告格式只有
 Markdown，而且 Agent Worklog 不會在多次執行之間保留快取。
 
-- [使用指南](https://github.com/mike840609/agent-worklog/blob/main/docs/guides.md) — 統計期間、subagent、repository 分組、LLM 摘要與輸出處理。
+- [使用指南](https://github.com/mike840609/agent-worklog/blob/main/docs/guides.md) — 統計期間、subagent、repository 分組、敘事式與結構化報告與輸出處理。
 - [使用量統計](https://github.com/mike840609/agent-worklog/blob/main/docs/usage-statistics.md) — 使用量區塊的產生方式與期間但書。
 - [目前支援範圍與限制](https://github.com/mike840609/agent-worklog/blob/main/docs/limitations.md) — 各 harness 的完整但書清單。
 

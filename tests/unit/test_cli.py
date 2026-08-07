@@ -129,11 +129,11 @@ def test_load_settings_reads_the_settings_file(monkeypatch, tmp_path) -> None:
     import agent_worklog.cli as cli
 
     path = tmp_path / "config.env"
-    path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
+    path.write_text("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='from-file'\n", encoding="utf-8")
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
 
-    assert cli._load_settings().llm.model == "from-file"
+    assert cli._load_settings().harnesses.opencode.cli.model == "from-file"
 
 
 def test_the_environment_beats_the_settings_file(monkeypatch, tmp_path) -> None:
@@ -142,11 +142,11 @@ def test_the_environment_beats_the_settings_file(monkeypatch, tmp_path) -> None:
     import agent_worklog.cli as cli
 
     path = tmp_path / "config.env"
-    path.write_text("AGENT_WORKLOG_LLM__MODEL='from-file'\n", encoding="utf-8")
+    path.write_text("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='from-file'\n", encoding="utf-8")
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.setenv("AGENT_WORKLOG_LLM__MODEL", "from-environment")
+    monkeypatch.setenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
 
-    assert cli._load_settings().llm.model == "from-environment"
+    assert cli._load_settings().harnesses.opencode.cli.model == "from-environment"
 
 
 def test_load_settings_points_at_the_file_when_it_holds_a_bad_value(
@@ -158,7 +158,10 @@ def test_load_settings_points_at_the_file_when_it_holds_a_bad_value(
     from agent_worklog.errors import ConfigurationError
 
     path = tmp_path / "config.env"
-    path.write_text("AGENT_WORKLOG_LLM__TIMEOUT_SECONDS='abc'\n", encoding="utf-8")
+    path.write_text(
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS='abc'\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
 
     with pytest.raises(ConfigurationError) as error:
@@ -182,15 +185,16 @@ def test_load_settings_ignores_a_foreign_variable_in_the_settings_file(
 
     path = tmp_path / "config.env"
     path.write_text(
-        "AGENT_WORKLOG_LLM__MODEL='gpt-5'\nOPENAI_API_KEY='sk-proj-not-a-real-secret-key'\n",
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='gpt-5'\n"
+        "OPENAI_API_KEY='sk-proj-not-a-real-secret-key'\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_LLM__MODEL", raising=False)
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
 
     settings = cli._load_settings()
 
-    assert settings.llm.model == "gpt-5"
+    assert settings.harnesses.opencode.cli.model == "gpt-5"
 
 
 def test_load_settings_does_not_echo_a_secret_looking_value_in_its_error(
@@ -211,7 +215,8 @@ def test_load_settings_does_not_echo_a_secret_looking_value_in_its_error(
 
     path = tmp_path / "config.env"
     path.write_text(
-        "AGENT_WORKLOG_LLM__TIMEOUT_SECONDS='sk-proj-not-a-real-secret-key'\n",
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS="
+        "'sk-proj-not-a-real-secret-key'\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))

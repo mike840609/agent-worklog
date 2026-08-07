@@ -57,30 +57,30 @@ SSH and HTTPS addresses for the same repository are treated as the same reposito
 Different branches are also grouped together. If a child session works in another
 repository, it stays linked to that repository.
 
-## LLM summaries
+## Narrative report
 
-LLM summaries are optional. Agent Worklog connects to an OpenAI-compatible service only
-when all of the following are true:
-
-- LLM support is turned on.
-- `--no-llm` is not used.
-- The API key is set in the selected environment variable.
-
-For the default OpenAI-compatible configuration:
+`report` defaults to a narrative weekly review written by the locally installed
+`opencode run`. Agent Worklog builds a grouped, redacted raw transcript from the
+session content and hands it to `opencode run` with a summarization prompt; the
+prose comes back and is wrapped under the standard report header. No network
+request, API key, or other service is involved — the same `opencode` binary you
+already use writes the report.
 
 ```bash
-export OPENAI_API_KEY="..."
 agent-worklog report --period last-week
 ```
 
-LLM requests contain selected work information rather than full transcripts. Agent
-Worklog checks session information for common secret patterns before building each
-request. The request may still include repository and branch names, session and activity
-IDs, goals, commands, and filenames.
+If `opencode run` is missing, times out, or produces no output, Agent Worklog
+falls back to the deterministic structured report and records a warning. Use
+`--no-llm` to always take the structured path:
 
-If the service times out, returns an HTTP 429 or 5xx error, or returns invalid data,
-Agent Worklog tries once more. If the second request fails, it creates a summary without
-the LLM. Use `--no-llm` to keep report generation on your computer.
+```bash
+agent-worklog report --period last-week --no-llm
+```
+
+The narrative carries the same per-session redaction the structured report does,
+but it is not metadata-only: it includes goals, filenames, commands, and working
+paths where they appear in the transcript.
 
 ## Output and file handling
 
@@ -105,13 +105,12 @@ Use `--dry-run` to preview the Markdown without writing a file:
 agent-worklog report --period last-week --no-llm --dry-run
 ```
 
-Use `--verbose` to show export and LLM fallback warnings. Use `--quiet` to show only the
+Use `--verbose` to show export and narrative fallback warnings. Use `--quiet` to show only the
 output path after a successful report.
 
 ## OpenCode privacy modes
 
-`agent-worklog report --days 7` uses raw OpenCode export and local rule-based
-summarization. Add `--sanitize` to ask OpenCode to redact the export; the report
-then retains repository and session metadata but most work details are unavailable.
-Add `--allow-remote-llm` only when extracted evidence may be sent to the configured
-OpenAI-compatible endpoint. `--no-llm` and `--allow-remote-llm` cannot be combined.
+`agent-worklog report --days 7` runs the local `opencode run` narrative over a
+raw OpenCode export transcript. Add `--sanitize` to ask OpenCode to redact the
+export; the narrative still runs, but the transcript loses most work details.
+Add `--no-llm` to produce the deterministic structured report instead.

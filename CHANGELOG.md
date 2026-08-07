@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 - 2026-08-06
+
+- `report` now defaults to a narrative weekly review written by the locally installed
+  `opencode run`; no network request, API key, or other service is involved.
+- `--no-llm` skips the narrative and emits the deterministic structured report.
+- Removed `--allow-remote-llm` and the OpenAI-compatible remote summarizer (and its
+  `httpx` dependency).
+- Added `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS` (default `600.0`)
+  and `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL` (default empty) to control the
+  narrative invocation.
+
 ## 0.6.0 - 2026-08-06
 
 - OpenCode exports are raw by default.

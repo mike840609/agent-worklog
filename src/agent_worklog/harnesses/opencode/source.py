@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol, cast
 
 from agent_worklog.errors import HarnessSourceError, SessionParseError
@@ -15,7 +17,12 @@ from agent_worklog.process import CommandResult
 
 
 class Runner(Protocol):
-    def run(self, args: list[str]) -> CommandResult: ...
+    def run(
+        self,
+        args: list[str],
+        *,
+        stdout_path: Path | None = None,
+    ) -> CommandResult: ...
 
 
 def _from_millis(value: object) -> datetime | None:
@@ -103,14 +110,22 @@ class OpenCodeCliSource(HarnessSessionSource):
         args = [self._executable, "export", descriptor.session_id]
         if self._sanitize:
             args.append("--sanitize")
-        result = self._runner.run(args)
-        if result.returncode != 0:
-            detail = result.stderr.strip() or f"OpenCode export failed for {descriptor.session_id}"
-            raise SessionParseError(detail)
-        try:
-            payload = json.loads(result.stdout or "{}")
-        except json.JSONDecodeError as exc:
-            raise SessionParseError(
-                f"OpenCode export returned invalid JSON for {descriptor.session_id}"
-            ) from exc
+        # OpenCode's export command truncates stdout to the OS pipe buffer when
+        # its stdout is a pipe (returning exit 0 with invalid JSON). Redirect to
+        # a temporary file so large exports are captured completely.
+        with tempfile.TemporaryDirectory() as directory:
+            export_path = Path(directory) / "export.json"
+            result = self._runner.run(args, stdout_path=export_path)
+            if result.returncode != 0:
+                detail = (
+                    result.stderr.strip()
+                    or f"OpenCode export failed for {descriptor.session_id}"
+                )
+                raise SessionParseError(detail)
+            try:
+                payload = json.loads(result.stdout or "{}")
+            except json.JSONDecodeError as exc:
+                raise SessionParseError(
+                    f"OpenCode export returned invalid JSON for {descriptor.session_id}"
+                ) from exc
         return OpenCodeExportMapper().map(payload, descriptor)
