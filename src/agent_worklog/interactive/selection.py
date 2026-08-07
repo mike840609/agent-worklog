@@ -27,7 +27,7 @@ class SelectionState:
         selected_session_ids: set[str] | None = None,
     ) -> SelectionState:
         all_ids = {item.session.session_id for item in scan.resolved_sessions}
-        selected = all_ids if selected_session_ids is None else selected_session_ids
+        selected = all_ids if selected_session_ids is None else set(selected_session_ids)
         unknown = selected - all_ids
         if unknown:
             raise KeyError(next(iter(unknown)))
