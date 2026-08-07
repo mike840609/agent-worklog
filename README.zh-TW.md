@@ -98,13 +98,16 @@ agent-worklog report --period last-week --no-llm
 預設輸出會寫到 `reports/` 底下。
 
 上面三個指令預設都是 `--harness opencode`。要用 Claude Code 或 Codex 的話，各自加上
-`--harness claude-code` 或 `--harness codex` 即可，不需要安裝 OpenCode
-（結構化的 `--no-llm` 報告對所有 harness 都可用）：
+`--harness claude-code` 或 `--harness codex` 即可。敘事式預設對所有 harness 一致：
+它會讀取該 harness 的工作階段，並同樣呼叫本機的 `opencode run` 來撰寫週報。若未安裝
+OpenCode，加上 `--no-llm`；決定性的結構化報告對所有 harness 都可用，且不需要 OpenCode：
 
 ```bash
 agent-worklog doctor --harness claude-code
+agent-worklog report --harness claude-code --period last-week
 agent-worklog report --harness claude-code --period last-week --no-llm
 agent-worklog doctor --harness codex
+agent-worklog report --harness codex --period last-week
 agent-worklog report --harness codex --period last-week --no-llm
 ```
 
