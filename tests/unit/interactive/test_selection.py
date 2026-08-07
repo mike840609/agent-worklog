@@ -5,13 +5,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.interactive.selection import SelectionMark, SelectionState
+from agent_worklog.interactive.selection import SelectionMark, SelectionState, noise_reason
 from agent_worklog.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
+from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.services.scan import ScanResult
 
@@ -133,3 +133,31 @@ def test_unknown_session_or_repository_is_rejected() -> None:
         state.toggle_session("missing-session")
     with pytest.raises(KeyError, match="missing-repo"):
         state.toggle_repository("missing-repo")
+
+
+def _session(*, title: str | None, activity_count: int) -> AgentSession:
+    return AgentSession(
+        harness="opencode",
+        session_id="ses-1",
+        title=title,
+        activities=[
+            SessionActivity(activity_id=f"act-{i}", activity_type=ActivityType.USER_MESSAGE)
+            for i in range(activity_count)
+        ],
+    )
+
+
+def test_noise_reason_flags_a_session_with_no_title() -> None:
+    assert noise_reason(_session(title=None, activity_count=20)) == "No title"
+
+
+def test_noise_reason_flags_a_session_with_almost_no_activity() -> None:
+    assert noise_reason(_session(title="Quick check", activity_count=1)) == "Low activity"
+
+
+def test_noise_reason_keeps_real_work_whose_title_mentions_test_or_debug() -> None:
+    """Title wording is never a noise signal: these are real engineering sessions."""
+
+    assert noise_reason(_session(title="Fix test flakiness in CI", activity_count=25)) is None
+    assert noise_reason(_session(title="Debug the payment race", activity_count=38)) is None
+    assert noise_reason(_session(title="Scratch parser rewrite", activity_count=40)) is None

@@ -14,7 +14,7 @@ from agent_worklog.interactive.density import (
     session_meta,
 )
 from agent_worklog.interactive.models import ReportDraft
-from agent_worklog.interactive.selection import SelectionMark, SelectionState
+from agent_worklog.interactive.selection import SelectionMark, SelectionState, noise_reason
 from agent_worklog.models.session import AgentSession
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.security.redactor import redact_text
@@ -92,6 +92,7 @@ def _session_row(
     mark: str | None,
     title: str,
     selected: bool,
+    reason: str | None = None,
 ) -> Text:
     """Compose one session row with dim subagent/density metadata before the title."""
     row_style = "bold" if selected else ""
@@ -109,6 +110,8 @@ def _session_row(
     if tag:
         text.append(f" {' '.join(tag)}", style="dim")
     text.append(f" {title}", style=row_style)
+    if reason:
+        text.append(f"   {reason}", style="dim")
     return text
 
 
@@ -382,6 +385,7 @@ def render_session_review(
                     mark=mark,
                     title=titles[row.session_id],
                     selected=index == cursor,
+                    reason=noise_reason(sessions[row.session_id]),
                 ),
             )
     if hidden_below:

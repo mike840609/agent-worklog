@@ -22,7 +22,7 @@ from agent_worklog.models.repository import (
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
+from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.services.scan import ScanResult
 
@@ -68,6 +68,15 @@ def _period(day: int = 3) -> DateRange:
     )
 
 
+def _activities(count: int = 5) -> list[SessionActivity]:
+    """Real scans never yield activity-less sessions; keep fixtures substantive."""
+
+    return [
+        SessionActivity(activity_id=f"act-{i}", activity_type=ActivityType.USER_MESSAGE)
+        for i in range(count)
+    ]
+
+
 def _resolved(
     session_id: str,
     *,
@@ -81,6 +90,7 @@ def _resolved(
             session_id=session_id,
             title=title or session_id,
             working_directory=f"/tmp/{repository_id}",
+            activities=_activities(),
         ),
         repository=RepositoryIdentity(
             repository_id=repository_id,
