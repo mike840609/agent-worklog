@@ -261,6 +261,17 @@ def _render_search_status(console: Console, query: str, searching: bool) -> None
         _print_viewport_line(console, label, style="dim")
 
 
+def _scan_warning_label(scan: ScanResult) -> str | None:
+    if not scan.warnings and not scan.failed_session_count:
+        return None
+    parts = []
+    if scan.failed_session_count:
+        parts.append(f"{scan.failed_session_count} session(s) failed to load")
+    if scan.warnings:
+        parts.append(f"{len(scan.warnings)} warning(s)")
+    return "⚠ " + "   ".join(parts)
+
+
 def render_session_review(
     console: Console,
     selection: SelectionState,
@@ -276,6 +287,9 @@ def render_session_review(
         f"Review Sessions   {selection.selected_count} / {selection.total_count} selected",
         style="bold",
     )
+    warning_label = _scan_warning_label(selection.scan)
+    if warning_label:
+        _print_viewport_line(console, warning_label, style="yellow")
     if message:
         _print_viewport_line(console, message)
     _render_search_status(console, query, searching)
@@ -285,7 +299,9 @@ def render_session_review(
         rows,
         cursor=cursor,
         terminal_height=console.size.height,
-        reserved_lines=(7 if message else 6) + (1 if searching or query else 0),
+        reserved_lines=(7 if message else 6)
+        + (1 if warning_label else 0)
+        + (1 if searching or query else 0),
     )
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
@@ -345,6 +361,9 @@ def render_session_browser(
         f"Browse Sessions   {scan.loaded_session_count} sessions",
         style="bold",
     )
+    warning_label = _scan_warning_label(scan)
+    if warning_label:
+        _print_viewport_line(console, warning_label, style="yellow")
     _render_search_status(console, query, searching)
     console.print()
     rows = build_filtered_rows(scan, expanded_repositories, query=query)
@@ -352,7 +371,7 @@ def render_session_browser(
         rows,
         cursor=cursor,
         terminal_height=console.size.height,
-        reserved_lines=5 + (1 if searching or query else 0),
+        reserved_lines=5 + (1 if warning_label else 0) + (1 if searching or query else 0),
     )
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")

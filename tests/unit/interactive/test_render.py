@@ -13,6 +13,7 @@ from agent_worklog.interactive.render import (
     render_recoverable_error,
     render_report_result,
     render_report_setup,
+    render_session_browser,
     render_session_review,
 )
 from agent_worklog.interactive.selection import SelectionState
@@ -61,7 +62,11 @@ def _resolved(session_id: str, repo: str) -> ResolvedSession:
     )
 
 
-def _selection() -> SelectionState:
+def _selection(
+    *,
+    failed_session_count: int = 0,
+    warnings: list[str] | None = None,
+) -> SelectionState:
     sessions = [
         _resolved("ses-a1", "repo-a"),
         _resolved("ses-a2", "repo-a"),
@@ -71,9 +76,10 @@ def _selection() -> SelectionState:
         period=_period(),
         candidate_session_count=3,
         loaded_session_count=3,
-        failed_session_count=0,
+        failed_session_count=failed_session_count,
         resolved_sessions=sessions,
         sessions_by_repository={"repo-a": sessions[:2], "repo-b": sessions[2:]},
+        warnings=warnings or [],
     )
     state = SelectionState.from_scan(scan)
     state.toggle_session("ses-a2")
@@ -135,6 +141,41 @@ def test_session_review_renders_group_marks_expansion_and_controls() -> None:
     assert "Space Toggle" in text
     assert "g Generate" in text
     assert "b Back" in text
+
+
+def test_session_review_surfaces_scan_warnings() -> None:
+    console, stream = _console()
+    state = _selection(
+        failed_session_count=1,
+        warnings=["skipped ses-x1: unreadable transcript"],
+    )
+
+    render_session_review(console, state, expanded_repositories=set(), cursor=0)
+
+    text = stream.getvalue()
+    assert "⚠" in text
+    assert "1 session(s) failed to load" in text
+    assert "1 warning(s)" in text
+
+
+def test_session_review_hides_warning_line_when_scan_is_clean() -> None:
+    console, stream = _console()
+    state = _selection()
+
+    render_session_review(console, state, expanded_repositories=set(), cursor=0)
+
+    assert "⚠" not in stream.getvalue()
+
+
+def test_session_browser_surfaces_scan_warnings() -> None:
+    console, stream = _console()
+    state = _selection(warnings=["skipped ses-x1: unreadable transcript"])
+
+    render_session_browser(console, state.scan, expanded_repositories=set(), cursor=0)
+
+    text = stream.getvalue()
+    assert "⚠" in text
+    assert "1 warning(s)" in text
 
 
 def test_report_result_renders_summary_and_next_actions() -> None:
