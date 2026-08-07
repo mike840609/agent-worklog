@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
-from agent_worklog.errors import ReportOutputError
+from agent_worklog.errors import ReportAlreadyExistsError
 from agent_worklog.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
@@ -212,7 +212,7 @@ def test_existing_output_requires_explicit_overwrite_once() -> None:
 
     def generate(selected_scan: ScanResult, force: bool) -> InteractiveReportResult:
         if not force:
-            raise ReportOutputError("report already exists: reports/worklog.md")
+            raise ReportAlreadyExistsError("report already exists: reports/worklog.md")
         return InteractiveReportResult(
             output_path=Path("reports/worklog.md"),
             content="report-content",
