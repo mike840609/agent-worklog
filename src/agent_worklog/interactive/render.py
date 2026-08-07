@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rich.console import Console
+from rich.text import Text
 
 from agent_worklog.interactive.models import ReportDraft
 from agent_worklog.interactive.selection import SelectionMark, SelectionState
@@ -34,6 +35,7 @@ _SETUP_OPTIONS = [
     "Back",
 ]
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
+_DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
 _MARKERS = {
     SelectionMark.ALL: "●",
     SelectionMark.NONE: "○",
@@ -41,8 +43,11 @@ _MARKERS = {
 }
 
 
-def _option(label: str, index: int, selected: int) -> str:
-    return f"{'❯' if index == selected else ' '} {label}"
+def _option(label: str, index: int, selected: int) -> Text:
+    return Text(
+        f"{'❯' if index == selected else ' '} {label}",
+        style="bold" if index == selected else None,
+    )
 
 
 def _period_label(period: DateRange) -> str:
@@ -61,33 +66,54 @@ def _bool_label(value: bool, enabled: str, disabled: str) -> str:
     return enabled if value else disabled
 
 
+def report_result_options(*, dry_run: bool) -> list[str]:
+    """Return the actions shown on the result screen."""
+
+    return list(_DRY_RUN_RESULT_OPTIONS if dry_run else _RESULT_OPTIONS)
+
+
 def render_main_menu(console: Console, *, selected: int) -> None:
-    console.print("Agent Worklog")
-    console.print("Turn coding-agent sessions into engineering reports")
+    console.print(Text("Agent Worklog", style="bold"))
+    console.print(Text("Turn coding-agent sessions into engineering reports", style="dim"))
     console.print()
     for index, label in enumerate(_MAIN_OPTIONS):
         console.print(_option(label, index, selected))
     console.print()
-    console.print("↑↓ / jk Navigate   Enter Select   q Quit")
+    console.print(Text("↑↓ / jk Navigate   Enter Select   1-4 Select   q Quit", style="dim"))
 
 
 def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) -> None:
-    console.print("Generate Report")
+    console.print(Text("Generate Report", style="bold"))
     console.print()
-    console.print(f"Harness      {_harness_label(draft.harness)}")
-    console.print(f"Period       {_period_label(draft.period)}")
-    console.print(f"Detail       {draft.detail.value.title()}")
+    console.print(Text(f"Harness      {_harness_label(draft.harness)}"))
+    console.print(Text(f"Period       {_period_label(draft.period)}"))
+    console.print(Text(f"Detail       {draft.detail.value.title()}"))
     console.print(
-        f"Subagents    {_bool_label(draft.include_subagents, 'Included', 'Excluded')}"
+        Text(
+            f"Subagents    {_bool_label(draft.include_subagents, 'Included', 'Excluded')}"
+        )
     )
-    console.print(f"Narrative    {_bool_label(draft.narrative, 'Enabled', 'Disabled')}")
-    console.print(f"Sanitize     {_bool_label(draft.sanitize, 'On', 'Off')}")
-    console.print(f"Dry run      {_bool_label(draft.dry_run, 'On', 'Off')}")
+    console.print(
+        Text(f"Narrative    {_bool_label(draft.narrative, 'Enabled', 'Disabled')}")
+    )
+    sanitize = (
+        _bool_label(draft.sanitize, "On", "Off")
+        if draft.harness == "opencode"
+        else "N/A"
+    )
+    console.print(Text(f"Sanitize     {sanitize}"))
+    console.print(Text(f"Dry run      {_bool_label(draft.dry_run, 'On', 'Off')}"))
     console.print()
     for index, label in enumerate(_SETUP_OPTIONS):
-        console.print(_option(label, index, selected))
+        style = "dim" if label == "Sanitize" and draft.harness != "opencode" else None
+        option = _option(label, index, selected)
+        if style is not None:
+            option.stylize(style)
+        console.print(option)
     console.print()
-    console.print("↑↓ / jk Navigate   Enter Edit   r Review   b Back")
+    console.print(
+        Text("↑↓ / jk Navigate   Enter Edit   r Review   b Back   q Main menu", style="dim")
+    )
 
 
 def build_visible_rows(
@@ -117,11 +143,31 @@ def _repository_display_name(scan: ScanResult, repository_id: str) -> str:
     return redact_text(sessions[0].repository.display_name)
 
 
-def _session_title(scan: ScanResult, session_id: str) -> str:
-    for item in scan.resolved_sessions:
-        if item.session.session_id == session_id:
-            return redact_text(item.session.title or session_id)
-    return session_id
+def _session_titles(scan: ScanResult) -> dict[str, str]:
+    return {
+        item.session.session_id: redact_text(item.session.title or item.session.session_id)
+        for item in scan.resolved_sessions
+    }
+
+
+def _visible_window(
+    rows: list[VisibleRow],
+    *,
+    cursor: int,
+    terminal_height: int,
+    reserved_lines: int,
+) -> tuple[list[tuple[int, VisibleRow]], int, int]:
+    """Keep the active row visible without allowing long scans to flood the terminal."""
+
+    if not rows:
+        return [], 0, 0
+    capacity = max(1, terminal_height - reserved_lines - 2)
+    if len(rows) <= capacity:
+        return list(enumerate(rows)), 0, 0
+    cursor = min(max(cursor, 0), len(rows) - 1)
+    start = min(max(0, cursor - capacity // 2), len(rows) - capacity)
+    end = start + capacity
+    return list(enumerate(rows[start:end], start=start)), start, len(rows) - end
 
 
 def render_session_review(
@@ -133,14 +179,27 @@ def render_session_review(
     message: str | None = None,
 ) -> None:
     console.print(
-        f"Review Sessions   {selection.selected_count} / {selection.total_count} selected"
+        Text(
+            f"Review Sessions   {selection.selected_count} / {selection.total_count} selected",
+            style="bold",
+        )
     )
     if message:
-        console.print(message)
+        console.print(Text(message))
     console.print()
     rows = build_visible_rows(selection.scan, expanded_repositories)
-    for index, row in enumerate(rows):
+    visible, hidden_above, hidden_below = _visible_window(
+        rows,
+        cursor=cursor,
+        terminal_height=console.size.height,
+        reserved_lines=6 if message else 5,
+    )
+    if hidden_above:
+        console.print(Text(f"↑ {hidden_above} more", style="dim"))
+    titles = _session_titles(selection.scan)
+    for index, row in visible:
         prefix = "❯" if index == cursor else " "
+        style = "bold" if index == cursor else None
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories
             arrow = "▼" if expanded else "▶"
@@ -151,14 +210,18 @@ def render_session_review(
             )
             total = len(selection.scan.sessions_by_repository[row.repository_id])
             name = _repository_display_name(selection.scan, row.repository_id)
-            console.print(f"{prefix} {arrow} {mark} {name}   {selected} / {total}")
+            console.print(
+                Text(f"{prefix} {arrow} {mark} {name}   {selected} / {total}", style=style)
+            )
         else:
             assert row.session_id is not None
             mark = "●" if row.session_id in selection.selected_session_ids else "○"
-            console.print(f"{prefix}     {mark} {_session_title(selection.scan, row.session_id)}")
+            console.print(Text(f"{prefix}     {mark} {titles[row.session_id]}", style=style))
+    if hidden_below:
+        console.print(Text(f"↓ {hidden_below} more", style="dim"))
     console.print()
-    console.print("↑↓ / jk Navigate   Space Toggle   Enter Expand")
-    console.print("a All   n None   g Generate   b Back   q Main menu")
+    console.print(Text("↑↓ / jk Navigate   Space Toggle   Enter Expand", style="dim"))
+    console.print(Text("a All   n None   g Generate   b Back   q Main menu", style="dim"))
 
 
 def render_session_browser(
@@ -168,22 +231,34 @@ def render_session_browser(
     expanded_repositories: set[str],
     cursor: int,
 ) -> None:
-    console.print(f"Browse Sessions   {scan.loaded_session_count} sessions")
+    console.print(Text(f"Browse Sessions   {scan.loaded_session_count} sessions", style="bold"))
     console.print()
     rows = build_visible_rows(scan, expanded_repositories)
-    for index, row in enumerate(rows):
+    visible, hidden_above, hidden_below = _visible_window(
+        rows,
+        cursor=cursor,
+        terminal_height=console.size.height,
+        reserved_lines=4,
+    )
+    if hidden_above:
+        console.print(Text(f"↑ {hidden_above} more", style="dim"))
+    titles = _session_titles(scan)
+    for index, row in visible:
         prefix = "❯" if index == cursor else " "
+        style = "bold" if index == cursor else None
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories
             arrow = "▼" if expanded else "▶"
             name = _repository_display_name(scan, row.repository_id)
             count = len(scan.sessions_by_repository[row.repository_id])
-            console.print(f"{prefix} {arrow} {name}   {count}")
+            console.print(Text(f"{prefix} {arrow} {name}   {count}", style=style))
         else:
             assert row.session_id is not None
-            console.print(f"{prefix}     {_session_title(scan, row.session_id)}")
+            console.print(Text(f"{prefix}     {titles[row.session_id]}", style=style))
+    if hidden_below:
+        console.print(Text(f"↓ {hidden_below} more", style="dim"))
     console.print()
-    console.print("↑↓ / jk Navigate   Enter Expand   b Back   q Main menu")
+    console.print(Text("↑↓ / jk Navigate   Enter Expand   b Back   q Main menu", style="dim"))
 
 
 def render_report_result(
@@ -194,18 +269,40 @@ def render_report_result(
     session_count: int,
     output_path: Path | None,
     selected: int,
+    dry_run: bool = False,
 ) -> None:
-    console.print("✓ Report generated")
+    console.print(Text("✓ Dry run complete" if dry_run else "✓ Report generated", style="bold"))
     console.print()
-    console.print(f"Period         {_period_label(period)}")
-    console.print(f"Repositories   {repository_count}")
-    console.print(f"Sessions       {session_count}")
-    console.print(f"Output         {output_path if output_path is not None else 'Dry run'}")
+    console.print(Text(f"Period         {_period_label(period)}"))
+    console.print(Text(f"Repositories   {repository_count}"))
+    console.print(Text(f"Sessions       {session_count}"))
+    output = "Not written (dry run)" if dry_run else str(output_path)
+    console.print(Text(f"Output         {output}"))
     console.print()
-    for index, label in enumerate(_RESULT_OPTIONS):
+    for index, label in enumerate(report_result_options(dry_run=dry_run)):
         console.print(_option(label, index, selected))
     console.print()
-    console.print("↑↓ / jk Navigate   Enter Select   q Main menu")
+    console.print(Text("↑↓ / jk Navigate   Enter Select   q Main menu", style="dim"))
+
+
+def render_report_preview(console: Console, *, content: str, offset: int) -> None:
+    """Render a literal, scrollable dry-run report preview."""
+
+    console.print(Text("Report Preview", style="bold"))
+    console.print()
+    lines = content.splitlines() or [""]
+    capacity = max(1, console.size.height - 6)
+    max_start = max(0, len(lines) - capacity)
+    start = min(max(offset, 0), max_start)
+    end = min(len(lines), start + capacity)
+    if start:
+        console.print(Text(f"↑ {start} more", style="dim"))
+    for line in lines[start:end]:
+        console.print(Text(line))
+    if end < len(lines):
+        console.print(Text(f"↓ {len(lines) - end} more", style="dim"))
+    console.print()
+    console.print(Text("↑↓ / jk Scroll   b Back   q Main menu", style="dim"))
 
 
 def render_recoverable_error(
@@ -216,10 +313,10 @@ def render_recoverable_error(
     options: list[str],
     selected: int,
 ) -> None:
-    console.print(f"✗ {title}")
-    console.print(redact_text(detail))
+    console.print(Text(f"✗ {title}", style="bold"))
+    console.print(Text(redact_text(detail)))
     console.print()
     for index, label in enumerate(options):
         console.print(_option(label, index, selected))
     console.print()
-    console.print("↑↓ / jk Navigate   Enter Select   b Back   q Main menu")
+    console.print(Text("↑↓ / jk Navigate   Enter Select   b Back   q Main menu", style="dim"))
