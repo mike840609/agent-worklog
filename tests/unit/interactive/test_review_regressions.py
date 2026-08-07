@@ -190,7 +190,7 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
     def choose_period(current: DateRange) -> DateRange:
         nonlocal period_calls
         period_calls += 1
-        return current if period_calls == 1 else _period(10)
+        return _period(10)
 
     def scan_callback(value: ReportDraft) -> ScanResult:
         return _scan(0) if value.period == _period() else _scan(1)
@@ -217,7 +217,7 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
         console=console,
     )
 
-    assert period_calls == 2
+    assert period_calls == 1
     assert counters.get("scan", 0) == 2
     assert draft.period == _period(10)
 

@@ -13,10 +13,17 @@ from enum import StrEnum
 class Key(StrEnum):
     UP = "up"
     DOWN = "down"
+    LEFT = "left"
+    RIGHT = "right"
+    PAGE_UP = "page_up"
+    PAGE_DOWN = "page_down"
+    HOME = "home"
+    END = "end"
     ENTER = "enter"
     SPACE = "space"
     ESCAPE = "escape"
-    CTRL_C = "ctrl_c"
+    BACKSPACE = "backspace"
+    DELETE = "delete"
 
 
 @dataclass(frozen=True)
@@ -26,16 +33,26 @@ class KeyPress:
 
 
 def normalize_posix_sequence(value: str) -> KeyPress:
-    """Convert one POSIX terminal sequence into a logical key press."""
+    """Convert one terminal sequence into a logical key press."""
 
     mapping = {
         "\x1b[A": Key.UP,
         "\x1b[B": Key.DOWN,
+        "\x1b[D": Key.LEFT,
+        "\x1b[C": Key.RIGHT,
+        "\x1b[5~": Key.PAGE_UP,
+        "\x1b[6~": Key.PAGE_DOWN,
+        "\x1b[H": Key.HOME,
+        "\x1b[1~": Key.HOME,
+        "\x1b[F": Key.END,
+        "\x1b[4~": Key.END,
+        "\x1b[3~": Key.DELETE,
         "\r": Key.ENTER,
         "\n": Key.ENTER,
         " ": Key.SPACE,
         "\x1b": Key.ESCAPE,
-        "\x03": Key.CTRL_C,
+        "\x08": Key.BACKSPACE,
+        "\x7f": Key.BACKSPACE,
     }
     key = mapping.get(value)
     if key is not None:
@@ -60,6 +77,15 @@ def _posix_restore(token: object) -> None:
     termios.tcsetattr(fd, termios.TCSADRAIN, attributes)
 
 
+def _escape_sequence_complete(sequence: str) -> bool:
+    """Whether a CSI/SS3 escape sequence has reached its final byte."""
+
+    if len(sequence) < 3:
+        return False
+    final = sequence[-1]
+    return final == "~" or "@" <= final <= "~"
+
+
 def _posix_read() -> str:
     fd = sys.stdin.fileno()
     first = os.read(fd, 1).decode(errors="ignore")
@@ -67,11 +93,13 @@ def _posix_read() -> str:
         return first
 
     sequence = first
-    for _ in range(2):
+    for _ in range(7):
         readable, _, _ = select.select([fd], [], [], 0.02)
         if not readable:
             break
         sequence += os.read(fd, 1).decode(errors="ignore")
+        if _escape_sequence_complete(sequence):
+            break
     return sequence
 
 
@@ -86,14 +114,21 @@ def _windows_restore(token: object) -> None:
 def _windows_read() -> str:
     import msvcrt
 
-    first = msvcrt.getwch()  # type: ignore[attr-defined]
+    first = msvcrt.getwch() or ""  # type: ignore[attr-defined]
     if first in {"\x00", "\xe0"}:
-        second = msvcrt.getwch()  # type: ignore[attr-defined]
-        if second == "H":
-            return "\x1b[A"
-        if second == "P":
-            return "\x1b[B"
-        return second
+        second = msvcrt.getwch() or ""  # type: ignore[attr-defined]
+        mapping = {
+            "H": "\x1b[A",
+            "P": "\x1b[B",
+            "K": "\x1b[D",
+            "M": "\x1b[C",
+            "I": "\x1b[5~",
+            "Q": "\x1b[6~",
+            "G": "\x1b[H",
+            "O": "\x1b[F",
+            "S": "\x1b[3~",
+        }
+        return mapping.get(second, second)
     return first
 
 

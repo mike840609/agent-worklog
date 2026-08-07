@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol, cast
 
-from agent_worklog.errors import HarnessSourceError, ReportOutputError
+from agent_worklog.errors import HarnessSourceError, ReportAlreadyExistsError
 from agent_worklog.extraction.pipeline import extract_evidence
 from agent_worklog.models.evidence import RepositoryEvidence, SessionEvidence
 from agent_worklog.models.report import RepositorySummary, WorklogReport
@@ -216,7 +216,7 @@ class ReportService:
     ) -> ReportGenerationResult:
         destination = self._output_path.expanduser()
         if not dry_run and not force and destination.exists():
-            raise ReportOutputError(f"report already exists: {destination}")
+            raise ReportAlreadyExistsError(f"report already exists: {destination}")
         if scan is None:
             scan = self._scan_service.scan()
         warnings = [*self._initial_warnings, *scan.warnings]

@@ -165,7 +165,7 @@ def test_numeric_generate_then_back_returns_to_main_without_restarting() -> None
     assert input_source.entered == input_source.exited == 3
 
 
-def test_arrow_navigation_enters_read_only_browse_and_returns() -> None:
+def test_arrow_navigation_enters_read_only_browse_without_prompting_and_returns() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
         [
@@ -184,8 +184,8 @@ def test_arrow_navigation_enters_read_only_browse_and_returns() -> None:
         console=_console(),
     )
 
-    assert counters["choose_harness"] == 1
-    assert counters["choose_period"] == 1
+    assert counters.get("choose_harness", 0) == 0
+    assert counters.get("choose_period", 0) == 0
     assert counters["scan"] == 1
     assert counters.get("generate", 0) == 0
 
