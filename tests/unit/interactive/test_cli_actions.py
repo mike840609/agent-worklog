@@ -20,48 +20,63 @@ def _period() -> DateRange:
     )
 
 
-def test_choose_harness_uses_current_harness_as_prompt_default(
+def test_choose_harness_enter_keeps_current_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    seen: list[object] = []
     monkeypatch.setattr(cli, "_load_settings", lambda: object())
-
-    def ask_harness(settings: object, *, default: cli.Harness | None = None) -> cli.Harness:
-        seen.append(default)
-        return default or cli.Harness.OPENCODE
-
-    monkeypatch.setattr(cli, "_ask_harness", ask_harness)
+    monkeypatch.setattr(cli, "_prompt", lambda prompt: "")
+    monkeypatch.setattr(
+        cli,
+        "_ask_harness",
+        lambda settings: pytest.fail("chooser should not run when Enter keeps current"),
+    )
 
     result = cli_actions._choose_harness("claude-code")
 
     assert result == "claude-code"
-    assert seen == [cli.Harness.CLAUDE_CODE]
 
 
-def test_choose_period_uses_current_period_as_prompt_default(
+def test_choose_harness_change_uses_existing_chooser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli, "_load_settings", lambda: object())
+    monkeypatch.setattr(cli, "_prompt", lambda prompt: "c")
+    monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.CODEX)
+
+    assert cli_actions._choose_harness("claude-code") == "codex"
+
+
+def test_choose_period_enter_keeps_current_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     current = _period()
     settings = SimpleNamespace(report=SimpleNamespace(timezone="Asia/Taipei"))
-    now = datetime(2026, 8, 7, tzinfo=TZ)
-    seen: list[DateRange | None] = []
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
-    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
-
-    def ask_period(
-        timezone: str,
-        value_now: datetime,
-        *,
-        default: DateRange | None = None,
-    ) -> DateRange:
-        assert timezone == "Asia/Taipei"
-        assert value_now == now
-        seen.append(default)
-        return default or DateRange.previous_week(now=value_now)
-
-    monkeypatch.setattr(cli, "_ask_period", ask_period)
+    monkeypatch.setattr(cli, "_prompt", lambda prompt: "")
+    monkeypatch.setattr(
+        cli,
+        "_ask_period",
+        lambda timezone, now: pytest.fail("chooser should not run when Enter keeps current"),
+    )
 
     result = cli_actions._choose_period(current)
 
     assert result == current
-    assert seen == [current]
+
+
+def test_choose_period_change_uses_existing_chooser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = _period()
+    changed = DateRange(
+        since=datetime(2026, 7, 27, tzinfo=TZ),
+        until=datetime(2026, 8, 3, tzinfo=TZ),
+    )
+    settings = SimpleNamespace(report=SimpleNamespace(timezone="Asia/Taipei"))
+    now = datetime(2026, 8, 7, tzinfo=TZ)
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
+    monkeypatch.setattr(cli, "_prompt", lambda prompt: "c")
+    monkeypatch.setattr(cli, "_ask_period", lambda timezone, value_now: changed)
+
+    assert cli_actions._choose_period(current) == changed
