@@ -86,9 +86,10 @@ def _windows_restore(token: object) -> None:
 def _windows_read() -> str:
     import msvcrt
 
-    first = msvcrt.getwch()
+    getwch = getattr(msvcrt, "getwch")
+    first = getwch()
     if first in {"\x00", "\xe0"}:
-        second = msvcrt.getwch()
+        second = getwch()
         if second == "H":
             return "\x1b[A"
         if second == "P":
