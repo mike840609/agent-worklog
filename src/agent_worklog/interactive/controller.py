@@ -799,9 +799,7 @@ def _idle_interrupt(state: _State) -> None:
 
     if state.screen is Screen.MAIN:
         state.screen = Screen.EXIT
-    elif state.screen is Screen.REPORT_SETUP:
-        state.screen = Screen.MAIN
-    elif state.screen is Screen.SESSION_BROWSER:
+    elif state.screen in {Screen.REPORT_SETUP, Screen.SESSION_BROWSER}:
         state.screen = Screen.MAIN
     elif state.screen is Screen.SESSION_REVIEW:
         if state.selection is not None and state.draft is not None:
