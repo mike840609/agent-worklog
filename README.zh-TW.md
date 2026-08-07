@@ -124,6 +124,25 @@ agent-worklog run
 `run` 與 `config init` 需要有互動式終端機，因此當 stdin 不是終端機時，它們會拒絕執行；
 非互動式的工作請改用 `scan` 與 `report`。
 
+### 互動式選單
+
+不帶任何參數執行指令，就會出現選單：
+
+```
+$ agent-worklog
+What do you want to do?
+  1  Generate a report
+  2  Edit settings
+  3  Check setup (doctor)
+  4  Scan sessions
+  q  Quit
+Choice:
+```
+
+每個選項都會執行對應的指令，只詢問該指令無法自行決定的問題。用
+`agent-worklog --help` 查看指令清單；在腳本中請直接呼叫子指令，因為沒有終端機
+可以作答時，選單會以狀態碼 3 結束，而不會去讀取 stdin。
+
 ## 指令參考
 
 | 指令 | 用途 |

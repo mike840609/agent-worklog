@@ -131,6 +131,26 @@ Pass `--dry-run` to print the report to the terminal instead of writing a file.
 `run` and `config init` need an interactive terminal, so they refuse to run when stdin
 is not a terminal; the `scan` and `report` commands cover the non-interactive route.
 
+### Interactive menu
+
+Run the command with no arguments to pick what to do from a menu:
+
+```
+$ agent-worklog
+What do you want to do?
+  1  Generate a report
+  2  Edit settings
+  3  Check setup (doctor)
+  4  Scan sessions
+  q  Quit
+Choice:
+```
+
+Each entry runs the matching command, asking only the questions that command
+cannot answer for itself. Use `agent-worklog --help` for the command list, and
+run a subcommand directly in scripts — with no terminal to prompt at, the menu
+exits with status 3 rather than reading from stdin.
+
 ## Command reference
 
 | Command | What it does |

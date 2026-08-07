@@ -182,3 +182,27 @@ def test_configuration_doc_explains_what_an_empty_answer_means() -> None:
     # Prompting in CI must fail rather than read stdin. Asserted without the
     # surrounding line break, so reflowing the paragraph does not break it.
     assert "rather than reading from stdin" in configuration
+
+
+def test_readmes_document_the_interactive_menu() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        # Running the command bare now prompts rather than printing help, so
+        # both the menu and the way to still get help must be documented.
+        assert "agent-worklog --help" in text
+        assert "Generate a report" in text or "產生報告" in text
+
+
+def test_readmes_document_the_run_dry_run_option() -> None:
+    """`--dry-run` predates this work on `report`, so assert on `run`'s own line.
+
+    A bare `"--dry-run" in text` passes on the pre-change docs and guards nothing.
+    """
+
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    assert "Pass `--dry-run` to print the report to the terminal" in readme
+    assert "加上 `--dry-run` 會把報告印到終端機" in readme_zh_tw

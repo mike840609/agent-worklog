@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Running `agent-worklog` with no arguments opens a menu for generating a report, editing
+  settings, checking the setup, or scanning sessions, instead of printing help. Each entry
+  hands off to the existing command, so the menu restates none of their questions.
+  `agent-worklog --help` still prints the command list.
+
 - `agent-worklog run` accepts `--dry-run`, printing the report instead of writing a file,
   matching what `report --dry-run` already did.
 
