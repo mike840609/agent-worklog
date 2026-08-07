@@ -118,7 +118,7 @@ def test_last_activity_at_none_when_activities_lack_timestamps() -> None:
         ],
     )
     assert last_activity_at(session) is None
-    assert session_meta(session) == ""
+    assert session_meta(session) == "1 msgs"
 
 
 def test_is_subagent() -> None:

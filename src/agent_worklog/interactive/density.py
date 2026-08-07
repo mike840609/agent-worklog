@@ -38,7 +38,7 @@ def session_meta(session: AgentSession) -> str:
     if timestamp is not None:
         parts.append(_day_label(timestamp))
     volume = message_volume(session)
-    if timestamp is not None and volume:
+    if volume:
         parts.append(f"{volume} msgs")
     return " · ".join(parts)
 
