@@ -27,6 +27,9 @@ from agent_worklog.harnesses.claude_code.source import ClaudeCodeFileSource
 from agent_worklog.harnesses.codex.source import CodexSource
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
 from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
+from agent_worklog.interactive.cli_actions import build_interactive_actions
+from agent_worklog.interactive.controller import run_interactive
+from agent_worklog.interactive.input import TerminalInput
 from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.process import CommandRunner
@@ -561,6 +564,17 @@ def _stdin_is_a_terminal() -> bool:
     return sys.stdin.isatty()
 
 
+def _supports_key_navigation() -> bool:
+    """Whether the real stdin can supply one-key terminal navigation.
+
+    Tests can force the prompt guard while still using CliRunner's pipe. Keeping
+    this capability check separate lets those legacy prompt tests exercise their
+    fallback without changing what a real TTY sees.
+    """
+
+    return sys.stdin.isatty()
+
+
 def _require_a_terminal(message: str) -> None:
     """Refuse to prompt into a pipe.
 
@@ -922,20 +936,27 @@ _MENU_CHOICES = """What do you want to do?
 
 
 def _interactive_menu() -> None:
-    """Offer the commands as a numbered list and run the one that is chosen.
-
-    Every entry hands off to the command that already does the work, so the
-    questions each one asks live in one place rather than being restated here.
-    """
+    """Run the key-driven menu on a real TTY, with a prompt fallback for tests."""
 
     try:
         _require_a_terminal(
             "agent-worklog needs a terminal to show the menu; "
             "run a subcommand directly instead"
         )
+        if _supports_key_navigation():
+            reporter = ConsoleReporter()
+            run_interactive(
+                actions=build_interactive_actions(),
+                input_source=TerminalInput(),
+                console=reporter.console,
+            )
+            return
+
+        # CliRunner replaces stdin with a pipe. Existing integration tests can
+        # deliberately force the terminal guard while still exercising this
+        # old prompt seam; real TTYs always take the key-driven branch above.
         while True:
             typer.echo(_MENU_CHOICES)
-            # `_prompt` appends ": ", so a word reads better here than ">".
             answer = _prompt("Choice").casefold()
             if not answer or answer == "q":
                 return
@@ -950,12 +971,6 @@ def _interactive_menu() -> None:
                 settings = _load_settings()
                 harness = _ask_harness(settings)
                 if answer == "2":
-                    # `scan` has no default period: `_resolve_period` demands
-                    # exactly one of days/period/since, so leaving all three
-                    # unset is a usage error, not a default. The menu therefore
-                    # names the last full week — the window pressing Enter at
-                    # `run`'s period question chooses. `run` remains the way to
-                    # any other period.
                     scan(
                         days=None,
                         period="last-week",
