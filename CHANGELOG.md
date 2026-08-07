@@ -2,10 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.8.0 - 2026-08-07
 
-- Running `agent-worklog` with no arguments opens a menu for generating a report, editing
-  settings, checking the setup, or scanning sessions, instead of printing help. Each entry
+- Running `agent-worklog` with no arguments opens a menu for generating a report, scanning
+  sessions, checking the setup, or editing settings, instead of printing help. Each entry
   hands off to the existing command, so the menu restates none of their questions.
   `agent-worklog --help` still prints the command list. Scanning from the menu covers the
   last full week, the same period `run` offers first.
