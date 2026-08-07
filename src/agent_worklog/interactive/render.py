@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from rich.cells import cell_len
 from rich.console import Console
 from rich.text import Text
 
@@ -47,6 +48,8 @@ _MARKERS = {
     SelectionMark.NONE: "○",
     SelectionMark.PARTIAL: "◐",
 }
+_ROW_GAP = 3
+_MIN_TITLE_CELLS = 12
 
 
 def main_menu_options() -> list[str]:
@@ -85,33 +88,42 @@ def _print_viewport_text(console: Console, text: Text) -> None:
     console.print(text, no_wrap=True, overflow="ellipsis")
 
 
+def session_row_meta(session: AgentSession, reason: str | None = None) -> str:
+    """Compose the dim right-hand metadata for one session row."""
+    facts = " · ".join(fact for fact in (session_meta(session), reason) if fact)
+    if not is_subagent(session):
+        return facts
+    return f"[sub] {facts}" if facts else "[sub]"
+
+
 def _session_row(
-    session: AgentSession,
     *,
     prefix: str,
     mark: str | None,
     title: str,
+    meta: str,
+    meta_width: int,
+    console_width: int,
     selected: bool,
-    reason: str | None = None,
 ) -> Text:
-    """Compose one session row with dim subagent/density metadata before the title."""
+    """Left-align the title in a fixed column, with dim metadata in its own column.
+
+    The title absorbs truncation so the metadata column holds still: a ragged
+    left edge on the titles is what makes a long list hard to scan.
+    """
     row_style = "bold" if selected else ""
-    text = Text(prefix, style=row_style)
-    if mark is not None:
-        text.append(f"     {mark}", style=row_style)
-    else:
-        text.append("     ", style=row_style)
-    tag: list[str] = []
-    if is_subagent(session):
-        tag.append("[sub]")
-    density = session_meta(session)
-    if density:
-        tag.append(density)
-    if tag:
-        text.append(f" {' '.join(tag)}", style="dim")
-    text.append(f" {title}", style=row_style)
-    if reason:
-        text.append(f"   {reason}", style="dim")
+    lead = f"{prefix}     {mark} " if mark is not None else f"{prefix}      "
+    text = Text(lead, style=row_style)
+    budget = console_width - cell_len(lead) - meta_width - _ROW_GAP
+    if not meta_width or budget < _MIN_TITLE_CELLS:
+        # Too narrow to hold both columns; the title wins and the viewport clips it.
+        text.append(title, style=row_style)
+        return text
+    body = Text(title, style=row_style)
+    body.truncate(budget, overflow="ellipsis", pad=True)
+    text.append_text(body)
+    text.append(" " * _ROW_GAP)
+    text.append(meta, style="dim")
     return text
 
 
@@ -354,6 +366,15 @@ def render_session_review(
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
     titles = _session_titles(selection.scan)
     sessions = _sessions_by_id(selection.scan)
+    metas = {
+        row.session_id: session_row_meta(
+            sessions[row.session_id],
+            noise_reason(sessions[row.session_id]),
+        )
+        for _, row in visible
+        if row.session_id is not None
+    }
+    meta_width = max((cell_len(value) for value in metas.values()), default=0)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
         if row.kind == "repository":
@@ -380,12 +401,13 @@ def render_session_review(
             _print_viewport_text(
                 console,
                 _session_row(
-                    sessions[row.session_id],
                     prefix=prefix,
                     mark=mark,
                     title=titles[row.session_id],
+                    meta=metas[row.session_id],
+                    meta_width=meta_width,
+                    console_width=console.size.width,
                     selected=index == cursor,
-                    reason=noise_reason(sessions[row.session_id]),
                 ),
             )
     if hidden_below:
@@ -433,6 +455,12 @@ def render_session_browser(
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
     titles = _session_titles(scan)
     sessions = _sessions_by_id(scan)
+    metas = {
+        row.session_id: session_row_meta(sessions[row.session_id])
+        for _, row in visible
+        if row.session_id is not None
+    }
+    meta_width = max((cell_len(value) for value in metas.values()), default=0)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
         if row.kind == "repository":
@@ -453,10 +481,12 @@ def render_session_browser(
             _print_viewport_text(
                 console,
                 _session_row(
-                    sessions[row.session_id],
                     prefix=prefix,
                     mark=None,
                     title=titles[row.session_id],
+                    meta=metas[row.session_id],
+                    meta_width=meta_width,
+                    console_width=console.size.width,
                     selected=index == cursor,
                 ),
             )

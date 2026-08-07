@@ -290,27 +290,33 @@ Example:
  Review Sessions                         15 / 18 selected
 
  ▼ ● agent-worklog                         8 / 9   Aug 3–8 · 24 msgs
-      ● Aug 3 · 4 msgs Fix sanitize export
-      ❯ ● [sub] Aug 5 · 3 msgs Add interactive menu
-      ○ Aug 4 · 2 msgs Scratch parser debugging
-      ● Aug 3 · 1 msgs Release v0.8.0
+      ● Fix sanitize export                        Aug 3 · 4 msgs
+    ❯ ● Add interactive menu                       [sub] Aug 5 · 3 msgs
+      ○ Scratch parser debugging                   Aug 4 · 2 msgs
+      ● Release v0.8.0                             Aug 3 · 1 msg
 
  ▶ ● assets-tracker                        5 / 5   Aug 4–7 · 96 msgs
 
  ▼ ◐ obsidian-wiki                         2 / 4   Jul 30 – Aug 4 · 40 msgs
-      ● [sub] Aug 4 · 3 msgs Improve wiki synthesis
-      ○ Aug 3 · 2 msgs Test prompt
-      ● Aug 2 · 3 msgs Update docs
-      ○ [sub] Aug 1 · 1 msgs Scratch session
+      ● Improve wiki synthesis                     [sub] Aug 4 · 3 msgs
+      ○ ses-7f21ac                                 Aug 3 · 2 msgs · No title
+      ● Update docs                                Aug 2 · 3 msgs
+      ○ Scratch session                            [sub] Aug 1 · 1 msg
 
  ↑↓ Navigate   Space Toggle   Enter Expand
  a All   n None   g Generate   b Back
 ```
 
-Each session row carries a dim date and message count (the in-period
-conversation volume) ahead of its title, so a session's activity and recency
-are visible without opening it. A `[sub]` tag marks sessions spawned by a
-parent session. Repository rows append a date span and summed message count.
+Titles are left-aligned in a fixed column so the eye can run straight down
+them; the dim date and message count (the in-period conversation volume) sit
+in their own column to the right, making a session's activity and recency
+visible without opening it. A `[sub]` tag marks sessions spawned by a parent
+session, and any reason a session starts deselected is appended there too.
+Repository rows append a date span and summed message count.
+
+When the terminal is too narrow to hold both columns, the title absorbs the
+truncation; below a floor of 12 title cells the metadata is dropped instead,
+so a row never collapses to an ellipsis with no title in it.
 
 ### Repository states
 

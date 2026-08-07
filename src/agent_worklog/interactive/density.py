@@ -39,7 +39,7 @@ def session_meta(session: AgentSession) -> str:
         parts.append(_day_label(timestamp))
     volume = message_volume(session)
     if volume:
-        parts.append(f"{volume} msgs")
+        parts.append(_volume_label(volume))
     return " · ".join(parts)
 
 
@@ -60,8 +60,12 @@ def repository_meta(repository_id: str, scan: ScanResult) -> str:
     parts = [_span_label(min(dates), max(dates))]
     volume = sum(message_volume(item.session) for item in sessions)
     if volume:
-        parts.append(f"{volume} msgs")
+        parts.append(_volume_label(volume))
     return " · ".join(parts)
+
+
+def _volume_label(volume: int) -> str:
+    return f"{volume} msg" if volume == 1 else f"{volume} msgs"
 
 
 def _day_label(timestamp: datetime) -> str:

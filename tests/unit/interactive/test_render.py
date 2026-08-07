@@ -273,7 +273,7 @@ def test_session_review_renders_density_and_subagent_tag() -> None:
 
     text = stream.getvalue()
     assert "Aug 5 · 2 msgs" in text
-    assert "Aug 4 · 1 msgs" in text
+    assert "Aug 4 · 1 msg" in text
     assert "[sub]" in text
 
 
@@ -358,3 +358,58 @@ def test_session_review_labels_a_deselected_noise_session_with_its_reason() -> N
     )
 
     assert "No title" in stream.getvalue()
+
+
+def test_session_review_aligns_titles_in_one_column() -> None:
+    """Ragged title starts make a long list unscannable, so metadata goes right."""
+
+    console, stream = _console(width=80)
+    items = [
+        _dense_resolved("d1", "repo-x", last_day=5, volume=2, subagent=True),
+        _dense_resolved("d2", "repo-x", last_day=4, volume=120),
+        _dense_resolved("d3", "repo-x", last_day=6, volume=7),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=3,
+        loaded_session_count=3,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories={"repo-x"},
+        cursor=0,
+    )
+
+    rows = [line for line in stream.getvalue().splitlines() if "Meta d" in line]
+    assert len(rows) == 3
+    assert len({line.index("Meta d") for line in rows}) == 1
+
+
+def test_session_review_drops_metadata_when_too_narrow_for_both_columns() -> None:
+    """Below the title floor the metadata yields, rather than squeezing titles to nothing."""
+
+    console, stream = _console(width=24)
+    items = [_dense_resolved("d1", "repo-x", last_day=5, volume=2)]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories={"repo-x"},
+        cursor=0,
+    )
+
+    row = next(line for line in stream.getvalue().splitlines() if "Meta d1" in line)
+    assert "Aug 5" not in row

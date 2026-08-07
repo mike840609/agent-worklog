@@ -118,7 +118,7 @@ def test_last_activity_at_none_when_activities_lack_timestamps() -> None:
         ],
     )
     assert last_activity_at(session) is None
-    assert session_meta(session) == "1 msgs"
+    assert session_meta(session) == "1 msg"
 
 
 def test_is_subagent() -> None:
@@ -213,4 +213,4 @@ def test_repository_meta_single_date() -> None:
             )
         )
     ]
-    assert repository_meta("repo", _scan(items)) == "Aug 5 · 1 msgs"
+    assert repository_meta("repo", _scan(items)) == "Aug 5 · 1 msg"
