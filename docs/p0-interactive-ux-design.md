@@ -42,6 +42,7 @@ The following are explicitly outside P0:
 - Update/version shortcuts in the interactive footer.
 - Animation or dashboard-style live views.
 - Custom session sorting controls.
+- Transferring a Browse Sessions result directly into report generation; that cross-flow can be added later without changing the P0 selection model.
 
 ## Existing Behavior to Preserve
 
@@ -131,7 +132,8 @@ Responsibilities:
 
 - Read one key at a time from a TTY.
 - Normalize platform key sequences into logical keys such as `UP`, `DOWN`, `ENTER`, `SPACE`, `ESCAPE`, and `CHAR:<x>`.
-- Enter and restore the terminal input mode safely.
+- Support POSIX terminals through the Python standard library and Windows consoles through the Python standard library; no new TUI/input dependency is introduced.
+- Enter and restore terminal input mode safely.
 - Restore cursor/input state in `finally` paths and after Ctrl-C.
 
 The rest of the interactive code consumes normalized logical keys rather than terminal escape sequences.
@@ -213,6 +215,8 @@ Required controls:
 
 Actions do not permanently terminate the interactive process after completion. They return to an interactive result/recovery screen or the main menu.
 
+`Check Setup` and `Settings` may reuse the existing doctor/config editing seams, but the interactive controller owns what happens afterward so successful completion returns to the interactive application rather than ending the process.
+
 ## Screen 2: Report Setup
 
 Selecting **Generate Report** opens a summary screen immediately using the values that would otherwise be the wizard defaults:
@@ -247,7 +251,11 @@ Selecting **Generate Report** opens a summary screen immediately using the value
 - `Review sessions` runs a scan only after the draft is configured.
 - `r` is a shortcut to `Review sessions`.
 - `b` or `Esc` returns to the main menu.
-- Output path is not part of the P0 summary screen. The normal default output-path behavior remains authoritative unless the existing report-generation path already requires a prompt in the reused flow.
+- Output path is intentionally not editable in P0 interactive mode.
+- Interactive report generation uses the existing `_default_output_path(settings, period)` rule.
+- `dry_run=True` prints the report without writing, preserving current semantics.
+- If a non-dry-run default output already exists, the interactive flow must offer an explicit **Overwrite once** recovery action that retries generation with `force=True`, plus a Back action. It must never overwrite implicitly.
+- Direct `report --output ...` remains the supported route for choosing a custom path.
 
 ### Scan invalidation invariant
 
@@ -330,7 +338,7 @@ Global controls:
 - `n`: select no sessions.
 - `g`: generate the report using the current selection.
 - `b` or `Esc`: return to Report Setup while retaining valid scan/selection state.
-- `q`: leave the report flow and return to the main menu.
+- `q`: leave the report flow and return to the main menu without a confirmation prompt.
 
 ### Selection filtering
 
@@ -374,9 +382,7 @@ scan
 read-only grouped browser
 ```
 
-Controls are limited to navigation, expand/collapse, Back, and Quit-to-main-menu.
-
-A result action may offer **Generate report from these sessions**. If chosen, the already-known harness, period, and compatible scan result are transferred into a report draft instead of rescanning immediately.
+Controls are limited to navigation, expand/collapse, Back, and Quit-to-main-menu. Browse Sessions is read-only in P0 and does not transfer its scan directly into Generate Report.
 
 ## Screen 4: Report Result
 
@@ -432,6 +438,8 @@ Example for a harness source failure:
 
 The interactive layer should reuse existing exception types and safe/redacted error messages rather than creating a second error taxonomy.
 
+A report-output collision is also recoverable: the interactive screen offers **Overwrite once** and Back. The overwrite action applies only to that generation attempt and does not become persisted configuration.
+
 ### Zero-session recovery
 
 A scan with no matching sessions does not terminate the interactive application. Show a recovery screen such as:
@@ -470,6 +478,7 @@ Terminal setup/teardown must be centralized in `interactive/input.py` or a singl
 - Named subcommands must not enter interactive mode.
 - Piped/non-TTY bare invocation must fail clearly instead of reading from stdin.
 - Direct subcommands remain the supported automation path.
+- Key navigation must work on supported POSIX terminals and Windows consoles without adding a third-party terminal UI dependency.
 
 ## Testing Strategy
 
@@ -509,6 +518,12 @@ SESSION_REVIEW + SPACE(one session)
 ```text
 SESSION_REVIEW + g with zero selected
 → report service is not invoked
+```
+
+```text
+REPORT_GENERATE + existing default output
+→ no overwrite occurs automatically
+→ Overwrite once retries with force=True
 ```
 
 ### 2. Renderer tests
@@ -556,6 +571,7 @@ Main
 ```
 
 - Ctrl-C/input exceptions restore terminal state.
+- mocked POSIX and Windows key adapters normalize navigation keys to the same logical input values.
 
 ## Documentation Impact
 
@@ -565,6 +581,7 @@ Update the user-facing interactive-menu documentation after implementation to re
 - Report Setup summary behavior,
 - session selection,
 - result-screen navigation,
+- default-output-path and overwrite-once behavior,
 - the fact that direct subcommands remain unchanged.
 
 The existing `docs/interactive-menu-design.md` remains historical design context for the v0.8.0 numbered-prompt implementation; this spec supersedes its interactive-flow decisions for the P0 upgrade rather than silently rewriting that historical document.
@@ -585,9 +602,13 @@ P0 is complete when all of the following are true:
 10. Repository `●/○/◐` status is derived exclusively from child session state.
 11. A report cannot be generated with zero selected sessions.
 12. Report generation receives a filtered, valid `ScanResult` and existing report business logic remains authoritative.
-13. Result screens provide explicit navigation back to the main menu and a generate-another path.
-14. Expected interactive errors offer recovery actions without terminating the whole interactive application.
-15. Bare non-TTY invocation remains rejected, while named subcommands remain automation-safe.
-16. Terminal input/cursor state is restored after normal exit, errors, and Ctrl-C.
-17. All interactive screens use consistent control hints.
-18. No Textual/curses dependency or other P1/P2 feature is introduced as part of this work.
+13. P0 interactive report generation uses the normal default output path; custom paths remain a direct-CLI feature.
+14. Existing output files are never overwritten implicitly; **Overwrite once** is an explicit recovery action.
+15. Result screens provide explicit navigation back to the main menu and a generate-another path.
+16. Expected interactive errors offer recovery actions without terminating the whole interactive application.
+17. Bare non-TTY invocation remains rejected, while named subcommands remain automation-safe.
+18. Terminal input/cursor state is restored after normal exit, errors, and Ctrl-C.
+19. Navigation input is normalized consistently on supported POSIX and Windows terminals using the Python standard library only.
+20. All interactive screens use consistent control hints.
+21. Browse Sessions remains read-only in P0 and returns through the interactive navigation flow.
+22. No Textual/curses dependency or other P1/P2 feature is introduced as part of this work.
