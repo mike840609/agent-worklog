@@ -1,5 +1,7 @@
 # Changelog
 
+All notable changes to this project are documented in this file.
+
 ## 0.7.0 - 2026-08-06
 
 - `report` now defaults to a narrative weekly review written by the locally installed
@@ -10,20 +12,6 @@
 - Added `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS` (default `600.0`)
   and `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL` (default empty) to control the
   narrative invocation.
-
-## 0.6.0 - 2026-08-06
-
-- OpenCode exports are raw by default.
-- `--sanitize/--no-sanitize` and the nested environment setting control OpenCode redaction.
-- Remote LLM summaries require `--allow-remote-llm` per invocation.
-- `--no-llm` and `--allow-remote-llm` are mutually exclusive.
-- Sanitized placeholders are omitted while database session metadata is retained.
-
-
-All notable changes to this project are documented in this file.
-
-## Unreleased
-
 - Add `agent-worklog config` with `path`, `list`, `set`, and `unset`, so a setting can be
   recorded once instead of exported from a shell profile. Values go to a `config.env` in
   the user configuration directory, which pydantic-settings loads below the environment:
@@ -46,6 +34,14 @@ All notable changes to this project are documented in this file.
   PyPI, which renders the README as its long description. The Codex-limit assertions
   in `tests/unit/test_documentation.py` now read `docs/limitations.md` because the
   content moved there.
+
+## 0.6.0 - 2026-08-06
+
+- OpenCode exports are raw by default.
+- `--sanitize/--no-sanitize` and the nested environment setting control OpenCode redaction.
+- Remote LLM summaries require `--allow-remote-llm` per invocation.
+- `--no-llm` and `--allow-remote-llm` are mutually exclusive.
+- Sanitized placeholders are omitted while database session metadata is retained.
 
 ## 0.5.0
 

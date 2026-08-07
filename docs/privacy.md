@@ -67,8 +67,8 @@ The redactor covers common patterns including:
 
 Redaction is applied recursively to evidence metadata, to OpenCode, Claude Code, and Codex
 usage output, before rendering, before verbose warnings are written to reports, and before
-optional LLM requests. For Claude Code and Codex, redaction runs after the mapper
-minimization described below, on the fields that minimization leaves behind.
+the narrative `opencode run` invocation. For Claude Code and Codex, redaction runs after the
+mapper minimization described below, on the fields that minimization leaves behind.
 
 Pattern-based redaction is not a proof that every secret has been removed. New credential
 formats, arbitrary customer identifiers, source code, internal hostnames, filenames,
@@ -106,7 +106,8 @@ fall outside that set. For those, the mapper falls back to serializing the tool'
 input object to JSON and truncating it to 200 characters, so what the mapper keeps is not
 one command or path but as much of the full call as fits in that budget.
 
-Everything else is dropped at that boundary and never reaches a report or an LLM request:
+Everything else is dropped at that boundary and never reaches a report or the narrative
+`opencode run` transcript:
 tool `stdout` and `stderr`, model thinking blocks, hook output, and system reminders. The
 only trace a tool result leaves behind is two derived booleans — whether its `stderr` was
 empty, and whether the call was interrupted. That is also why a Claude Code report never
@@ -149,7 +150,8 @@ it carries — and the input of every `exec` call. Only the changed file's path 
 tool's name survive for those two record types. A rename's destination path lives in
 `move_path`, inside that same discarded value, so it never reaches Key Files either.
 
-Everything else is dropped at that boundary and never reaches a report or an LLM request:
+Everything else is dropped at that boundary and never reaches a report or the narrative
+`opencode run` transcript:
 tool `stdout` and `stderr`, and Codex's free-form status text. Codex records exit codes
 only inside that free-form text, in several formats, so Agent Worklog does not parse it —
 the mapper stores no `exit_code` and no `stderr_empty` for a Codex command, which is why no
@@ -180,7 +182,8 @@ harnesses: **every evidence item's text is capped at 300 characters**
 (`EVIDENCE_TEXT_MAX_LENGTH` in `extraction/pipeline.py`), with a trailing `…` marking the
 cut so a reader can tell that text was removed. 300 characters identify any real command
 while refusing to carry a file, a diff, or a write-up. Nothing longer than that reaches
-the rendered Markdown, the report's provenance lists, or an outbound LLM request.
+the rendered Markdown, the report's provenance lists, or the narrative `opencode run`
+invocation.
 
 Redaction cannot substitute for this cap, which is why the cap exists. A pasted design
 document, an incident write-up, or a block of source code contains no credential pattern,
