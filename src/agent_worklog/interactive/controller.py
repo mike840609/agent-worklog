@@ -222,12 +222,23 @@ def _main_key(
         try:
             lines = actions.doctor(harness)
         except AgentWorklogError as exc:
-            console.print(f"Doctor error: {exc}")
+            detail = f"ERROR: {exc}"
         else:
-            for line in lines:
-                console.print(line)
+            detail = "\n".join(lines)
+        state.error = _ErrorState(
+            kind="doctor-result",
+            title="Check Setup",
+            detail=detail,
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
     else:
         actions.edit_settings()
+        state.error = _ErrorState(
+            kind="settings-result",
+            title="Settings",
+            detail="Settings editor finished.",
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
 
 
 def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
@@ -386,6 +397,10 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
 
 
 def _error_options(error: _ErrorState) -> list[str]:
+    if error.kind in {"doctor-result", "settings-result"}:
+        return ["Main menu"]
+    if error.kind == "report-path":
+        return ["Back"]
     if error.kind in {"report-empty", "browse-empty"}:
         return ["Change period", "Change harness", "Back", "Main menu"]
     if error.kind == "report-output-conflict":
@@ -396,6 +411,10 @@ def _error_options(error: _ErrorState) -> list[str]:
 
 
 def _error_back_screen(error: _ErrorState) -> Screen:
+    if error.kind == "report-path":
+        return Screen.REPORT_RESULT
+    if error.kind in {"doctor-result", "settings-result"}:
+        return Screen.MAIN
     if error.kind in {"report-output-conflict", "report-output", "report-generate"}:
         return Screen.SESSION_REVIEW
     if error.kind.startswith("report"):
@@ -460,10 +479,17 @@ def _result_key(state: _State, key: KeyPress, console: Console) -> None:
         state.expanded_repositories = set()
         state.screen = Screen.REPORT_SETUP
     else:
-        if state.result.output_path is not None:
-            console.print(str(state.result.output_path))
-        else:
-            console.print(state.result.content, end="")
+        detail = (
+            str(state.result.output_path)
+            if state.result.output_path is not None
+            else "Dry run has no output path."
+        )
+        state.error = _ErrorState(
+            kind="report-path",
+            title="Report path",
+            detail=detail,
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
 
 
 def _render(state: _State, console: Console) -> None:
