@@ -8,7 +8,7 @@ All notable changes to this project are documented in this file.
   per session (the conversation actually recorded in the report period), a `[sub]`
   tag for subagent sessions, and a date span plus message total per repository —
   so the interactive screens carry enough signal to judge whether a session
-  belongs in the report without opening it.
+  belongs in the weekly report without opening it.
 
 ## 0.8.0 - 2026-08-07
 
