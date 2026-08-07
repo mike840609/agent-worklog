@@ -132,9 +132,9 @@ agent-worklog run
 $ agent-worklog
 What do you want to do?
   1  Generate a report
-  2  Edit settings
+  2  Scan sessions
   3  Check setup (doctor)
-  4  Scan sessions
+  4  Edit settings
   q  Quit
 Choice:
 ```

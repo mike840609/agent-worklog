@@ -1332,7 +1332,7 @@ def test_bare_invocation_runs_the_settings_walk(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(cli, "config_init", lambda: called.append(True))
     _as_a_terminal(monkeypatch)
 
-    result = runner.invoke(cli.app, [], input="2\n")
+    result = runner.invoke(cli.app, [], input="4\n")
 
     assert result.exit_code == 0, result.stdout
     assert called == [True]
@@ -1347,7 +1347,7 @@ def test_the_menu_asks_again_after_an_answer_it_does_not_know(
     monkeypatch.setattr(cli, "config_init", lambda: called.append(True))
     _as_a_terminal(monkeypatch)
 
-    result = runner.invoke(cli.app, [], input="banana\n2\n")
+    result = runner.invoke(cli.app, [], input="banana\n4\n")
 
     assert result.exit_code == 0, result.stdout
     assert called == [True]
@@ -1556,7 +1556,7 @@ def test_bare_invocation_runs_scan_against_the_chosen_harness(
     monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.CLAUDE_CODE)
     _as_a_terminal(monkeypatch)
 
-    result = runner.invoke(cli.app, [], input="4\n")
+    result = runner.invoke(cli.app, [], input="2\n")
 
     assert result.exit_code == 0, result.stdout
     assert seen["harness"] is cli.Harness.CLAUDE_CODE
@@ -1614,8 +1614,8 @@ def test_the_menu_runs_the_real_scan_command_over_the_last_week(
     monkeypatch.setattr(cli, "_build_scan_service", build)
     _as_a_terminal(monkeypatch)
 
-    # "4" chooses the scan; the empty answer keeps the default harness.
-    result = runner.invoke(cli.app, [], input="4\n\n")
+    # "2" chooses the scan; the empty answer keeps the default harness.
+    result = runner.invoke(cli.app, [], input="2\n\n")
 
     assert result.exit_code == 0, result.stdout
     assert captured["harness"] is cli.Harness.OPENCODE

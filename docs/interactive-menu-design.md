@@ -93,16 +93,16 @@ an answer is understood:
 ```
 What do you want to do?
   1  Generate a report
-  2  Edit settings
+  2  Scan sessions
   3  Check setup (doctor)
-  4  Scan sessions
+  4  Edit settings
   q  Quit
 ```
 
 - `1` calls `run(verbose=False, dry_run=_ask_yes(...))`
-- `2` calls `config_init()`
+- `2` asks the harness, then calls `scan(...)`
 - `3` asks the harness, then calls `doctor(...)`
-- `4` asks the harness, then calls `scan(...)`
+- `4` calls `config_init()`
 - `q` or an empty answer returns, exit 0
 - anything else reprints the choices and asks again
 

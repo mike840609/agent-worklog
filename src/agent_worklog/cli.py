@@ -911,11 +911,13 @@ def run(
         reporter.message(f"Warning: {warning}")
 
 
+# Ordered by how often each is reached for: the report first, then the scan
+# that previews what would go into one, then the two setup commands.
 _MENU_CHOICES = """What do you want to do?
   1  Generate a report
-  2  Edit settings
+  2  Scan sessions
   3  Check setup (doctor)
-  4  Scan sessions
+  4  Edit settings
   q  Quit"""
 
 
@@ -944,15 +946,10 @@ def _interactive_menu() -> None:
                 )
                 run(verbose=False, dry_run=dry_run)
                 return
-            if answer == "2":
-                config_init()
-                return
-            if answer in {"3", "4"}:
+            if answer in {"2", "3"}:
                 settings = _load_settings()
                 harness = _ask_harness(settings)
-                if answer == "3":
-                    doctor(harness=harness, verbose=False, quiet=False)
-                else:
+                if answer == "2":
                     # `scan` has no default period: `_resolve_period` demands
                     # exactly one of days/period/since, so leaving all three
                     # unset is a usage error, not a default. The menu therefore
@@ -970,6 +967,11 @@ def _interactive_menu() -> None:
                         verbose=False,
                         quiet=False,
                     )
+                else:
+                    doctor(harness=harness, verbose=False, quiet=False)
+                return
+            if answer == "4":
+                config_init()
                 return
             typer.echo("  choose one of the listed options")
     except ConfigurationError as exc:
