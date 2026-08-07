@@ -50,6 +50,12 @@ def _option(label: str, index: int, selected: int) -> Text:
     )
 
 
+def _viewport_text(value: str, *, style: str = "") -> Text:
+    """Render one viewport line without letting terminal width change its height."""
+
+    return Text(value, style=style, no_wrap=True, overflow="ellipsis")
+
+
 def _period_label(period: DateRange) -> str:
     return f"{period.since:%b %d} – {period.until:%b %d}"
 
@@ -70,6 +76,12 @@ def report_result_options(*, dry_run: bool) -> list[str]:
     """Return the actions shown on the result screen."""
 
     return list(_DRY_RUN_RESULT_OPTIONS if dry_run else _RESULT_OPTIONS)
+
+
+def report_preview_capacity(terminal_height: int) -> int:
+    """Content lines available while reserving chrome plus one anti-scroll line."""
+
+    return max(1, terminal_height - 7)
 
 
 def render_main_menu(console: Console, *, selected: int) -> None:
@@ -161,7 +173,7 @@ def _visible_window(
 
     if not rows:
         return [], 0, 0
-    capacity = max(1, terminal_height - reserved_lines - 2)
+    capacity = max(1, terminal_height - reserved_lines - 3)
     if len(rows) <= capacity:
         return list(enumerate(rows)), 0, 0
     cursor = min(max(cursor, 0), len(rows) - 1)
@@ -179,13 +191,13 @@ def render_session_review(
     message: str | None = None,
 ) -> None:
     console.print(
-        Text(
+        _viewport_text(
             f"Review Sessions   {selection.selected_count} / {selection.total_count} selected",
             style="bold",
         )
     )
     if message:
-        console.print(Text(message))
+        console.print(_viewport_text(message))
     console.print()
     rows = build_visible_rows(selection.scan, expanded_repositories)
     visible, hidden_above, hidden_below = _visible_window(
@@ -195,7 +207,7 @@ def render_session_review(
         reserved_lines=6 if message else 5,
     )
     if hidden_above:
-        console.print(Text(f"↑ {hidden_above} more", style="dim"))
+        console.print(_viewport_text(f"↑ {hidden_above} more", style="dim"))
     titles = _session_titles(selection.scan)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
@@ -211,17 +223,29 @@ def render_session_review(
             total = len(selection.scan.sessions_by_repository[row.repository_id])
             name = _repository_display_name(selection.scan, row.repository_id)
             console.print(
-                Text(f"{prefix} {arrow} {mark} {name}   {selected} / {total}", style=style)
+                _viewport_text(
+                    f"{prefix} {arrow} {mark} {name}   {selected} / {total}",
+                    style=style,
+                )
             )
         else:
             assert row.session_id is not None
             mark = "●" if row.session_id in selection.selected_session_ids else "○"
-            console.print(Text(f"{prefix}     {mark} {titles[row.session_id]}", style=style))
+            console.print(
+                _viewport_text(
+                    f"{prefix}     {mark} {titles[row.session_id]}",
+                    style=style,
+                )
+            )
     if hidden_below:
-        console.print(Text(f"↓ {hidden_below} more", style="dim"))
+        console.print(_viewport_text(f"↓ {hidden_below} more", style="dim"))
     console.print()
-    console.print(Text("↑↓ / jk Navigate   Space Toggle   Enter Expand", style="dim"))
-    console.print(Text("a All   n None   g Generate   b Back   q Main menu", style="dim"))
+    console.print(
+        _viewport_text("↑↓ / jk Navigate   Space Toggle   Enter Expand", style="dim")
+    )
+    console.print(
+        _viewport_text("a All   n None   g Generate   b Back   q Main menu", style="dim")
+    )
 
 
 def render_session_browser(
@@ -231,7 +255,9 @@ def render_session_browser(
     expanded_repositories: set[str],
     cursor: int,
 ) -> None:
-    console.print(Text(f"Browse Sessions   {scan.loaded_session_count} sessions", style="bold"))
+    console.print(
+        _viewport_text(f"Browse Sessions   {scan.loaded_session_count} sessions", style="bold")
+    )
     console.print()
     rows = build_visible_rows(scan, expanded_repositories)
     visible, hidden_above, hidden_below = _visible_window(
@@ -241,7 +267,7 @@ def render_session_browser(
         reserved_lines=4,
     )
     if hidden_above:
-        console.print(Text(f"↑ {hidden_above} more", style="dim"))
+        console.print(_viewport_text(f"↑ {hidden_above} more", style="dim"))
     titles = _session_titles(scan)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
@@ -251,14 +277,20 @@ def render_session_browser(
             arrow = "▼" if expanded else "▶"
             name = _repository_display_name(scan, row.repository_id)
             count = len(scan.sessions_by_repository[row.repository_id])
-            console.print(Text(f"{prefix} {arrow} {name}   {count}", style=style))
+            console.print(
+                _viewport_text(f"{prefix} {arrow} {name}   {count}", style=style)
+            )
         else:
             assert row.session_id is not None
-            console.print(Text(f"{prefix}     {titles[row.session_id]}", style=style))
+            console.print(
+                _viewport_text(f"{prefix}     {titles[row.session_id]}", style=style)
+            )
     if hidden_below:
-        console.print(Text(f"↓ {hidden_below} more", style="dim"))
+        console.print(_viewport_text(f"↓ {hidden_below} more", style="dim"))
     console.print()
-    console.print(Text("↑↓ / jk Navigate   Enter Expand   b Back   q Main menu", style="dim"))
+    console.print(
+        _viewport_text("↑↓ / jk Navigate   Enter Expand   b Back   q Main menu", style="dim")
+    )
 
 
 def render_report_result(
@@ -288,21 +320,21 @@ def render_report_result(
 def render_report_preview(console: Console, *, content: str, offset: int) -> None:
     """Render a literal, scrollable dry-run report preview."""
 
-    console.print(Text("Report Preview", style="bold"))
+    console.print(_viewport_text("Report Preview", style="bold"))
     console.print()
     lines = content.splitlines() or [""]
-    capacity = max(1, console.size.height - 6)
+    capacity = report_preview_capacity(console.size.height)
     max_start = max(0, len(lines) - capacity)
     start = min(max(offset, 0), max_start)
     end = min(len(lines), start + capacity)
     if start:
-        console.print(Text(f"↑ {start} more", style="dim"))
+        console.print(_viewport_text(f"↑ {start} more", style="dim"))
     for line in lines[start:end]:
-        console.print(Text(line))
+        console.print(_viewport_text(line))
     if end < len(lines):
-        console.print(Text(f"↓ {len(lines) - end} more", style="dim"))
+        console.print(_viewport_text(f"↓ {len(lines) - end} more", style="dim"))
     console.print()
-    console.print(Text("↑↓ / jk Scroll   b Back   q Main menu", style="dim"))
+    console.print(_viewport_text("↑↓ / jk Scroll   b Back   q Main menu", style="dim"))
 
 
 def render_recoverable_error(
