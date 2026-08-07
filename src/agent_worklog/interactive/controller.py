@@ -9,13 +9,14 @@ from typing import Protocol, Self
 
 from rich.console import Console
 
-from agent_worklog.errors import AgentWorklogError
+from agent_worklog.errors import AgentWorklogError, ReportOutputError
 from agent_worklog.interactive.input import Key, KeyPress
 from agent_worklog.interactive.models import ReportDraft, Screen
 from agent_worklog.interactive.render import (
     build_visible_rows,
     render_main_menu,
     render_recoverable_error,
+    render_report_result,
     render_report_setup,
     render_session_browser,
     render_session_review,
@@ -72,11 +73,14 @@ class _State:
     setup_cursor: int = 0
     browser_cursor: int = 0
     review_cursor: int = 0
+    result_cursor: int = 0
     draft: ReportDraft | None = None
     browser_scan: ScanResult | None = None
     selection: SelectionState | None = None
+    result: InteractiveReportResult | None = None
     expanded_repositories: set[str] | None = None
     error: _ErrorState | None = None
+    review_message: str | None = None
 
     def expansions(self) -> set[str]:
         if self.expanded_repositories is None:
@@ -116,6 +120,9 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.draft = actions.new_draft()
     state.setup_cursor = 0
     state.selection = None
+    state.result = None
+    state.error = None
+    state.review_message = None
     state.expanded_repositories = set()
     state.screen = Screen.REPORT_SETUP
 
@@ -175,11 +182,14 @@ def _review(state: _State, actions: InteractiveActions) -> None:
             state.screen = Screen.RECOVERABLE_ERROR
             return
         draft.set_scan(scan)
+    cached_scan = draft.scan
+    assert cached_scan is not None
     state.selection = SelectionState.from_scan(
-        draft.scan,
+        cached_scan,
         selected_session_ids=draft.selected_session_ids,
     )
     state.review_cursor = 0
+    state.review_message = None
     state.expanded_repositories = set()
     state.screen = Screen.SESSION_REVIEW
 
@@ -284,16 +294,82 @@ def _browser_key(state: _State, key: KeyPress) -> None:
     state.browser_cursor = min(state.browser_cursor, max(0, visible_count - 1))
 
 
-def _review_key(state: _State, key: KeyPress) -> None:
+def _sync_selection(state: _State) -> None:
+    assert state.draft is not None
+    assert state.selection is not None
+    state.draft.selected_session_ids = set(state.selection.selected_session_ids)
+
+
+def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> None:
+    assert state.draft is not None
+    assert state.selection is not None
+    if state.selection.selected_count == 0:
+        state.review_message = "Select at least one session before generating."
+        state.screen = Screen.SESSION_REVIEW
+        return
+    _sync_selection(state)
+    filtered_scan = state.selection.filtered_scan()
+    try:
+        result = actions.generate(state.draft, filtered_scan, force)
+    except ReportOutputError as exc:
+        conflict = not force and str(exc).startswith("report already exists:")
+        state.error = _ErrorState(
+            kind="report-output-conflict" if conflict else "report-output",
+            title="Could not write report",
+            detail=str(exc),
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    except AgentWorklogError as exc:
+        state.error = _ErrorState(
+            kind="report-generate",
+            title="Could not generate report",
+            detail=str(exc),
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    state.result = result
+    state.result_cursor = 0
+    state.review_message = None
+    state.error = None
+    state.screen = Screen.REPORT_RESULT
+
+
+def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
+    assert state.draft is not None
     assert state.selection is not None
     rows = build_visible_rows(state.selection.scan, state.expansions())
     state.review_cursor = _move(state.review_cursor, key, len(rows))
     if key.key is Key.CTRL_C or _char(key, "q"):
+        _sync_selection(state)
         state.screen = Screen.MAIN
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
-        state.draft.selected_session_ids = state.selection.selected_session_ids
+        _sync_selection(state)
         state.screen = Screen.REPORT_SETUP
+        return
+    if _char(key, "a"):
+        state.selection.select_all()
+        _sync_selection(state)
+        state.review_message = None
+        return
+    if _char(key, "n"):
+        state.selection.select_none()
+        _sync_selection(state)
+        state.review_message = None
+        return
+    if _char(key, "g"):
+        _generate(state, actions, force=False)
+        return
+    if key.key is Key.SPACE and rows:
+        row = rows[state.review_cursor]
+        if row.kind == "repository":
+            state.selection.toggle_repository(row.repository_id)
+        else:
+            assert row.session_id is not None
+            state.selection.toggle_session(row.session_id)
+        _sync_selection(state)
+        state.review_message = None
         return
     if key.key is Key.ENTER and rows:
         row = rows[state.review_cursor]
@@ -312,7 +388,19 @@ def _review_key(state: _State, key: KeyPress) -> None:
 def _error_options(error: _ErrorState) -> list[str]:
     if error.kind in {"report-empty", "browse-empty"}:
         return ["Change period", "Change harness", "Back", "Main menu"]
+    if error.kind == "report-output-conflict":
+        return ["Overwrite once", "Back", "Main menu"]
+    if error.kind in {"report-output", "report-generate"}:
+        return ["Back", "Main menu"]
     return ["Change harness", "Back", "Main menu"]
+
+
+def _error_back_screen(error: _ErrorState) -> Screen:
+    if error.kind in {"report-output-conflict", "report-output", "report-generate"}:
+        return Screen.SESSION_REVIEW
+    if error.kind.startswith("report"):
+        return Screen.REPORT_SETUP
+    return Screen.MAIN
 
 
 def _error_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
@@ -324,7 +412,7 @@ def _error_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         state.screen = Screen.MAIN
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
-        state.screen = Screen.REPORT_SETUP if state.draft is not None else Screen.MAIN
+        state.screen = _error_back_screen(error)
         return
     if key.key is not Key.ENTER:
         return
@@ -334,7 +422,10 @@ def _error_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         state.screen = Screen.MAIN
         return
     if choice == "Back":
-        state.screen = Screen.REPORT_SETUP if error.kind.startswith("report") else Screen.MAIN
+        state.screen = _error_back_screen(error)
+        return
+    if choice == "Overwrite once":
+        _generate(state, actions, force=True)
         return
     assert state.draft is not None
     if choice == "Change harness":
@@ -343,7 +434,36 @@ def _error_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
             state.draft.set_sanitize(False)
     else:
         state.draft.set_period(actions.choose_period(state.draft.period))
+    state.selection = None
+    state.error = None
     state.screen = Screen.REPORT_SETUP if error.kind.startswith("report") else Screen.MAIN
+
+
+def _result_key(state: _State, key: KeyPress, console: Console) -> None:
+    assert state.draft is not None
+    assert state.result is not None
+    state.result_cursor = _move(state.result_cursor, key, 3)
+    if key.key in {Key.ESCAPE, Key.CTRL_C} or _char(key, "q") or _char(key, "b"):
+        state.screen = Screen.MAIN
+        return
+    if key.key is not Key.ENTER:
+        return
+    if state.result_cursor == 0:
+        state.screen = Screen.MAIN
+    elif state.result_cursor == 1:
+        state.draft.clear_scan()
+        state.selection = None
+        state.result = None
+        state.error = None
+        state.review_message = None
+        state.setup_cursor = 0
+        state.expanded_repositories = set()
+        state.screen = Screen.REPORT_SETUP
+    else:
+        if state.result.output_path is not None:
+            console.print(str(state.result.output_path))
+        else:
+            console.print(state.result.content, end="")
 
 
 def _render(state: _State, console: Console) -> None:
@@ -368,6 +488,18 @@ def _render(state: _State, console: Console) -> None:
             state.selection,
             expanded_repositories=state.expansions(),
             cursor=state.review_cursor,
+            message=state.review_message,
+        )
+    elif state.screen is Screen.REPORT_RESULT:
+        assert state.draft is not None
+        assert state.result is not None
+        render_report_result(
+            console,
+            period=state.draft.period,
+            repository_count=state.result.repository_count,
+            session_count=state.result.session_count,
+            output_path=state.result.output_path,
+            selected=state.result_cursor,
         )
     elif state.screen is Screen.RECOVERABLE_ERROR:
         assert state.error is not None
@@ -402,6 +534,8 @@ def run_interactive(
         elif state.screen is Screen.SESSION_BROWSER:
             _browser_key(state, key)
         elif state.screen is Screen.SESSION_REVIEW:
-            _review_key(state, key)
+            _review_key(state, key, actions)
+        elif state.screen is Screen.REPORT_RESULT:
+            _result_key(state, key, console)
         elif state.screen is Screen.RECOVERABLE_ERROR:
             _error_key(state, key, actions)
