@@ -16,11 +16,14 @@ flowchart TD
     end
 
     subgraph Report["Report pipeline"]
-        EX["Extraction<br/>evidence<br/>+ 300-char cap"]
-        RD["Redaction<br/>secret patterns"]
-        SU["Summarizer<br/>rule-based or LLM"]
+        TR["build_grouped_transcript<br/>redacted, full context"]
+        RUN["opencode run<br/>local CLI narrative"]
+        RN["render_narrative"]
+        EX["Extraction<br/>evidence + 300-char cap"]
+        RB["RuleBasedSummarizer"]
+        MR["MarkdownRenderer"]
         US["Usage stats<br/>opencode stats<br/>or session tokens"]
-        RE["MarkdownRenderer"]
+        RD["Redaction<br/>secret patterns"]
         WR["Atomic write<br/>0600 on POSIX"]
     end
 
@@ -31,9 +34,15 @@ flowchart TD
     CC --> SC
     CX --> SC
     SC --> RV
-    RV --> EX
-    EX --> RD
-    RD --> SU
-    US --> RE
-    SU --> RE
-    RE --> WR
+    RV -->|"default"| TR
+    RV -->|"--no-llm"| EX
+    TR --> RUN
+    RUN --> RN
+    RUN -.->|"on failure"| EX
+    EX --> RB
+    RB --> MR
+    US --> RN
+    US --> MR
+    RN --> RD
+    MR --> RD
+    RD --> WR
