@@ -1,0 +1,310 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import datetime
+from io import StringIO
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from rich.console import Console
+
+from agent_worklog.errors import ReportOutputError
+from agent_worklog.interactive.controller import (
+    InteractiveActions,
+    InteractiveReportResult,
+    run_interactive,
+)
+from agent_worklog.interactive.input import Key, KeyPress
+from agent_worklog.interactive.models import ReportDraft
+from agent_worklog.models.repository import (
+    RepositoryIdentity,
+    RepositoryIdentityType,
+    ResolvedSession,
+)
+from agent_worklog.models.session import AgentSession
+from agent_worklog.models.time_range import DateRange
+from agent_worklog.services.scan import ScanResult
+
+TZ = ZoneInfo("Asia/Taipei")
+
+
+def char(value: str) -> KeyPress:
+    return KeyPress(char=value)
+
+
+class ScriptedInput:
+    def __init__(self, keys: list[KeyPress]) -> None:
+        self._keys: Iterator[KeyPress] = iter(keys)
+
+    def __enter__(self) -> ScriptedInput:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def read_key(self) -> KeyPress:
+        return next(self._keys)
+
+
+def _console() -> tuple[Console, StringIO]:
+    stream = StringIO()
+    return (
+        Console(file=stream, color_system=None, force_terminal=False, width=100),
+        stream,
+    )
+
+
+def _period() -> DateRange:
+    return DateRange(
+        since=datetime(2026, 8, 3, tzinfo=TZ),
+        until=datetime(2026, 8, 10, tzinfo=TZ),
+    )
+
+
+def _resolved(session_id: str, repository_id: str) -> ResolvedSession:
+    return ResolvedSession(
+        session=AgentSession(
+            harness="opencode",
+            session_id=session_id,
+            title=session_id,
+            working_directory=f"/tmp/{repository_id}",
+        ),
+        repository=RepositoryIdentity(
+            repository_id=repository_id,
+            display_name=repository_id,
+            identity_type=RepositoryIdentityType.PATH_FALLBACK,
+            working_directory=f"/tmp/{repository_id}",
+            resolution_method="test",
+        ),
+    )
+
+
+def _scan() -> ScanResult:
+    sessions = [
+        _resolved("ses-a1", "repo-a"),
+        _resolved("ses-a2", "repo-a"),
+        _resolved("ses-b1", "repo-b"),
+    ]
+    return ScanResult(
+        period=_period(),
+        candidate_session_count=3,
+        loaded_session_count=3,
+        failed_session_count=0,
+        resolved_sessions=sessions,
+        sessions_by_repository={"repo-a": sessions[:2], "repo-b": sessions[2:]},
+    )
+
+
+def _actions(
+    *,
+    draft: ReportDraft,
+    scan_calls: list[ScanResult],
+    generation_calls: list[tuple[ScanResult, bool]],
+    generate_callback=None,
+) -> InteractiveActions:
+    scan = _scan()
+
+    def do_scan(_draft: ReportDraft) -> ScanResult:
+        scan_calls.append(scan)
+        return scan
+
+    def generate(
+        _draft: ReportDraft,
+        selected_scan: ScanResult,
+        force: bool,
+    ) -> InteractiveReportResult:
+        generation_calls.append((selected_scan, force))
+        if generate_callback is not None:
+            return generate_callback(selected_scan, force)
+        return InteractiveReportResult(
+            output_path=Path("reports/worklog.md"),
+            content="report-content",
+            repository_count=len(selected_scan.sessions_by_repository),
+            session_count=selected_scan.loaded_session_count,
+        )
+
+    return InteractiveActions(
+        new_draft=lambda: draft,
+        choose_harness=lambda current: current,
+        choose_period=lambda current: current,
+        scan=do_scan,
+        generate=generate,
+        doctor=lambda harness: [],
+        edit_settings=lambda: None,
+    )
+
+
+def test_repository_and_individual_toggles_filter_generation_without_rescan() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    scan_calls: list[ScanResult] = []
+    generation_calls: list[tuple[ScanResult, bool]] = []
+    console, _ = _console()
+    keys = ScriptedInput(
+        [
+            char("1"),
+            char("r"),
+            KeyPress(key=Key.SPACE),  # deselect repo-a
+            KeyPress(key=Key.ENTER),  # expand repo-a
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.SPACE),  # reselect ses-a1 only
+            char("g"),
+            char("q"),  # result -> main
+            char("q"),  # quit
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_calls=scan_calls,
+            generation_calls=generation_calls,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert len(scan_calls) == 1
+    assert len(generation_calls) == 1
+    selected_scan, force = generation_calls[0]
+    assert force is False
+    assert [item.session.session_id for item in selected_scan.resolved_sessions] == [
+        "ses-a1",
+        "ses-b1",
+    ]
+
+
+def test_zero_selection_blocks_generate_until_sessions_are_selected() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    scan_calls: list[ScanResult] = []
+    generation_calls: list[tuple[ScanResult, bool]] = []
+    console, stream = _console()
+    keys = ScriptedInput(
+        [
+            char("1"),
+            char("r"),
+            char("n"),
+            char("g"),
+            char("a"),
+            char("g"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_calls=scan_calls,
+            generation_calls=generation_calls,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert len(generation_calls) == 1
+    assert "Select at least one session" in stream.getvalue()
+
+
+def test_existing_output_requires_explicit_overwrite_once() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    scan_calls: list[ScanResult] = []
+    generation_calls: list[tuple[ScanResult, bool]] = []
+
+    def generate(selected_scan: ScanResult, force: bool) -> InteractiveReportResult:
+        if not force:
+            raise ReportOutputError("report already exists: reports/worklog.md")
+        return InteractiveReportResult(
+            output_path=Path("reports/worklog.md"),
+            content="report-content",
+            repository_count=len(selected_scan.sessions_by_repository),
+            session_count=selected_scan.loaded_session_count,
+        )
+
+    console, stream = _console()
+    keys = ScriptedInput(
+        [
+            char("1"),
+            char("r"),
+            char("g"),
+            KeyPress(key=Key.ENTER),  # Overwrite once
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_calls=scan_calls,
+            generation_calls=generation_calls,
+            generate_callback=generate,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert [force for _, force in generation_calls] == [False, True]
+    assert "Overwrite once" in stream.getvalue()
+
+
+def test_generate_another_preserves_options_but_clears_scan_and_selection() -> None:
+    draft = ReportDraft(harness="opencode", period=_period(), narrative=False)
+    scan_calls: list[ScanResult] = []
+    generation_calls: list[tuple[ScanResult, bool]] = []
+    console, _ = _console()
+    keys = ScriptedInput(
+        [
+            char("1"),
+            char("r"),
+            char("g"),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.ENTER),  # Generate another report
+            char("b"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_calls=scan_calls,
+            generation_calls=generation_calls,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert draft.narrative is False
+    assert draft.scan is None
+    assert draft.selected_session_ids == set()
+
+
+def test_result_print_path_action_keeps_result_screen_active() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    scan_calls: list[ScanResult] = []
+    generation_calls: list[tuple[ScanResult, bool]] = []
+    console, stream = _console()
+    keys = ScriptedInput(
+        [
+            char("1"),
+            char("r"),
+            char("g"),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.ENTER),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_calls=scan_calls,
+            generation_calls=generation_calls,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert stream.getvalue().count("reports/worklog.md") >= 2

@@ -1,0 +1,343 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import datetime
+from io import StringIO
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from rich.console import Console
+
+from agent_worklog.interactive.controller import (
+    InteractiveActions,
+    InteractiveReportResult,
+    run_interactive,
+)
+from agent_worklog.interactive.input import Key, KeyPress
+from agent_worklog.interactive.models import ReportDraft
+from agent_worklog.interactive.render import render_report_setup, render_session_review
+from agent_worklog.interactive.selection import SelectionState
+from agent_worklog.models.repository import (
+    RepositoryIdentity,
+    RepositoryIdentityType,
+    ResolvedSession,
+)
+from agent_worklog.models.session import AgentSession
+from agent_worklog.models.time_range import DateRange
+from agent_worklog.services.scan import ScanResult
+
+TZ = ZoneInfo("Asia/Taipei")
+
+
+def char(value: str) -> KeyPress:
+    return KeyPress(char=value)
+
+
+class ScriptedInput:
+    def __init__(self, keys: list[KeyPress]) -> None:
+        self._keys: Iterator[KeyPress] = iter(keys)
+
+    def __enter__(self) -> ScriptedInput:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def read_key(self) -> KeyPress:
+        return next(self._keys)
+
+
+def _console(*, height: int = 30) -> tuple[Console, StringIO]:
+    stream = StringIO()
+    return (
+        Console(
+            file=stream,
+            color_system=None,
+            force_terminal=False,
+            width=100,
+            height=height,
+        ),
+        stream,
+    )
+
+
+def _period(day: int = 3) -> DateRange:
+    return DateRange(
+        since=datetime(2026, 8, day, tzinfo=TZ),
+        until=datetime(2026, 8, day + 7, tzinfo=TZ),
+    )
+
+
+def _resolved(
+    session_id: str,
+    *,
+    repository_id: str = "repo-a",
+    repository_name: str | None = None,
+    title: str | None = None,
+) -> ResolvedSession:
+    return ResolvedSession(
+        session=AgentSession(
+            harness="opencode",
+            session_id=session_id,
+            title=title or session_id,
+            working_directory=f"/tmp/{repository_id}",
+        ),
+        repository=RepositoryIdentity(
+            repository_id=repository_id,
+            display_name=repository_name or repository_id,
+            identity_type=RepositoryIdentityType.PATH_FALLBACK,
+            working_directory=f"/tmp/{repository_id}",
+            resolution_method="test",
+        ),
+    )
+
+
+def _scan(count: int = 1, *, unsafe_labels: bool = False) -> ScanResult:
+    sessions = [
+        _resolved(
+            f"ses-{index}",
+            repository_name="repo [/] name" if unsafe_labels else "repo-a",
+            title="add [link=x] support" if unsafe_labels and index == 0 else f"Session {index}",
+        )
+        for index in range(count)
+    ]
+    return ScanResult(
+        period=_period(),
+        candidate_session_count=count,
+        loaded_session_count=count,
+        failed_session_count=0,
+        resolved_sessions=sessions,
+        sessions_by_repository={"repo-a": sessions} if sessions else {},
+    )
+
+
+def _actions(
+    *,
+    draft: ReportDraft,
+    scan_callback,
+    choose_period,
+    counters: dict[str, int],
+    content: str = "report-content",
+) -> InteractiveActions:
+    def count(name: str) -> None:
+        counters[name] = counters.get(name, 0) + 1
+
+    def do_scan(value: ReportDraft) -> ScanResult:
+        count("scan")
+        return scan_callback(value)
+
+    def generate(
+        _draft: ReportDraft,
+        selected_scan: ScanResult,
+        _force: bool,
+    ) -> InteractiveReportResult:
+        count("generate")
+        return InteractiveReportResult(
+            output_path=None if _draft.dry_run else Path("reports/worklog.md"),
+            content=content,
+            repository_count=len(selected_scan.sessions_by_repository),
+            session_count=selected_scan.loaded_session_count,
+        )
+
+    return InteractiveActions(
+        new_draft=lambda: draft,
+        choose_harness=lambda current: current,
+        choose_period=choose_period,
+        scan=do_scan,
+        generate=generate,
+        doctor=lambda harness: [],
+        edit_settings=lambda: None,
+    )
+
+
+def test_non_opencode_sanitize_enter_stays_in_report_setup() -> None:
+    draft = ReportDraft(harness="claude-code", period=_period())
+    counters: dict[str, int] = {}
+    console, _ = _console()
+    keys = ScriptedInput(
+        [
+            char("1"),
+            *[KeyPress(key=Key.DOWN) for _ in range(6)],
+            KeyPress(key=Key.ENTER),
+            char("r"),
+            char("b"),
+            char("b"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_callback=lambda value: _scan(),
+            choose_period=lambda current: current,
+            counters=counters,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert counters.get("scan", 0) == 1
+    assert draft.harness == "claude-code"
+    assert draft.sanitize is False
+
+
+def test_browse_empty_change_period_retries_with_changed_draft() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    counters: dict[str, int] = {}
+    period_calls = 0
+
+    def choose_period(current: DateRange) -> DateRange:
+        nonlocal period_calls
+        period_calls += 1
+        return current if period_calls == 1 else _period(10)
+
+    def scan_callback(value: ReportDraft) -> ScanResult:
+        return _scan(0) if value.period == _period() else _scan(1)
+
+    console, _ = _console()
+    keys = ScriptedInput(
+        [
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.ENTER),
+            KeyPress(key=Key.ENTER),  # Change period from the empty-state screen.
+            char("b"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_callback=scan_callback,
+            choose_period=choose_period,
+            counters=counters,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert period_calls == 2
+    assert counters.get("scan", 0) == 2
+    assert draft.period == _period(10)
+
+
+def test_user_labels_are_rendered_as_literal_text_not_rich_markup() -> None:
+    selection = SelectionState.from_scan(_scan(1, unsafe_labels=True))
+    console, stream = _console()
+
+    render_session_review(
+        console,
+        selection,
+        expanded_repositories={"repo-a"},
+        cursor=1,
+    )
+
+    text = stream.getvalue()
+    assert "repo [/] name" in text
+    assert "add [link=x] support" in text
+
+
+def test_dry_run_result_can_preview_generated_report_content() -> None:
+    draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
+    counters: dict[str, int] = {}
+    console, stream = _console()
+    keys = ScriptedInput(
+        [
+            char("1"),
+            char("r"),
+            char("g"),
+            KeyPress(key=Key.ENTER),  # Preview report.
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_callback=lambda value: _scan(),
+            choose_period=lambda current: current,
+            counters=counters,
+            content="# Dry run report\n\nBody\n",
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "Report Preview" in text
+    assert "# Dry run report" in text
+    assert "Body" in text
+
+
+def test_session_review_uses_terminal_height_viewport_around_cursor() -> None:
+    selection = SelectionState.from_scan(_scan(18))
+    console, stream = _console(height=12)
+
+    render_session_review(
+        console,
+        selection,
+        expanded_repositories={"repo-a"},
+        cursor=18,
+    )
+
+    text = stream.getvalue()
+    assert "Session 17" in text
+    assert "Session 0" not in text
+    assert "more" in text
+
+
+def test_review_back_and_reenter_preserves_repository_expansion() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    counters: dict[str, int] = {}
+    console, stream = _console()
+    keys = ScriptedInput(
+        [
+            char("1"),
+            char("r"),
+            KeyPress(key=Key.ENTER),  # expand repo-a
+            char("b"),
+            char("r"),
+            char("b"),
+            char("b"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_callback=lambda value: _scan(1),
+            choose_period=lambda current: current,
+            counters=counters,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert stream.getvalue().count("Session 0") >= 2
+
+
+def test_report_setup_footer_lists_supported_main_menu_shortcut() -> None:
+    console, stream = _console()
+
+    render_report_setup(
+        console,
+        ReportDraft(harness="opencode", period=_period()),
+        selected=0,
+    )
+
+    assert "q Main menu" in stream.getvalue()
+
+
+def test_selection_from_scan_copies_caller_owned_set() -> None:
+    scan = _scan(1)
+    selected = {"ses-0"}
+    state = SelectionState.from_scan(scan, selected_session_ids=selected)
+
+    state.toggle_session("ses-0")
+
+    assert selected == {"ses-0"}
+    assert state.selected_session_ids == set()

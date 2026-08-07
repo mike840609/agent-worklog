@@ -46,17 +46,47 @@ Or `pip install agent-worklog` in a regular Python environment.
 
 ## Quick start
 
-Run it with no arguments and pick from the menu:
+Run it with no arguments for the terminal-native menu:
 
-```
+```text
 $ agent-worklog
-What do you want to do?
-  1  Generate a report
-  2  Scan sessions
-  3  Check setup (doctor)
-  4  Edit settings
-  q  Quit
-Choice:
+Agent Worklog
+Turn coding-agent sessions into engineering reports
+
+❯ Generate Report
+  Browse Sessions
+  Check Setup
+  Settings
+
+↑↓ / jk Navigate   Enter Select   q Quit
+```
+
+Choosing Generate a report opens a summary first, so you can change only what matters
+before scanning. **Review sessions** groups the scan by repository; press `Space` on a
+repository to toggle the whole group, or expand it and toggle individual sessions.
+
+```text
+Generate Report
+
+Harness      OpenCode
+Period       Aug 03 – Aug 10
+Detail       Full
+Subagents    Included
+Narrative    Enabled
+Sanitize     Off
+Dry run      Off
+
+❯ Review sessions
+  Harness
+  Period
+  Detail
+  Subagents
+  Narrative
+  Sanitize
+  Dry run
+  Back
+
+↑↓ / jk Navigate   Enter Edit   r Review   b Back
 ```
 
 Or drive the commands directly:
@@ -79,8 +109,8 @@ Output lands under `reports/`. For another harness, add `--harness claude-code` 
 `--harness codex` — the narrative default behaves the same for all of them, reading
 that harness's sessions and still calling your local `opencode run`.
 
-Prefer to be asked instead of remembering flags? The `run` command asks the same
-questions one at a time and previews the scan before writing:
+Prefer to be asked instead of remembering flags? The `run` command keeps the linear
+wizard and previews the scan before writing:
 
 ```bash
 agent-worklog run
