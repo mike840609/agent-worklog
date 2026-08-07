@@ -112,7 +112,11 @@ def report_preview_capacity(terminal_height: int) -> int:
 
 def render_main_menu(console: Console, *, selected: int) -> None:
     _print_viewport_line(console, "Agent Worklog", style="bold")
-    _print_viewport_line(console, "Turn coding-agent sessions into engineering reports", style="dim")
+    _print_viewport_line(
+        console,
+        "Turn coding-agent sessions into engineering reports",
+        style="dim",
+    )
     console.print()
     for index, label in enumerate(_MAIN_OPTIONS):
         _print_option_line(console, label, index, selected)
