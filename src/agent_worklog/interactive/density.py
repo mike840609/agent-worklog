@@ -44,7 +44,13 @@ def session_meta(session: AgentSession) -> str:
 
 
 def repository_meta(repository_id: str, scan: ScanResult) -> str:
-    """Render density for a repository row, e.g. ``Aug 3–5 · 240 msgs``."""
+    """Render density for a repository row, e.g. ``Aug 3–5 · 240 msgs``.
+
+    An all-undated repository returns ``""`` (no date, no summed volume): volume
+    without a date is shown per-session only, while the repo row's span needs at
+    least one dated session. A session with message volume always has a dated
+    surviving activity after period filtering, so ``""`` is unreachable for a
+    volume-bearing repository."""
     sessions = scan.sessions_by_repository[repository_id]
     dates = [
         timestamp for item in sessions if (timestamp := last_activity_at(item.session)) is not None

@@ -29,10 +29,10 @@ from agent_worklog.services.scan import ScanResult
 TZ = ZoneInfo("Asia/Taipei")
 
 
-def _console() -> tuple[Console, StringIO]:
+def _console(width: int = 100) -> tuple[Console, StringIO]:
     stream = StringIO()
     return (
-        Console(file=stream, color_system=None, force_terminal=False, width=100),
+        Console(file=stream, color_system=None, force_terminal=False, width=width),
         stream,
     )
 
@@ -257,3 +257,27 @@ def test_session_browser_renders_repository_and_session_density() -> None:
     text = stream.getvalue()
     assert "Aug 3–5 · 3 msgs" in text
     assert "Aug 5 · 2 msgs" in text
+
+
+def test_session_review_density_survives_truncation() -> None:
+    console, stream = _console(width=40)
+    session_id = (
+        "trunc1-with-a-very-long-session-title-"
+        "that-will-clip-at-forty-cells-wide"
+    )
+    items = [_dense_resolved(session_id, "repo-t", last_day=5, volume=2)]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-t": items},
+    )
+    state = SelectionState.from_scan(scan)
+
+    render_session_review(console, state, expanded_repositories={"repo-t"}, cursor=0)
+
+    text = stream.getvalue()
+    assert "Aug 5 · 2 msgs" in text
+    assert f"Meta {session_id}" not in text
