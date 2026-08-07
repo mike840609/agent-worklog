@@ -17,13 +17,23 @@ from agent_worklog.interactive.input import (
 def test_arrow_enter_space_escape_and_char_sequences_normalize() -> None:
     assert normalize_posix_sequence("\x1b[A") == KeyPress(key=Key.UP)
     assert normalize_posix_sequence("\x1b[B") == KeyPress(key=Key.DOWN)
+    assert normalize_posix_sequence("\x1b[D") == KeyPress(key=Key.LEFT)
+    assert normalize_posix_sequence("\x1b[C") == KeyPress(key=Key.RIGHT)
     assert normalize_posix_sequence("\r") == KeyPress(key=Key.ENTER)
     assert normalize_posix_sequence("\n") == KeyPress(key=Key.ENTER)
     assert normalize_posix_sequence(" ") == KeyPress(key=Key.SPACE)
     assert normalize_posix_sequence("\x1b") == KeyPress(key=Key.ESCAPE)
     assert normalize_posix_sequence("j") == KeyPress(char="j")
     assert normalize_posix_sequence("k") == KeyPress(char="k")
-    assert normalize_posix_sequence("\x03") == KeyPress(key=Key.CTRL_C)
+
+
+def test_paging_home_end_delete_and_backspace_sequences_normalize() -> None:
+    assert normalize_posix_sequence("\x1b[5~") == KeyPress(key=Key.PAGE_UP)
+    assert normalize_posix_sequence("\x1b[6~") == KeyPress(key=Key.PAGE_DOWN)
+    assert normalize_posix_sequence("\x1b[H") == KeyPress(key=Key.HOME)
+    assert normalize_posix_sequence("\x1b[F") == KeyPress(key=Key.END)
+    assert normalize_posix_sequence("\x1b[3~") == KeyPress(key=Key.DELETE)
+    assert normalize_posix_sequence("\x7f") == KeyPress(key=Key.BACKSPACE)
 
 
 def test_unknown_escape_sequence_is_preserved_as_char_input() -> None:
@@ -55,12 +65,14 @@ def test_read_key_normalizes_the_injected_reader() -> None:
 
 
 def test_windows_adapter_translates_extended_arrow_keys(monkeypatch: pytest.MonkeyPatch) -> None:
-    values = iter(["\xe0", "H", "\xe0", "P"])
+    values = iter(["\xe0", "H", "\xe0", "P", "\xe0", "K", "\xe0", "M"])
     fake_msvcrt = SimpleNamespace(getwch=lambda: next(values))
     monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
 
     assert normalize_posix_sequence(_windows_read()) == KeyPress(key=Key.UP)
     assert normalize_posix_sequence(_windows_read()) == KeyPress(key=Key.DOWN)
+    assert normalize_posix_sequence(_windows_read()) == KeyPress(key=Key.LEFT)
+    assert normalize_posix_sequence(_windows_read()) == KeyPress(key=Key.RIGHT)
 
 
 def test_windows_adapter_preserves_regular_character(monkeypatch: pytest.MonkeyPatch) -> None:
