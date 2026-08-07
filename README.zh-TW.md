@@ -114,7 +114,19 @@ agent-worklog doctor
 agent-worklog scan --period last-week
 ```
 
-不使用外部 LLM，直接產生 Markdown 報告：
+產生 Markdown 報告，並交由 LLM 摘要：
+
+```bash
+export OPENAI_API_KEY="sk-..."
+agent-worklog report --period last-week --allow-remote-llm
+```
+
+用預設值就不需要再設定其他東西：透過 OpenAI API 使用 `gpt-5-mini`，並從
+`OPENAI_API_KEY` 讀取金鑰。`--allow-remote-llm` 每次執行都要加上——正是它才會把本機
+去敏後的 evidence 傳送到該 endpoint。沒有加旗標或沒有金鑰時，報告一樣會產生，只是改用
+規則式摘要。
+
+或者完全不使用外部 LLM：
 
 ```bash
 agent-worklog report --period last-week --no-llm

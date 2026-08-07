@@ -118,7 +118,19 @@ Preview how Agent Worklog groups repositories for the previous full week:
 agent-worklog scan --period last-week
 ```
 
-Create the Markdown report without using an external LLM:
+Create the Markdown report, summarized by an LLM:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+agent-worklog report --period last-week --allow-remote-llm
+```
+
+Those defaults need nothing else: `gpt-5-mini` over the OpenAI API, reading the key from
+`OPENAI_API_KEY`. `--allow-remote-llm` is required on every run — it is what sends the
+locally redacted evidence to that endpoint. Without the flag or without a key, the report
+still gets written, using the rule-based summarizer.
+
+Or create it without any external LLM:
 
 ```bash
 agent-worklog report --period last-week --no-llm
