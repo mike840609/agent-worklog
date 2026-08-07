@@ -289,23 +289,28 @@ Example:
 ```text
  Review Sessions                         15 / 18 selected
 
- ▼ ● agent-worklog                         8 / 9
-     ● Fix sanitize export
-   ❯ ● Add interactive menu
-     ○ Scratch parser debugging
-     ● Release v0.8.0
+ ▼ ● agent-worklog                         8 / 9   Aug 3–8 · 24 msgs
+      ● Aug 3 · 4 msgs  Fix sanitize export
+      ❯ ● [sub] Aug 5 · 3 msgs  Add interactive menu
+      ○ Aug 4 · 2 msgs  Scratch parser debugging
+      ● Aug 3 · 1 msgs  Release v0.8.0
 
- ▶ ● assets-tracker                        5 / 5
+ ▶ ● assets-tracker                        5 / 5   Aug 4–7 · 96 msgs
 
- ▼ ◐ obsidian-wiki                         2 / 4
-     ● Improve wiki synthesis
-     ○ Test prompt
-     ● Update docs
-     ○ Scratch session
+ ▼ ◐ obsidian-wiki                         2 / 4   Jul 30 – Aug 4 · 40 msgs
+      ● [sub] Aug 4 · 3 msgs  Improve wiki synthesis
+      ○ Aug 3 · 2 msgs  Test prompt
+      ● Aug 2 · 3 msgs  Update docs
+      ○ [sub] Aug 1 · 1 msgs  Scratch session
 
  ↑↓ Navigate   Space Toggle   Enter Expand
  a All   n None   g Generate   b Back
 ```
+
+Each session row carries a dim date and message count (the in-period
+conversation volume) ahead of its title, so a session's activity and recency
+are visible without opening it. A `[sub]` tag marks sessions spawned by a
+parent session. Repository rows append a date span and summed message count.
 
 ### Repository states
 
@@ -382,7 +387,7 @@ scan
 read-only grouped browser
 ```
 
-Controls are limited to navigation, expand/collapse, Back, and Quit-to-main-menu. Browse Sessions is read-only in P0 and does not transfer its scan directly into Generate Report.
+Controls are limited to navigation, expand/collapse, Back, and Quit-to-main-menu. Browse Sessions is read-only in P0 and does not transfer its scan directly into Generate Report. Browse Sessions uses the same grouped renderer and metadata as Session Review — a date and message count per session, and a date span and message total per repository — so the read-only record carries the same decision signals.
 
 ## Screen 4: Report Result
 
