@@ -79,9 +79,9 @@ def report_result_options(*, dry_run: bool) -> list[str]:
 
 
 def report_preview_capacity(terminal_height: int) -> int:
-    """Content lines available while reserving chrome plus one anti-scroll line."""
+    """Content lines available while keeping the preview within the viewport."""
 
-    return max(1, terminal_height - 7)
+    return max(1, terminal_height - 6)
 
 
 def render_main_menu(console: Console, *, selected: int) -> None:
@@ -333,7 +333,6 @@ def render_report_preview(console: Console, *, content: str, offset: int) -> Non
         console.print(_viewport_text(line))
     if end < len(lines):
         console.print(_viewport_text(f"↓ {len(lines) - end} more", style="dim"))
-    console.print()
     console.print(_viewport_text("↑↓ / jk Scroll   b Back   q Main menu", style="dim"))
 
 
