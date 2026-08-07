@@ -16,10 +16,12 @@ from agent_worklog.interactive.render import (
     build_visible_rows,
     render_main_menu,
     render_recoverable_error,
+    render_report_preview,
     render_report_result,
     render_report_setup,
     render_session_browser,
     render_session_review,
+    report_result_options,
 )
 from agent_worklog.interactive.selection import SelectionState
 from agent_worklog.models.time_range import DateRange
@@ -74,6 +76,7 @@ class _State:
     browser_cursor: int = 0
     review_cursor: int = 0
     result_cursor: int = 0
+    preview_offset: int = 0
     draft: ReportDraft | None = None
     browser_scan: ScanResult | None = None
     selection: SelectionState | None = None
@@ -123,20 +126,22 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.result = None
     state.error = None
     state.review_message = None
+    state.preview_offset = 0
     state.expanded_repositories = set()
     state.screen = Screen.REPORT_SETUP
 
 
-def _begin_browse(state: _State, actions: InteractiveActions) -> None:
-    draft = actions.new_draft()
-    draft.set_harness(actions.choose_harness(draft.harness))
-    if draft.harness != "opencode":
-        draft.set_sanitize(False)
-    draft.set_period(actions.choose_period(draft.period))
+def _load_browse(
+    state: _State,
+    actions: InteractiveActions,
+    draft: ReportDraft,
+) -> None:
+    """Scan an already configured browse draft, preserving it for recovery actions."""
+
+    state.draft = draft
     try:
         scan = actions.scan(draft)
     except AgentWorklogError as exc:
-        state.draft = draft
         state.error = _ErrorState(
             kind="browse-source",
             title=f"Could not read {draft.harness} sessions",
@@ -145,7 +150,6 @@ def _begin_browse(state: _State, actions: InteractiveActions) -> None:
         state.screen = Screen.RECOVERABLE_ERROR
         return
     if scan.loaded_session_count == 0:
-        state.draft = draft
         state.error = _ErrorState(
             kind="browse-empty",
             title="No sessions found",
@@ -155,8 +159,18 @@ def _begin_browse(state: _State, actions: InteractiveActions) -> None:
         return
     state.browser_scan = scan
     state.browser_cursor = 0
+    state.error = None
     state.expanded_repositories = set()
     state.screen = Screen.SESSION_BROWSER
+
+
+def _begin_browse(state: _State, actions: InteractiveActions) -> None:
+    draft = actions.new_draft()
+    draft.set_harness(actions.choose_harness(draft.harness))
+    if draft.harness != "opencode":
+        draft.set_sanitize(False)
+    draft.set_period(actions.choose_period(draft.period))
+    _load_browse(state, actions, draft)
 
 
 def _review(state: _State, actions: InteractiveActions) -> None:
@@ -190,16 +204,12 @@ def _review(state: _State, actions: InteractiveActions) -> None:
     )
     state.review_cursor = 0
     state.review_message = None
-    state.expanded_repositories = set()
+    valid_repositories = set(cached_scan.sessions_by_repository)
+    state.expanded_repositories = state.expansions() & valid_repositories
     state.screen = Screen.SESSION_REVIEW
 
 
-def _main_key(
-    state: _State,
-    key: KeyPress,
-    actions: InteractiveActions,
-    console: Console,
-) -> None:
+def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
     state.main_cursor = _move(state.main_cursor, key, 4)
     if key.key in {Key.ESCAPE, Key.CTRL_C} or _char(key, "q"):
         state.screen = Screen.EXIT
@@ -241,6 +251,16 @@ def _main_key(
         state.screen = Screen.RECOVERABLE_ERROR
 
 
+def _clear_expansions_if_scan_was_invalidated(
+    state: _State,
+    draft: ReportDraft,
+    *,
+    had_scan: bool,
+) -> None:
+    if had_scan and draft.scan is None:
+        state.expanded_repositories = set()
+
+
 def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
     assert state.draft is not None
     draft = state.draft
@@ -258,6 +278,7 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         return
 
     choice = state.setup_cursor
+    had_scan = draft.scan is not None
     if choice == 0:
         _review(state, actions)
     elif choice == 1:
@@ -273,12 +294,14 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         draft.set_include_subagents(not draft.include_subagents)
     elif choice == 5:
         draft.set_narrative(not draft.narrative)
-    elif choice == 6 and draft.harness == "opencode":
-        draft.set_sanitize(not draft.sanitize)
+    elif choice == 6:
+        if draft.harness == "opencode":
+            draft.set_sanitize(not draft.sanitize)
     elif choice == 7:
         draft.set_dry_run(not draft.dry_run)
-    else:
+    elif choice == 8:
         state.screen = Screen.MAIN
+    _clear_expansions_if_scan_was_invalidated(state, draft, had_scan=had_scan)
 
 
 def _browser_key(state: _State, key: KeyPress) -> None:
@@ -341,6 +364,7 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
         return
     state.result = result
     state.result_cursor = 0
+    state.preview_offset = 0
     state.review_message = None
     state.error = None
     state.screen = Screen.REPORT_RESULT
@@ -455,27 +479,38 @@ def _error_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         state.draft.set_period(actions.choose_period(state.draft.period))
     state.selection = None
     state.error = None
-    state.screen = Screen.REPORT_SETUP if error.kind.startswith("report") else Screen.MAIN
+    if error.kind.startswith("browse"):
+        _load_browse(state, actions, state.draft)
+    else:
+        state.expanded_repositories = set()
+        state.screen = Screen.REPORT_SETUP
 
 
-def _result_key(state: _State, key: KeyPress, console: Console) -> None:
+def _result_key(state: _State, key: KeyPress) -> None:
     assert state.draft is not None
     assert state.result is not None
-    state.result_cursor = _move(state.result_cursor, key, 3)
+    options = report_result_options(dry_run=state.draft.dry_run)
+    state.result_cursor = _move(state.result_cursor, key, len(options))
     if key.key in {Key.ESCAPE, Key.CTRL_C} or _char(key, "q") or _char(key, "b"):
         state.screen = Screen.MAIN
         return
     if key.key is not Key.ENTER:
         return
-    if state.result_cursor == 0:
+
+    choice = options[state.result_cursor]
+    if choice == "Preview report":
+        state.preview_offset = 0
+        state.screen = Screen.REPORT_PREVIEW
+    elif choice == "Back to main menu":
         state.screen = Screen.MAIN
-    elif state.result_cursor == 1:
+    elif choice == "Generate another report":
         state.draft.clear_scan()
         state.selection = None
         state.result = None
         state.error = None
         state.review_message = None
         state.setup_cursor = 0
+        state.preview_offset = 0
         state.expanded_repositories = set()
         state.screen = Screen.REPORT_SETUP
     else:
@@ -490,6 +525,23 @@ def _result_key(state: _State, key: KeyPress, console: Console) -> None:
             detail=detail,
         )
         state.screen = Screen.RECOVERABLE_ERROR
+
+
+def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
+    assert state.result is not None
+    if key.key is Key.CTRL_C or _char(key, "q"):
+        state.screen = Screen.MAIN
+        return
+    if key.key is Key.ESCAPE or _char(key, "b"):
+        state.screen = Screen.REPORT_RESULT
+        return
+    lines = state.result.content.splitlines() or [""]
+    capacity = max(1, console.size.height - 6)
+    max_offset = max(0, len(lines) - capacity)
+    if key.key is Key.UP or _char(key, "k"):
+        state.preview_offset = max(0, state.preview_offset - 1)
+    elif key.key is Key.DOWN or _char(key, "j"):
+        state.preview_offset = min(max_offset, state.preview_offset + 1)
 
 
 def _render(state: _State, console: Console) -> None:
@@ -526,6 +578,14 @@ def _render(state: _State, console: Console) -> None:
             session_count=state.result.session_count,
             output_path=state.result.output_path,
             selected=state.result_cursor,
+            dry_run=state.draft.dry_run,
+        )
+    elif state.screen is Screen.REPORT_PREVIEW:
+        assert state.result is not None
+        render_report_preview(
+            console,
+            content=state.result.content,
+            offset=state.preview_offset,
         )
     elif state.screen is Screen.RECOVERABLE_ERROR:
         assert state.error is not None
@@ -554,7 +614,7 @@ def run_interactive(
         except KeyboardInterrupt:
             return
         if state.screen is Screen.MAIN:
-            _main_key(state, key, actions, console)
+            _main_key(state, key, actions)
         elif state.screen is Screen.REPORT_SETUP:
             _setup_key(state, key, actions)
         elif state.screen is Screen.SESSION_BROWSER:
@@ -562,6 +622,8 @@ def run_interactive(
         elif state.screen is Screen.SESSION_REVIEW:
             _review_key(state, key, actions)
         elif state.screen is Screen.REPORT_RESULT:
-            _result_key(state, key, console)
+            _result_key(state, key)
+        elif state.screen is Screen.REPORT_PREVIEW:
+            _preview_key(state, key, console)
         elif state.screen is Screen.RECOVERABLE_ERROR:
             _error_key(state, key, actions)
