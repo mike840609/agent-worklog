@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import select
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Callable
 
 
 class Key(StrEnum):
