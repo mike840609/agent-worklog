@@ -16,6 +16,7 @@ def _invoke(
     output: Path | None = None,
     *extra: str,
     subcommand: str = "report",
+    narrative: bool = False,
 ):
     monkeypatch.setattr(
         cli,
@@ -29,7 +30,9 @@ def _invoke(
     args = [subcommand, "--harness", "codex", "--period", "last-week"]
     if subcommand == "report":
         assert output is not None
-        args += ["--no-llm", "--output", str(output)]
+        if not narrative:
+            args.append("--no-llm")
+        args += ["--output", str(output)]
     args.extend(extra)
     return CliRunner().invoke(cli.app, args)
 
@@ -125,3 +128,24 @@ def test_scan_reports_the_codex_sessions(
     result = _invoke(monkeypatch, codex_home, git_only_runner, subcommand="scan")
 
     assert result.exit_code == 0, result.stdout
+
+
+def test_codex_report_narrative_uses_local_opencode_run(
+    tmp_path: Path, monkeypatch, codex_home: Path, git_only_runner
+) -> None:
+    output = tmp_path / "worklog.md"
+
+    result = _invoke(monkeypatch, codex_home, git_only_runner, output, narrative=True)
+
+    assert result.exit_code == 0, result.stdout
+    content = output.read_text(encoding="utf-8")
+    # The narrative body came from opencode run, wrapped under the report header.
+    assert "# Engineering Worklog" in content
+    assert "NARRATIVE_ACCEPTANCE_MARKER" in content
+    # opencode run was actually invoked (not the structured fallback).
+    assert git_only_runner.run_calls, "opencode run was never invoked"
+    # Full session context reached opencode run via the grouped transcript.
+    transcript = git_only_runner.run_transcripts[0]
+    assert "## Project:" in transcript
+    assert "Add retry to the price fetcher" in transcript
+    assert "I implemented the retry." in transcript

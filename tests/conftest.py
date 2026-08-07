@@ -207,11 +207,26 @@ def mocked_opencode() -> AcceptanceCommandRunner:
 
 @dataclass
 class GitOnlyCommandRunner:
-    """Answer git queries for the Claude Code acceptance run; no harness CLI."""
+    """Answer git queries for the Claude Code and Codex acceptance runs, and fake
+    `opencode run` so the narrative path can be exercised without OpenCode installed.
+    """
 
     remotes: dict[str, str] = field(default_factory=dict)
+    narrative_marker: str = "NARRATIVE_ACCEPTANCE_MARKER"
+    run_calls: list[list[str]] = field(default_factory=list)
+    run_transcripts: list[str] = field(default_factory=list)
 
     def run(self, args: list[str], *, stdout_path: Path | None = None) -> CommandResult:
+        if args[:2] == ["opencode", "run"]:
+            self.run_calls.append(args)
+            transcript_path = Path(args[args.index("--file") + 1])
+            self.run_transcripts.append(transcript_path.read_text(encoding="utf-8"))
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    f"# Weekly Engineering Review\n\n{self.narrative_marker}\n",
+                    encoding="utf-8",
+                )
+            return CommandResult(0, "", "")
         if len(args) >= 5 and args[:2] == ["git", "-C"]:
             cwd = args[2]
             command = args[3:]
