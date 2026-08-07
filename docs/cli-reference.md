@@ -1,0 +1,103 @@
+# CLI reference
+
+Every command, option, and exit code. For a guided tour instead, see the
+[README](../README.md); for settings, the
+[configuration guide](configuration.md).
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `doctor` | Checks that the selected harness and `git` are ready to use. |
+| `scan` | Shows which sessions fall in a period and how they group into repositories. |
+| `report` | Writes the Markdown report for a period. |
+| `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
+| `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
+
+Running `agent-worklog` with no arguments opens a menu over these commands.
+`agent-worklog --help` prints the command list instead.
+
+## Shared options
+
+`scan` and `report` share these options:
+
+| Option | What it does |
+|---|---|
+| `--days N` | Reports the last N days, ending now. |
+| `--period last-week` | Reports the previous full calendar week. `last-week` is the only accepted value. |
+| `--since ISO` | Starts the period at an exact time. |
+| `--until ISO` | Ends the period at an exact time. Requires `--since`. |
+| `--harness NAME` | Harness to read sessions from: `opencode` (default), `claude-code`, or `codex`. |
+| `--root-only` | Leaves out child and subagent sessions. |
+| `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |
+| `--verbose` | Also shows export, fallback, and narrative warnings. For `scan`, also lists each repository's session titles and working folders. |
+| `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
+
+Three rules apply:
+
+- Give exactly one of `--days`, `--period`, or `--since` (`scan` and `report`).
+- Use `--until` only together with `--since` (`scan` and `report`).
+- Do not use `--verbose` and `--quiet` together (all three commands).
+
+## Progress output
+
+While `scan` and `report` are working, they show a transient progress status with the
+current stage. Session and repository stages also show a `completed/total` count.
+`--quiet` hides the progress status. For `report --dry-run`, progress is written to
+stderr so stdout contains only Markdown.
+
+## report
+
+`report` also accepts:
+
+| Option | What it does |
+|---|---|
+| `--output PATH` | Writes to this file instead of the default folder. |
+| `--force` | Replaces the output file if it already exists. |
+| `--dry-run` | Prints the Markdown instead of writing a file. |
+| `--no-llm` | Skips the local `opencode run` narrative and emits the deterministic structured report. |
+| `--detail LEVEL` | How much detail the report contains: `full` (default) or `brief`. |
+
+`--detail brief` produces a short report for a status update: it keeps the
+header, and for each repository the `Repository:` remote line, the session
+counts, and the summary and up to five each of Completed, Problems Resolved,
+and In Progress. It leaves out Key Files, Directories, Sessions, Branches, and
+the usage table. Warnings are always kept, at both detail levels, because they
+report data the tool could not read rather than work you did.
+
+## run
+
+`run` accepts `--verbose` and `--dry-run`. It asks the harness, the period, the detail
+level, and the pruning questions one at a time, previews the scan for approval, and only
+then writes the report. `--dry-run` prints the report instead of writing a file, and
+skips the output-path question since nothing is written for it to answer.
+
+`run` and `config init` need an interactive terminal, so they refuse to run when stdin
+is not a terminal; `scan` and `report` cover the non-interactive route.
+
+## doctor
+
+`doctor` accepts `--harness NAME`, `--quiet`, and `--verbose`. `--quiet` hides the
+list of checks and reports only through the exit code; `--verbose` does not change what
+`doctor` prints.
+
+With `--harness claude-code`, `doctor` checks that the configured `~/.claude/projects`
+directory exists and is readable, instead of checking for the `opencode` executable and
+database. With `--harness codex`, `doctor` checks that the configured `~/.codex`
+directory exists and is readable, and reports which discovery path it will take: the
+state database by name, or `directory scan` when none is present.
+
+## Exit codes
+
+| Code | Meaning |
+|---:|---|
+| 0 | Success |
+| 2 | Invalid command options |
+| 3 | Settings error |
+| 4 | No matching activity |
+| 5 | Harness or Git dependency error |
+| 7 | Report file error |
+
+If one session cannot be read, Agent Worklog skips it and adds a warning to the report.
+If no sessions can be read, the command stops with an error instead of creating an empty
+report.

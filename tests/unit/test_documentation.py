@@ -51,32 +51,26 @@ def test_configuration_doc_lists_the_claude_code_settings() -> None:
     assert "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY" in configuration
 
 
-def test_readmes_document_interactive_progress() -> None:
-    readme = Path("README.md").read_text(encoding="utf-8")
-    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+def test_cli_reference_documents_interactive_progress() -> None:
+    """The option detail moved out of the READMEs into the CLI reference."""
 
-    assert "transient progress status" in readme
-    assert "`--quiet` hides the progress status" in readme
-    assert "暫時性的進度狀態" in readme_zh_tw
-    assert "`--quiet` 會隱藏進度狀態" in readme_zh_tw
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
 
-
-def test_readmes_document_the_report_detail_option() -> None:
-    readme = Path("README.md").read_text(encoding="utf-8")
-    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
-
-    assert "`--detail LEVEL`" in readme
-    assert "`--detail brief`" in readme
-    assert "`--detail LEVEL`" in readme_zh_tw
-    assert "`--detail brief`" in readme_zh_tw
+    assert "transient progress status" in reference
+    assert "`--quiet` hides the progress status" in reference
 
 
-def test_readmes_document_the_verbose_scan_session_listing() -> None:
-    readme = Path("README.md").read_text(encoding="utf-8")
-    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+def test_cli_reference_documents_the_report_detail_option() -> None:
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
 
-    assert "lists each repository's session titles and working folders" in readme
-    assert "列出每個 repository 的工作階段標題與工作目錄" in readme_zh_tw
+    assert "`--detail LEVEL`" in reference
+    assert "`--detail brief`" in reference
+
+
+def test_cli_reference_documents_the_verbose_scan_session_listing() -> None:
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
+
+    assert "lists each repository's session titles and working folders" in reference
 
 
 def test_readmes_document_the_config_command() -> None:
@@ -84,9 +78,40 @@ def test_readmes_document_the_config_command() -> None:
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
     for text in (readme, readme_zh_tw):
-        assert "agent-worklog config set opencode.cli.model deepseek-r1" in text
+        assert "agent-worklog config set harnesses.opencode.cli.model deepseek-r1" in text
         assert "agent-worklog config list" in text
         assert "agent-worklog config unset" in text
+
+
+def test_every_config_key_in_the_docs_is_one_the_cli_accepts() -> None:
+    """Run every documented `config set/unset` key through the real resolver.
+
+    Both READMEs shipped `config set opencode.cli.model ...` for several
+    releases. The accepted key is `harnesses.opencode.cli.model`, so the
+    documented command exited 3 for anyone who copied it — and the test that
+    was supposed to guard the section asserted the broken string verbatim,
+    pinning the bug in place. Only resolving the key can catch that.
+    """
+
+    import re
+
+    from agent_worklog.config_store import resolve_key
+
+    documented: set[str] = set()
+    for name in (
+        "README.md",
+        "README.zh-TW.md",
+        "docs/configuration.md",
+        "docs/cli-reference.md",
+    ):
+        text = Path(name).read_text(encoding="utf-8")
+        documented.update(
+            re.findall(r"agent-worklog config (?:set|unset) ([a-z0-9_]+(?:\.[a-z0-9_]+)+)", text)
+        )
+
+    assert documented, "no documented config keys found; the pattern stopped matching"
+    for key in sorted(documented):
+        resolve_key(key)  # raises on an unknown or misspelled setting
 
 
 def test_configuration_doc_explains_the_file_and_its_precedence() -> None:
@@ -158,9 +183,14 @@ def test_readmes_document_the_interactive_config_commands() -> None:
 
     for text in (readme, readme_zh_tw):
         assert "agent-worklog config init" in text
-        assert "`path`, `list`, `init`, `set`, `unset`" in text or (
-            "`path`、`list`、`init`、`set`、`unset`" in text
-        )
+
+
+def test_cli_reference_lists_every_config_subcommand() -> None:
+    """The subcommand list moved out of the READMEs into the CLI reference."""
+
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
+
+    assert "`path`, `list`, `init`, `set`, `unset`" in reference
 
 
 def test_readmes_document_the_interactive_run_command() -> None:
