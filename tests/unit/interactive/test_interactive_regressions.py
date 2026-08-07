@@ -93,9 +93,10 @@ def _actions(
     *,
     counters: dict[str, int] | None = None,
     scan_callback=None,
+    draft: ReportDraft | None = None,
 ) -> InteractiveActions:
     counters = counters if counters is not None else {}
-    draft = ReportDraft(harness="opencode", period=_period())
+    report_draft = draft or ReportDraft(harness="opencode", period=_period())
 
     def count(name: str) -> None:
         counters[name] = counters.get(name, 0) + 1
@@ -107,7 +108,7 @@ def _actions(
         return _scan()
 
     return InteractiveActions(
-        new_draft=lambda: draft,
+        new_draft=lambda: report_draft,
         choose_harness=lambda current: current,
         choose_period=lambda current: current,
         scan=do_scan,
@@ -164,7 +165,7 @@ def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
         ReportDraft(harness="opencode", period=_period()),
         selected=0,
     )
-    assert len(setup_stream.getvalue().splitlines()) == 20
+    assert len(setup_stream.getvalue().splitlines()) == 21
 
     console, result_stream = _console(width=30, height=30)
     interactive_render.render_report_result(
@@ -201,7 +202,7 @@ def test_posix_navigation_sequences_include_horizontal_and_paging_keys() -> None
 
 def test_posix_reader_consumes_complete_escape_sequence(monkeypatch: pytest.MonkeyPatch) -> None:
     chunks = iter([b"\x1b", b"[", b"5", b"~"])
-    monkeypatch.setattr(interactive_input.sys.stdin, "fileno", lambda: 7)
+    monkeypatch.setattr(interactive_input.sys, "stdin", SimpleNamespace(fileno=lambda: 7))
     monkeypatch.setattr(interactive_input.os, "read", lambda fd, size: next(chunks))
     monkeypatch.setattr(
         interactive_input.select,
@@ -240,7 +241,11 @@ def test_harness_and_period_editors_do_not_fall_back_to_typed_prompts(
     settings = SimpleNamespace(report=SimpleNamespace(timezone="Asia/Taipei"))
     now = datetime(2026, 8, 7, 12, tzinfo=TZ)
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
-    monkeypatch.setattr(cli, "_enabled_harnesses", lambda value: [cli.Harness.OPENCODE, cli.Harness.CODEX])
+    monkeypatch.setattr(
+        cli,
+        "_enabled_harnesses",
+        lambda value: [cli.Harness.OPENCODE, cli.Harness.CODEX],
+    )
     monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
     monkeypatch.setattr(
         cli,
@@ -310,12 +315,12 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
     page_down = getattr(Key, "PAGE_DOWN", None)
     assert page_down is not None, "missing Key.PAGE_DOWN"
     console, stream = _console(height=12)
+    draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
     keys = ScriptedInput(
         [
             char("1"),
             char("r"),
             char("g"),
-            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             KeyPress(key=page_down),
             char("G"),
@@ -326,7 +331,7 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
         ]
     )
 
-    run_interactive(actions=_actions(), input_source=keys, console=console)
+    run_interactive(actions=_actions(draft=draft), input_source=keys, console=console)
 
     text = stream.getvalue()
     assert "line 59" in text
