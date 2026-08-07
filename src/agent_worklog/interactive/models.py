@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from agent_worklog.interactive.selection import noise_reason
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.renderers.markdown import DetailLevel
 from agent_worklog.services.scan import ScanResult
@@ -41,7 +42,9 @@ class ReportDraft:
     def set_scan(self, scan: ScanResult) -> None:
         self.scan = scan
         self.selected_session_ids = {
-            resolved.session.session_id for resolved in scan.resolved_sessions
+            resolved.session.session_id
+            for resolved in scan.resolved_sessions
+            if noise_reason(resolved.session) is None
         }
 
     def set_harness(self, harness: str) -> None:

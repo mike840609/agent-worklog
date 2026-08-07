@@ -5,14 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from agent_worklog.models.session import AgentSession
 from agent_worklog.services.scan import ScanResult
 from agent_worklog.sessions.hierarchy import group_resolved_sessions
+
+_MIN_SUBSTANTIVE_ACTIVITIES = 3
 
 
 class SelectionMark(StrEnum):
     ALL = "all"
     NONE = "none"
     PARTIAL = "partial"
+
+
+def noise_reason(session: AgentSession) -> str | None:
+    """Return a short label if a session is unlikely to belong in a report."""
+
+    if not (session.title or "").strip():
+        return "No title"
+    if len(session.activities) < _MIN_SUBSTANTIVE_ACTIVITIES:
+        return "Low activity"
+    return None
 
 
 @dataclass

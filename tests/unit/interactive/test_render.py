@@ -215,3 +215,40 @@ def test_recoverable_error_renders_safe_detail_and_options() -> None:
     assert "Could not read OpenCode sessions" in text
     assert "session store missing" in text
     assert "❯ Back" in text
+
+
+def test_session_review_labels_a_deselected_noise_session_with_its_reason() -> None:
+    console, stream = _console()
+    untitled = ResolvedSession(
+        session=AgentSession(
+            harness="opencode",
+            session_id="ses-untitled",
+            title=None,
+            working_directory="/tmp/repo-a",
+        ),
+        repository=RepositoryIdentity(
+            repository_id="repo-a",
+            display_name="repo-a",
+            identity_type=RepositoryIdentityType.PATH_FALLBACK,
+            working_directory="/tmp/repo-a",
+            resolution_method="test",
+        ),
+    )
+    sessions = [_resolved("ses-a1", "repo-a"), untitled]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=sessions,
+        sessions_by_repository={"repo-a": sessions},
+    )
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories={"repo-a"},
+        cursor=0,
+    )
+
+    assert "No title" in stream.getvalue()
