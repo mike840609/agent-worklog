@@ -47,7 +47,8 @@ harnesses, it can:
 - Python 3.11 or newer.
 - Git available as `git`.
 - One coding-agent harness: OpenCode (default), Claude Code, or Codex. OpenCode needs an
-  `opencode` executable that provides `opencode db` and `opencode export`;
+  `opencode` executable that provides `opencode db` and `opencode export`; the default
+  narrative report also uses `opencode run`, and the usage section uses `opencode stats`.
   Claude Code and Codex need no CLI, only a readable transcript store
   (`~/.claude/projects` or `~/.codex`).
 

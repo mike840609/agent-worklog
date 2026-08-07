@@ -44,7 +44,8 @@ harness，都可以：
 - Python 3.11 以上。
 - 可以用 `git` 執行的 Git。
 - 一個 coding-agent harness：OpenCode（預設）、Claude Code 或 Codex。OpenCode 需要一個提供
-  `opencode db` 與 `opencode export` 的 `opencode` 執行檔；Claude Code 與 Codex
+  `opencode db` 與 `opencode export` 的 `opencode` 執行檔；預設的敘事式報告還會用到
+  `opencode run`，usage 統計則會用到 `opencode stats`；Claude Code 與 Codex
   不需要命令列工具，只需要一個可讀取的逐字紀錄存放處（`~/.claude/projects` 或 `~/.codex`）。
 
 ## 安裝
