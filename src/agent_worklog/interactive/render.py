@@ -46,7 +46,7 @@ _MARKERS = {
 def _option(label: str, index: int, selected: int) -> Text:
     return Text(
         f"{'❯' if index == selected else ' '} {label}",
-        style="bold" if index == selected else None,
+        style="bold" if index == selected else "",
     )
 
 
@@ -199,7 +199,7 @@ def render_session_review(
     titles = _session_titles(selection.scan)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
-        style = "bold" if index == cursor else None
+        style = "bold" if index == cursor else ""
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories
             arrow = "▼" if expanded else "▶"
@@ -245,7 +245,7 @@ def render_session_browser(
     titles = _session_titles(scan)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
-        style = "bold" if index == cursor else None
+        style = "bold" if index == cursor else ""
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories
             arrow = "▼" if expanded else "▶"
