@@ -47,7 +47,8 @@ harnesses, it can:
 - Python 3.11 or newer.
 - Git available as `git`.
 - One coding-agent harness: OpenCode (default), Claude Code, or Codex. OpenCode needs an
-  `opencode` executable that provides `opencode db` and `opencode export`;
+  `opencode` executable that provides `opencode db` and `opencode export`; the default
+  narrative report also uses `opencode run`, and the usage section uses `opencode stats`.
   Claude Code and Codex need no CLI, only a readable transcript store
   (`~/.claude/projects` or `~/.codex`).
 
@@ -103,13 +104,17 @@ agent-worklog report --period last-week --no-llm
 The default output is written under `reports/`.
 
 Those three commands default to `--harness opencode`. For Claude Code or Codex, add
-`--harness claude-code` or `--harness codex` to each — no OpenCode installation is
-needed (the structured `--no-llm` report works for every harness):
+`--harness claude-code` or `--harness codex` to each. The narrative default behaves
+the same for every harness: it reads that harness's sessions and still calls your
+local `opencode run` to write the review. Add `--no-llm` when OpenCode is not
+installed — the deterministic structured report works for every harness without it:
 
 ```bash
 agent-worklog doctor --harness claude-code
+agent-worklog report --harness claude-code --period last-week
 agent-worklog report --harness claude-code --period last-week --no-llm
 agent-worklog doctor --harness codex
+agent-worklog report --harness codex --period last-week
 agent-worklog report --harness codex --period last-week --no-llm
 ```
 

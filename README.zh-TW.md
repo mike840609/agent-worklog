@@ -44,7 +44,8 @@ harness，都可以：
 - Python 3.11 以上。
 - 可以用 `git` 執行的 Git。
 - 一個 coding-agent harness：OpenCode（預設）、Claude Code 或 Codex。OpenCode 需要一個提供
-  `opencode db` 與 `opencode export` 的 `opencode` 執行檔；Claude Code 與 Codex
+  `opencode db` 與 `opencode export` 的 `opencode` 執行檔；預設的敘事式報告還會用到
+  `opencode run`，usage 統計則會用到 `opencode stats`；Claude Code 與 Codex
   不需要命令列工具，只需要一個可讀取的逐字紀錄存放處（`~/.claude/projects` 或 `~/.codex`）。
 
 ## 安裝
@@ -98,13 +99,16 @@ agent-worklog report --period last-week --no-llm
 預設輸出會寫到 `reports/` 底下。
 
 上面三個指令預設都是 `--harness opencode`。要用 Claude Code 或 Codex 的話，各自加上
-`--harness claude-code` 或 `--harness codex` 即可，不需要安裝 OpenCode
-（結構化的 `--no-llm` 報告對所有 harness 都可用）：
+`--harness claude-code` 或 `--harness codex` 即可。敘事式預設對所有 harness 一致：
+它會讀取該 harness 的工作階段，並同樣呼叫本機的 `opencode run` 來撰寫週報。若未安裝
+OpenCode，加上 `--no-llm`；決定性的結構化報告對所有 harness 都可用，且不需要 OpenCode：
 
 ```bash
 agent-worklog doctor --harness claude-code
+agent-worklog report --harness claude-code --period last-week
 agent-worklog report --harness claude-code --period last-week --no-llm
 agent-worklog doctor --harness codex
+agent-worklog report --harness codex --period last-week
 agent-worklog report --harness codex --period last-week --no-llm
 ```
 
