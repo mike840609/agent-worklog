@@ -17,7 +17,10 @@ _TRUNCATED_ECHO = (
     "    os.write(1,data[:65536])\n"
     "else:\n"
     "    os.write(1,data)\n"
-) % ("x" * 300_000)
+# Enough to overflow the 64 KiB pipe buffer (the whole point of the test) yet
+# small enough that the `python -c "<script>"` argument stays under Linux's
+# per-argument limit (MAX_ARG_STRLEN), which would otherwise raise E2BIG.
+) % ("x" * 70_000)
 
 
 def test_runner_disables_interactive_git_and_uses_argument_list() -> None:
@@ -70,5 +73,5 @@ def test_stdout_path_captures_full_output_beyond_pipe_buffer(tmp_path) -> None:
 
     assert result.returncode == 0
     payload = json.loads(result.stdout)
-    assert len(payload["blob"]) == 300_000
+    assert len(payload["blob"]) == 70_000
     assert out_path.exists()
