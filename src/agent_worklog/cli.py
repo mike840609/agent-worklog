@@ -804,6 +804,7 @@ def _ask_output_path(settings: AppSettings, period: DateRange) -> tuple[Path, bo
 @app.command()
 def run(
     verbose: bool = typer.Option(False, "--verbose"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Answer a few questions, preview the scan, and generate a worklog.
 
@@ -811,6 +812,7 @@ def run(
     scanned and shown for a yes-or-no review, and only then is the report
     written. Useful when a manager wants a report from a machine you are
     already facing instead of you re-typing a long command line.
+    `--dry-run` prints the report instead of writing a file.
     """
 
     reporter = ConsoleReporter(verbose=verbose)
@@ -878,7 +880,7 @@ def run(
                 detail=detail,
                 progress=progress,
             )
-            result = service.generate(force=force, scan=scan)
+            result = service.generate(force=force, dry_run=dry_run, scan=scan)
             if not result.report.repositories:
                 raise NoSessionsError(
                     f"no {harness.value} activity found in the requested period"
@@ -895,6 +897,9 @@ def run(
     except ReportOutputError as exc:
         _handle_expected_error(exc, code=7)
         return
-    reporter.message(f"Report written to {result.output_path}")
+    if dry_run:
+        typer.echo(result.content, nl=False)
+    else:
+        reporter.message(f"Report written to {result.output_path}")
     for warning in result.report.warnings:
         reporter.message(f"Warning: {warning}")

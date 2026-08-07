@@ -119,6 +119,8 @@ agent-worklog report --harness codex --period last-week --no-llm
 agent-worklog run
 ```
 
+加上 `--dry-run` 會把報告印到終端機，而不寫入檔案。
+
 `run` 與 `config init` 需要有互動式終端機，因此當 stdin 不是終端機時，它們會拒絕執行；
 非互動式的工作請改用 `scan` 與 `report`。
 

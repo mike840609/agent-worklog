@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- `agent-worklog run` accepts `--dry-run`, printing the report instead of writing a file,
+  matching what `report --dry-run` already did.
+
 - Add `agent-worklog run`, an interactive wizard that asks the harness, the period, the
   detail level, and the pruning questions one at a time, previews the scan for approval,
   and only then writes the report. It reuses the settings catalog and prompt seams the

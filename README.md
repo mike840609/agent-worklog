@@ -126,6 +126,8 @@ approval before writing the report:
 agent-worklog run
 ```
 
+Pass `--dry-run` to print the report to the terminal instead of writing a file.
+
 `run` and `config init` need an interactive terminal, so they refuse to run when stdin
 is not a terminal; the `scan` and `report` commands cover the non-interactive route.
 

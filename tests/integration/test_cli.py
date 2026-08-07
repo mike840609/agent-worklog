@@ -1112,6 +1112,92 @@ def test_run_accepts_a_non_opencode_harness(
     assert seen["sanitize"] is False
 
 
+def test_run_dry_run_prints_without_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    output_path = tmp_path / "worklog.md"
+    scan = SimpleNamespace(
+        loaded_session_count=2,
+        sessions_by_repository={
+            "git:github.com/mike/agent-worklog": [
+                SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+            ]
+        },
+        warnings=[],
+    )
+    seen: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return scan
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            seen["dry_run"] = dry_run
+            if not dry_run:
+                self.output_path.write_text("# Engineering Worklog\n")
+            report = WorklogReport(
+                generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                period=self.period,
+                repositories=[
+                    RepositorySummary(
+                        repository_id="git:github.com/mike/agent-worklog",
+                        display_name="Agent Worklog",
+                    )
+                ],
+            )
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=report,
+            )
+
+    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+        return StubScanService()
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        allow_remote_llm,
+        detail,
+        progress,
+    ):
+        return StubReportService(output_path, period)
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run", "--dry-run"])
+
+    assert result.exit_code == 0, result.stdout
+    assert seen["dry_run"] is True
+    # A dry run prints the report instead of writing it.
+    assert not output_path.exists()
+    assert "# Engineering Worklog" in result.stdout
+    assert "Report written to" not in result.stdout
+
+
 def test_run_walks_the_real_prompts_on_defaults(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
