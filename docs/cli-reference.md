@@ -14,8 +14,33 @@ Every command, option, and exit code. For a guided tour instead, see the
 | `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
 | `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
-Running `agent-worklog` with no arguments opens a menu over these commands.
-`agent-worklog --help` prints the command list instead.
+Running `agent-worklog` with no arguments opens the key-driven interactive menu.
+`agent-worklog --help` prints the command list instead. Direct subcommands remain unchanged
+and are still the supported interface for scripts, CI, and pipelines.
+
+## Interactive mode
+
+The bare command uses `↑/↓` or `j/k` to move, `Enter` to select, and `q` to leave the
+current flow. The main screen offers Generate Report, Browse Sessions, Check Setup, and
+Settings. Completed actions return to an interactive screen or the main menu instead of
+requiring a new process.
+
+Generate Report opens a summary before scanning. Harness, period, detail, subagent
+inclusion, narrative mode, sanitize mode, and dry-run mode can be changed independently;
+only harness, period, subagent inclusion, and sanitize changes invalidate a cached scan.
+
+Review Sessions groups the scanned activity by repository. On a repository row, `Space`
+toggles the whole repository and `Enter` expands or collapses it. Inside an expanded
+repository, `Space` toggles an individual session. The repository marker is derived from
+its children: `●` means all selected, `○` means none selected, and `◐` means partially
+selected. `a` selects all sessions, `n` selects none, `g` generates, and `b` returns to
+the setup summary. A report cannot be generated with zero selected sessions.
+
+Interactive reports use the normal default output path. If that path already exists, the
+recovery screen offers **Overwrite once**; it does not silently replace the file. After a
+successful report, the result screen can return to the main menu, start another report
+with the same option values, or print the report path. Browse Sessions is read-only in
+this release.
 
 ## Shared options
 
