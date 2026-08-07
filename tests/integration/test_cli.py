@@ -1198,6 +1198,123 @@ def test_run_dry_run_prints_without_writing(
     assert "Report written to" not in result.stdout
 
 
+def test_bare_invocation_runs_the_report_wizard(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def stub_run(*, verbose: bool, dry_run: bool) -> None:
+        seen["verbose"] = verbose
+        seen["dry_run"] = dry_run
+
+    monkeypatch.setattr(cli, "run", stub_run)
+    _as_a_terminal(monkeypatch)
+
+    # "1" chooses the report, "n" declines the dry run.
+    result = runner.invoke(cli.app, [], input="1\nn\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert seen == {"verbose": False, "dry_run": False}
+
+
+def test_bare_invocation_can_ask_the_report_wizard_for_a_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def stub_run(*, verbose: bool, dry_run: bool) -> None:
+        seen["dry_run"] = dry_run
+
+    monkeypatch.setattr(cli, "run", stub_run)
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="1\ny\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert seen["dry_run"] is True
+
+
+def test_bare_invocation_runs_the_settings_walk(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: list[bool] = []
+    monkeypatch.setattr(cli, "config_init", lambda: called.append(True))
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="2\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert called == [True]
+
+
+def test_the_menu_asks_again_after_an_answer_it_does_not_know(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A typo must not end the session; the choices are shown again."""
+
+    called: list[bool] = []
+    monkeypatch.setattr(cli, "config_init", lambda: called.append(True))
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="banana\n2\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert called == [True]
+    assert "choose one of the listed options" in result.stdout
+    # The choices are printed again, so the second answer is an informed one.
+    assert result.stdout.count("Generate a report") >= 2
+
+
+def test_the_menu_quits_without_doing_anything(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "config_init", lambda: pytest.fail("nothing should run"))
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="q\n")
+
+    assert result.exit_code == 0, result.stdout
+
+
+def test_an_empty_answer_quits_the_menu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "config_init", lambda: pytest.fail("nothing should run"))
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="\n")
+
+    assert result.exit_code == 0, result.stdout
+
+
+def test_the_menu_needs_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = runner.invoke(cli.app, [], input="1\n")
+
+    assert result.exit_code == 3
+    assert "needs a terminal" in result.stdout
+    # The way out is naming a subcommand, not a different interactive command.
+    assert "subcommand" in result.stdout
+
+
+def test_naming_a_subcommand_does_not_open_the_menu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The callback must stand aside whenever Typer has a command to run."""
+
+    monkeypatch.setattr(
+        cli, "_interactive_menu", lambda: pytest.fail("the menu must not open")
+    )
+
+    result = runner.invoke(cli.app, ["config", "path"])
+
+    assert result.exit_code == 0, result.stdout
+
+
+def test_help_still_works_without_the_menu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        cli, "_interactive_menu", lambda: pytest.fail("the menu must not open")
+    )
+
+    result = runner.invoke(cli.app, ["--help"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Usage" in result.stdout
+
+
 def test_run_walks_the_real_prompts_on_defaults(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

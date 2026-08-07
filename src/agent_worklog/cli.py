@@ -64,7 +64,6 @@ _DETAIL_OPTION = typer.Option(
 )
 
 app = typer.Typer(
-    no_args_is_help=True,
     help="Turn coding-agent sessions into repository-based engineering reports.",
 )
 
@@ -903,3 +902,51 @@ def run(
         reporter.message(f"Report written to {result.output_path}")
     for warning in result.report.warnings:
         reporter.message(f"Warning: {warning}")
+
+
+_MENU_CHOICES = """What do you want to do?
+  1  Generate a report
+  2  Edit settings
+  q  Quit"""
+
+
+def _interactive_menu() -> None:
+    """Offer the commands as a numbered list and run the one that is chosen.
+
+    Every entry hands off to the command that already does the work, so the
+    questions each one asks live in one place rather than being restated here.
+    """
+
+    try:
+        _require_a_terminal(
+            "agent-worklog needs a terminal to show the menu; "
+            "run a subcommand directly instead"
+        )
+        while True:
+            typer.echo(_MENU_CHOICES)
+            # `_prompt` appends ": ", so a word reads better here than ">".
+            answer = _prompt("Choice").casefold()
+            if not answer or answer == "q":
+                return
+            if answer == "1":
+                dry_run = _ask_yes(
+                    "Dry run - print the report instead of writing a file?",
+                    default=False,
+                )
+                run(verbose=False, dry_run=dry_run)
+                return
+            if answer == "2":
+                config_init()
+                return
+            typer.echo("  choose one of the listed options")
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
+        return
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """Open the menu when no subcommand was named."""
+
+    if ctx.invoked_subcommand is None:
+        _interactive_menu()
