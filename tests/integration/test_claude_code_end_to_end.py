@@ -15,6 +15,7 @@ def _invoke(
     git_only_runner,
     output: Path,
     *extra_args: str,
+    narrative: bool = False,
 ):
     monkeypatch.setattr(
         cli,
@@ -26,20 +27,11 @@ def _invoke(
         "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
         str(claude_code_projects),
     )
-    return CliRunner().invoke(
-        cli.app,
-        [
-            "report",
-            "--harness",
-            "claude-code",
-            "--period",
-            "last-week",
-            "--no-llm",
-            "--output",
-            str(output),
-            *extra_args,
-        ],
-    )
+    args = ["report", "--harness", "claude-code", "--period", "last-week"]
+    if not narrative:
+        args.append("--no-llm")
+    args += ["--output", str(output), *extra_args]
+    return CliRunner().invoke(cli.app, args)
 
 
 def test_claude_code_report_groups_by_repository_and_reports_usage(
@@ -117,3 +109,25 @@ def test_scan_reports_the_claude_code_sessions(
     )
 
     assert result.exit_code == 0, result.stdout
+
+
+def test_claude_code_report_narrative_uses_local_opencode_run(
+    tmp_path: Path,
+    monkeypatch,
+    claude_code_projects: Path,
+    git_only_runner,
+) -> None:
+    output = tmp_path / "worklog.md"
+
+    result = _invoke(
+        monkeypatch, claude_code_projects, git_only_runner, output, narrative=True
+    )
+
+    assert result.exit_code == 0, result.stdout
+    content = output.read_text(encoding="utf-8")
+    assert "# Engineering Worklog" in content
+    assert "NARRATIVE_ACCEPTANCE_MARKER" in content
+    assert git_only_runner.run_calls, "opencode run was never invoked"
+    transcript = git_only_runner.run_transcripts[0]
+    assert "## Project:" in transcript
+    assert "Add retry to the price fetcher" in transcript
