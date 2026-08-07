@@ -1,3 +1,4 @@
+import inspect
 import os
 import sys
 from datetime import datetime, timedelta
@@ -11,7 +12,8 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 import agent_worklog.cli as cli
-from agent_worklog.errors import ReportOutputError
+from agent_worklog import config_store
+from agent_worklog.errors import ConfigurationError, ReportOutputError
 from agent_worklog.models.report import RepositorySummary, WorklogReport
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.progress import NullProgressReporter, ProgressStage
@@ -696,3 +698,973 @@ def test_config_list_exits_3_instead_of_a_traceback_on_an_unreadable_file(
 
     assert result.exit_code == 3
     assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def _as_a_terminal(monkeypatch) -> None:
+    """Pretend stdin is a terminal.
+
+    CliRunner feeds stdin through a pipe, so the real `isatty()` is False and
+    every prompting test would hit the non-terminal guard instead of the
+    behavior it means to exercise.
+    """
+
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: True)
+
+
+def test_config_set_prompts_when_the_value_is_omitted(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE", raising=False)
+    _as_a_terminal(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["config", "set", "harnesses.opencode.cli.executable"],
+        input="opencode-dev\n",
+    )
+
+    assert result.exit_code == 0
+    assert "opencode" in result.stdout  # the prompt shows the value in force
+    assert cli._load_settings().harnesses.opencode.cli.executable == "opencode-dev"
+
+
+def test_config_set_prompt_leaves_the_setting_alone_on_an_empty_answer(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE", raising=False)
+    _as_a_terminal(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "harnesses.opencode.cli.executable"], input="\n"
+    )
+
+    assert result.exit_code == 0
+    assert "unchanged" in result.stdout
+    assert not path.exists()
+
+
+def test_config_set_prompt_rejects_a_bad_value_and_asks_again(monkeypatch, tmp_path) -> None:
+    """A typo must not abort the prompt — the point of prompting is to fix it."""
+
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    _as_a_terminal(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["config", "set", "harnesses.opencode.cli.timeout_seconds"],
+        input="abc\n45\n",
+    )
+
+    assert result.exit_code == 0
+    assert "invalid value for harnesses.opencode.cli.timeout_seconds" in result.stdout
+    assert cli._load_settings().harnesses.opencode.cli.timeout_seconds == 45.0
+
+
+def test_config_set_rejects_an_unknown_key_before_prompting(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    _as_a_terminal(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "harnesses.opencode.cli.mdoel"], input="deepseek-r1\n"
+    )
+
+    assert result.exit_code == 3
+    assert "did you mean harnesses.opencode.cli.model" in result.stdout
+
+
+def test_config_set_without_a_value_needs_a_terminal(monkeypatch, tmp_path) -> None:
+    """In a pipe or in CI there is nobody to answer, so fail instead of reading stdin."""
+
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "harnesses.opencode.cli.model"], input="deepseek-r1\n"
+    )
+
+    assert result.exit_code == 3
+    assert "needs a terminal" in result.stdout
+
+
+def test_config_set_with_a_value_still_works_without_a_terminal(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "harnesses.opencode.cli.model", "deepseek-r1"]
+    )
+
+    assert result.exit_code == 0
+    assert cli._load_settings().harnesses.opencode.cli.model == "deepseek-r1"
+
+
+def test_config_init_walks_every_setting_and_writes_only_the_answers(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.delenv("AGENT_WORKLOG_REPORT__TIMEZONE", raising=False)
+    _as_a_terminal(monkeypatch)
+    settings = config_store.setting_keys()
+    answers = {
+        "report.timezone": "Europe/Berlin",
+        "harnesses.opencode.cli.model": "deepseek-r1",
+    }
+    keystrokes = "".join(f"{answers.get(setting.key, '')}\n" for setting in settings)
+
+    result = CliRunner().invoke(cli.app, ["config", "init"], input=keystrokes)
+
+    assert result.exit_code == 0, result.stdout
+    # Every setting was offered, not just the two that were answered.
+    for setting in settings:
+        assert setting.key in result.stdout
+    assert config_store.stored_values(path) == {
+        "AGENT_WORKLOG_REPORT__TIMEZONE": "Europe/Berlin",
+        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL": "deepseek-r1",
+    }
+    assert "Wrote 2 settings" in result.stdout
+
+
+def test_config_init_writes_nothing_when_every_answer_is_empty(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    _as_a_terminal(monkeypatch)
+    keystrokes = "\n" * len(config_store.setting_keys())
+
+    result = CliRunner().invoke(cli.app, ["config", "init"], input=keystrokes)
+
+    assert result.exit_code == 0
+    assert not path.exists()
+    assert "Wrote 0 settings" in result.stdout
+
+
+def test_config_init_needs_a_terminal(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = CliRunner().invoke(cli.app, ["config", "init"], input="\n" * 20)
+
+    assert result.exit_code == 3
+    assert "needs a terminal" in result.stdout
+    # The way out of a non-interactive shell differs per command, so the
+    # message must point at `config set`, not at "pass the value".
+    assert "config set" in result.stdout
+
+
+def _answer_for_run(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    output_path: Path,
+    period: DateRange,
+    final_accept: bool,
+) -> None:
+    """Wire the run wizard's questions to fixed answers.
+
+    sanitize/children/remote-LLM are all answered with their defaults kept by
+    returning False for anything that is not the final preview review.
+    """
+
+    def ask_yes(prompt, *, default):
+        return final_accept and "Generate the report" in prompt
+
+    def ask_harness(settings):
+        return cli.Harness.OPENCODE
+
+    def ask_detail():
+        return cli.DetailLevel.FULL
+
+    def ask_output_path(settings, asked_period):
+        return output_path, False
+
+    monkeypatch.setattr(cli, "_ask_yes", ask_yes)
+    monkeypatch.setattr(cli, "_ask_harness", ask_harness)
+    monkeypatch.setattr(cli, "_ask_period", lambda settings_tz, now: period)
+    monkeypatch.setattr(cli, "_ask_detail", ask_detail)
+    monkeypatch.setattr(cli, "_ask_output_path", ask_output_path)
+    _as_a_terminal(monkeypatch)
+
+
+def test_run_refuses_a_non_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 3
+    # The message must name the non-interactive route, not ask for a terminal.
+    assert "needs a terminal" in result.stdout
+    assert "scan" in result.stdout
+    assert "report" in result.stdout
+
+
+def test_run_scans_once_then_generates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    output_path = tmp_path / "worklog.md"
+    scan = SimpleNamespace(
+        loaded_session_count=2,
+        sessions_by_repository={
+            "git:github.com/mike/agent-worklog": [
+                SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+            ]
+        },
+        warnings=[],
+    )
+    seen: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return scan
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            seen["scan"] = scan
+            self.output_path.write_text("# Engineering Worklog\n")
+            report = WorklogReport(
+                generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                period=self.period,
+                repositories=[
+                    RepositorySummary(
+                        repository_id="git:github.com/mike/agent-worklog",
+                        display_name="Agent Worklog",
+                    )
+                ],
+            )
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=report,
+            )
+
+    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+        seen["root_only"] = root_only
+        return StubScanService()
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        seen["root_only"] = root_only
+        return StubReportService(output_path, period)
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 0, result.stdout
+    assert output_path.exists()
+    assert "Report written to" in result.stdout
+    # The preview scan is reused for generation, not re-run.
+    assert seen["scan"] is scan
+    # The wizard answered "no" to including child sessions, so both the scan
+    # and the report were told to keep to root sessions.
+    assert seen["root_only"] is True
+
+
+def test_run_aborts_when_the_preview_is_declined(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_path = tmp_path / "worklog.md"
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=False,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        lambda settings, period, root_only=False, *, harness, sanitize, progress: StubScanService(),
+    )
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 0
+    assert "Aborted" in result.stdout
+    assert not output_path.exists()
+
+
+def test_run_accepts_a_non_opencode_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-OpenCode harness must not trip the sanitize-only-for-OpenCode guard."""
+
+    output_path = tmp_path / "worklog.md"
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    seen: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            self.output_path.write_text("# Engineering Worklog\n")
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=WorklogReport(
+                    generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                    period=self.period,
+                    repositories=[
+                        RepositorySummary(
+                            repository_id="git:github.com/mike/agent-worklog",
+                            display_name="Agent Worklog",
+                        )
+                    ],
+                ),
+            )
+
+    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+        seen["harness"] = harness
+        seen["sanitize"] = sanitize
+        return StubScanService()
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        return StubReportService(output_path, period)
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.CLAUDE_CODE)
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 0, result.stdout
+    assert output_path.exists()
+    assert seen["harness"] is cli.Harness.CLAUDE_CODE
+    assert seen["sanitize"] is False
+
+
+def test_run_dry_run_prints_without_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    output_path = tmp_path / "worklog.md"
+    scan = SimpleNamespace(
+        loaded_session_count=2,
+        sessions_by_repository={
+            "git:github.com/mike/agent-worklog": [
+                SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+            ]
+        },
+        warnings=[],
+    )
+    seen: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return scan
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            seen["dry_run"] = dry_run
+            if not dry_run:
+                self.output_path.write_text("# Engineering Worklog\n")
+            report = WorklogReport(
+                generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                period=self.period,
+                repositories=[
+                    RepositorySummary(
+                        repository_id="git:github.com/mike/agent-worklog",
+                        display_name="Agent Worklog",
+                    )
+                ],
+            )
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=report,
+            )
+
+    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+        return StubScanService()
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        return StubReportService(output_path, period)
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run", "--dry-run"])
+
+    assert result.exit_code == 0, result.stdout
+    assert seen["dry_run"] is True
+    # A dry run prints the report instead of writing it.
+    assert not output_path.exists()
+    assert "# Engineering Worklog" in result.stdout
+    assert "Report written to" not in result.stdout
+
+
+def test_a_dry_run_does_not_ask_where_to_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dry run writes nothing, so the output question has no answer that matters.
+
+    Asking it would have the user decide whether to overwrite a file the command
+    is never going to touch.
+    """
+
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    output_path = tmp_path / "worklog.md"
+    seen: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=2,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            seen["force"] = force
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=WorklogReport(
+                    generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                    period=self.period,
+                    repositories=[
+                        RepositorySummary(
+                            repository_id="git:github.com/mike/agent-worklog",
+                            display_name="Agent Worklog",
+                        )
+                    ],
+                ),
+            )
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        seen["output_path"] = output_path
+        return StubReportService(output_path, period)
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    # `_answer_for_run` wires the output question to an answer; replace that with
+    # a failure, since a dry run must not reach it at all.
+    monkeypatch.setattr(
+        cli,
+        "_ask_output_path",
+        lambda settings, period: pytest.fail("a dry run must not ask where to write"),
+    )
+    monkeypatch.setattr(cli, "_default_output_path", lambda settings, period: output_path)
+    monkeypatch.setattr(
+        cli, "_build_scan_service", lambda *args, **kwargs: StubScanService()
+    )
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run", "--dry-run"])
+
+    assert result.exit_code == 0, result.stdout
+    # The default path is used, unforced, and the report is printed not written.
+    assert seen["output_path"] == output_path
+    assert seen["force"] is False
+    assert not output_path.exists()
+    assert "# Engineering Worklog" in result.stdout
+
+
+def test_bare_invocation_runs_the_report_wizard(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def stub_run(*, verbose: bool, dry_run: bool) -> None:
+        seen["verbose"] = verbose
+        seen["dry_run"] = dry_run
+
+    monkeypatch.setattr(cli, "run", stub_run)
+    _as_a_terminal(monkeypatch)
+
+    # "1" chooses the report, "n" declines the dry run.
+    result = runner.invoke(cli.app, [], input="1\nn\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert seen == {"verbose": False, "dry_run": False}
+
+
+def test_bare_invocation_can_ask_the_report_wizard_for_a_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def stub_run(*, verbose: bool, dry_run: bool) -> None:
+        seen["dry_run"] = dry_run
+
+    monkeypatch.setattr(cli, "run", stub_run)
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="1\ny\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert seen["dry_run"] is True
+
+
+def test_bare_invocation_runs_the_settings_walk(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: list[bool] = []
+    monkeypatch.setattr(cli, "config_init", lambda: called.append(True))
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="4\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert called == [True]
+
+
+def test_the_menu_asks_again_after_an_answer_it_does_not_know(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A typo must not end the session; the choices are shown again."""
+
+    called: list[bool] = []
+    monkeypatch.setattr(cli, "config_init", lambda: called.append(True))
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="banana\n4\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert called == [True]
+    assert "choose one of the listed options" in result.stdout
+    # The choices are printed again, so the second answer is an informed one.
+    assert result.stdout.count("Generate a report") >= 2
+
+
+def _nothing_dispatches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail on any dispatched command, so a mis-routed answer cannot slip past.
+
+    Guarding only one of the four would let a quit answer that reached a
+    different entry pass the test.
+    """
+
+    for name in ("config_init", "run", "doctor", "scan"):
+        monkeypatch.setattr(
+            cli, name, lambda *args, **kwargs: pytest.fail("nothing should run")
+        )
+
+
+def test_the_menu_quits_without_doing_anything(monkeypatch: pytest.MonkeyPatch) -> None:
+    _nothing_dispatches(monkeypatch)
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="q\n")
+
+    assert result.exit_code == 0, result.stdout
+
+
+def test_an_empty_answer_quits_the_menu(monkeypatch: pytest.MonkeyPatch) -> None:
+    _nothing_dispatches(monkeypatch)
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="\n")
+
+    assert result.exit_code == 0, result.stdout
+
+
+def test_the_menu_needs_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = runner.invoke(cli.app, [], input="1\n")
+
+    assert result.exit_code == 3
+    assert "needs a terminal" in result.stdout
+    # The way out is naming a subcommand, not a different interactive command.
+    assert "subcommand" in result.stdout
+
+
+def test_naming_a_subcommand_does_not_open_the_menu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The callback must stand aside whenever Typer has a command to run."""
+
+    monkeypatch.setattr(
+        cli, "_interactive_menu", lambda: pytest.fail("the menu must not open")
+    )
+
+    result = runner.invoke(cli.app, ["config", "path"])
+
+    assert result.exit_code == 0, result.stdout
+
+
+def test_help_still_works_without_the_menu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        cli, "_interactive_menu", lambda: pytest.fail("the menu must not open")
+    )
+
+    result = runner.invoke(cli.app, ["--help"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Usage" in result.stdout
+
+
+def test_run_walks_the_real_prompts_on_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drive the wizard through its actual prompts, answering nothing.
+
+    Pressing Enter at every question must accept the defaults, which is the
+    interactive equivalent of `report --days 7 --no-llm`.
+    """
+
+    output_path = tmp_path / "worklog.md"
+    captured: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            self.output_path.write_text("# Engineering Worklog\n")
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=WorklogReport(
+                    generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                    period=self.period,
+                    repositories=[
+                        RepositorySummary(
+                            repository_id="git:github.com/mike/agent-worklog",
+                            display_name="Agent Worklog",
+                        )
+                    ],
+                ),
+            )
+
+    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+        captured["harness"] = harness
+        captured["sanitize"] = sanitize
+        captured["root_only"] = root_only
+        return StubScanService()
+
+    def build_report(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        captured["no_llm"] = no_llm
+        captured["detail"] = detail
+        return StubReportService(output_path, period)
+
+    _as_a_terminal(monkeypatch)
+    monkeypatch.setattr(cli, "_default_output_path", lambda settings, period: output_path)
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan)
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+
+    result = runner.invoke(cli.app, ["run"], input="\n" * 8)
+
+    assert result.exit_code == 0, result.stdout
+    assert output_path.exists()
+    assert "Report written to" in result.stdout
+    assert captured["harness"] is cli.Harness.OPENCODE
+    assert captured["sanitize"] is False
+    # Enter at the narrative question keeps `report`'s default: the narrative
+    # review, which is `no_llm=False`.
+    assert captured["no_llm"] is False
+    assert captured["root_only"] is False
+    assert captured["detail"] is cli.DetailLevel.FULL
+
+
+def test_bare_invocation_runs_doctor_against_the_chosen_harness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def stub_doctor(*, harness, verbose: bool, quiet: bool) -> None:
+        seen["harness"] = harness
+        seen["verbose"] = verbose
+        seen["quiet"] = quiet
+
+    monkeypatch.setattr(cli, "doctor", stub_doctor)
+    monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.OPENCODE)
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="3\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert seen == {
+        "harness": cli.Harness.OPENCODE,
+        "verbose": False,
+        "quiet": False,
+    }
+
+
+def test_bare_invocation_runs_scan_against_the_chosen_harness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def stub_scan(
+        *, days, period, since, until, root_only, sanitize, harness, verbose, quiet
+    ) -> None:
+        seen["harness"] = harness
+        seen["days"] = days
+        seen["period"] = period
+        seen["since"] = since
+        seen["until"] = until
+        seen["root_only"] = root_only
+        seen["sanitize"] = sanitize
+
+    monkeypatch.setattr(cli, "scan", stub_scan)
+    monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.CLAUDE_CODE)
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="2\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert seen["harness"] is cli.Harness.CLAUDE_CODE
+    # `scan` has no default period — leaving days/period/since all unset is a
+    # usage error — so the menu names the last full week, as `run` does when its
+    # period question is answered with Enter. Everything else keeps the
+    # command-line default; the period questions belong to `run`, not here.
+    assert seen["days"] is None
+    assert seen["period"] == "last-week"
+    assert seen["since"] is None
+    assert seen["until"] is None
+    assert seen["root_only"] is False
+    assert seen["sanitize"] is None
+
+
+def test_the_menu_runs_the_real_scan_command_over_the_last_week(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drive the real `scan` from the menu, stubbing only the service layer.
+
+    The other menu tests replace the dispatched command with a stub, so they
+    assert the argument list but never execute it. That cannot catch an argument
+    list `scan` itself rejects — and `scan` has no default period, so an
+    all-`None` period is a `typer.BadParameter`, not a default. Patching
+    `_build_scan_service` is the seam the non-menu `scan` tests already use.
+    """
+
+    captured: dict[str, object] = {}
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    def build(
+        settings,
+        period,
+        root_only=False,
+        *,
+        harness=cli.Harness.OPENCODE,
+        sanitize=False,
+        progress=None,
+    ):
+        captured["period"] = period
+        captured["harness"] = harness
+        return StubScanService()
+
+    monkeypatch.setattr(cli, "_build_scan_service", build)
+    _as_a_terminal(monkeypatch)
+
+    # "2" chooses the scan; the empty answer keeps the default harness.
+    result = runner.invoke(cli.app, [], input="2\n\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert captured["harness"] is cli.Harness.OPENCODE
+    assert captured["period"] == DateRange.previous_week(
+        now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ)
+    )
+    # The scan ran to completion and rendered its table.
+    assert "Agent Worklog Scan" in result.stdout
+
+
+def test_the_menu_passes_every_parameter_of_the_commands_it_dispatches() -> None:
+    """Guard against signature drift in the commands the menu calls directly.
+
+    Calling a Typer command function in Python bypasses Typer's parameter
+    processing, so any argument the menu leaves out arrives as a
+    `typer.OptionInfo` rather than a value. Typer types `typer.Option` as `Any`
+    and every parameter has a default, so neither pyright nor ruff notices.
+    Adding an option to one of these commands must therefore fail here until the
+    menu's call is updated too.
+    """
+
+    assert set(inspect.signature(cli.scan).parameters) == {
+        "days",
+        "period",
+        "since",
+        "until",
+        "root_only",
+        "sanitize",
+        "harness",
+        "verbose",
+        "quiet",
+    }
+    assert set(inspect.signature(cli.doctor).parameters) == {"harness", "verbose", "quiet"}
+    assert set(inspect.signature(cli.run).parameters) == {"verbose", "dry_run"}
+
+
+def test_the_menu_reports_a_configuration_error_from_the_harness_question(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every harness disabled must exit 3, not raise through the callback."""
+
+    def refuse(settings):
+        raise ConfigurationError("every harness is disabled by configuration")
+
+    monkeypatch.setattr(cli, "_ask_harness", refuse)
+    monkeypatch.setattr(cli, "doctor", lambda **kwargs: pytest.fail("must not run"))
+    _as_a_terminal(monkeypatch)
+
+    result = runner.invoke(cli.app, [], input="3\n")
+
+    assert result.exit_code == 3
+    assert "every harness is disabled by configuration" in result.stdout

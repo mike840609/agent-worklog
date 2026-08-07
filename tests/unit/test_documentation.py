@@ -150,3 +150,65 @@ def test_privacy_doc_warns_about_raw_export_and_dry_run() -> None:
     assert "raw" in privacy
     assert "--dry-run" in privacy
     assert "opencode run" in privacy
+
+
+def test_readmes_document_the_interactive_config_commands() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        assert "agent-worklog config init" in text
+        assert "`path`, `list`, `init`, `set`, `unset`" in text or (
+            "`path`、`list`、`init`、`set`、`unset`" in text
+        )
+
+
+def test_readmes_document_the_interactive_run_command() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        assert "agent-worklog run" in text
+        assert "`run`" in text
+
+
+def test_configuration_doc_explains_what_an_empty_answer_means() -> None:
+    """The prompt's Enter key and `config set <key> ""` mean different things."""
+
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "agent-worklog config init" in configuration
+    assert 'an empty answer means "leave this as it is", not "erase it"' in configuration
+    # Prompting in CI must fail rather than read stdin. Asserted without the
+    # surrounding line break, so reflowing the paragraph does not break it.
+    assert "rather than reading from stdin" in configuration
+
+
+def test_readmes_document_the_interactive_menu() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        # Running the command bare now prompts rather than printing help, so
+        # both the menu and the way to still get help must be documented.
+        assert "agent-worklog --help" in text
+        # Asserted in English for both READMEs, because the zh-TW one keeps the
+        # terminal block untranslated — that is what the terminal really prints.
+        # An `or "產生報告" in text` alternative was dropped: that phrase already
+        # appears in an unrelated zh-TW privacy bullet, so the moment anyone
+        # translated the block the assertion would pass off that line and stop
+        # guarding the zh-TW README at all.
+        assert "Generate a report" in text
+
+
+def test_readmes_document_the_run_dry_run_option() -> None:
+    """`--dry-run` predates this work on `report`, so assert on `run`'s own line.
+
+    A bare `"--dry-run" in text` passes on the pre-change docs and guards nothing.
+    """
+
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    assert "Pass `--dry-run` to print the report to the terminal" in readme
+    assert "加上 `--dry-run` 會把報告印到終端機" in readme_zh_tw

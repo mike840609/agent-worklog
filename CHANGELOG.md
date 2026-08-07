@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Running `agent-worklog` with no arguments opens a menu for generating a report, editing
+  settings, checking the setup, or scanning sessions, instead of printing help. Each entry
+  hands off to the existing command, so the menu restates none of their questions.
+  `agent-worklog --help` still prints the command list. Scanning from the menu covers the
+  last full week, the same period `run` offers first.
+- `agent-worklog run` accepts `--dry-run`, printing the report instead of writing a file,
+  matching what `report --dry-run` already did. A dry run skips the output-path question,
+  since nothing is written for it to answer.
+- Add `agent-worklog run`, an interactive wizard that asks the harness, the period, the
+  detail level, and the pruning questions one at a time, previews the scan for approval,
+  and only then writes the report. It reuses the settings catalog and prompt seams the
+  `config` commands added, so it needs no list it must maintain itself.
+- Previewed scans are reused rather than re-run: `run` scans once, shows the grouping for
+  a yes-or-no review, and passes that same `ScanResult` into report generation so nothing
+  is scanned a second time.
+- Refuse to prompt when stdin is not a terminal, with exit code 3 and a message naming
+  the non-interactive alternative. A `run` piped in CI fails fast instead of hanging.
+- Add `agent-worklog config init`, which walks every setting in turn showing the value
+  in force, and let `agent-worklog config set <key>` ask for the value when it is left
+  out. Both derive their prompts from the same settings catalog `config list` uses, so
+  a new field in the settings model is offered without a wizard script to maintain.
+- Treat an empty answer at a prompt as "leave this setting alone" rather than as the
+  empty value `config set <key> ""` writes. Nothing is recorded for a setting you press
+  Enter on, so a walkthrough you answer nothing in writes no file at all; `config unset`
+  stays the way to take a setting already in the file back to its default.
+- Ask again instead of aborting when a prompted value is one the settings would reject,
+  so a typo partway through `config init` does not discard the answers before it.
+- Refuse to prompt when stdin is not a terminal, with exit code 3 and a message naming
+  the non-interactive way to do the same thing. In CI or a pipeline there is nobody to
+  answer, and consuming piped stdin would be a stranger failure than saying so.
+
 ## 0.7.0 - 2026-08-06
 
 - `report` now defaults to a narrative weekly review written by the locally installed

@@ -118,14 +118,50 @@ agent-worklog report --harness codex --period last-week
 agent-worklog report --harness codex --period last-week --no-llm
 ```
 
+Prefer a guided walk-through instead of flags? `run` asks the same questions one at a
+time — which harness, which period, how much detail — then previews the scan for your
+approval before writing the report:
+
+```bash
+agent-worklog run
+```
+
+Pass `--dry-run` to print the report to the terminal instead of writing a file.
+
+`run` and `config init` need an interactive terminal, so they refuse to run when stdin
+is not a terminal; the `scan` and `report` commands cover the non-interactive route.
+
+### Interactive menu
+
+Run the command with no arguments to pick what to do from a menu:
+
+```
+$ agent-worklog
+What do you want to do?
+  1  Generate a report
+  2  Scan sessions
+  3  Check setup (doctor)
+  4  Edit settings
+  q  Quit
+Choice:
+```
+
+Each entry runs the matching command, asking only the questions that command
+cannot answer for itself. `Scan sessions` asks which harness and then scans the
+last full week; use `run`, or `scan` with its own flags, for any other period.
+Use `agent-worklog --help` for the command list, and run a subcommand directly
+in scripts — with no terminal to prompt at, the menu exits with status 3 rather
+than reading from stdin.
+
 ## Command reference
 
 | Command | What it does |
-|---|---|
+|---|---|---|
 | `doctor` | Checks that the selected harness and `git` are ready to use. |
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
-| `config` | Shows and edits the settings file: `path`, `list`, `set`, `unset`. |
+| `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
+| `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
 `scan` and `report` share these options:
 
@@ -183,11 +219,23 @@ Agent Worklog reads every setting from an environment variable, and reads a sett
 file for the ones the environment does not set. For each setting it takes the
 environment variable, then the settings file, then the default.
 
-Set a value once, in the settings file:
+To set everything up at once, `config init` walks through every setting, showing the
+value in force in brackets. Press Enter to keep it:
+
+```
+$ agent-worklog config init
+Press Enter to keep the value in brackets. Every setting is optional.
+report.timezone [Asia/Taipei]:
+llm.model [gpt-5-mini]: gpt-5
+Wrote 1 setting to /home/dev/.config/agent-worklog/config.env
+```
+
+Or set a value once, in the settings file:
 
 ```bash
 agent-worklog config set opencode.cli.model deepseek-r1
 agent-worklog config set report.timezone Europe/Berlin
+agent-worklog config set llm.model            # leave the value out to be asked for it
 agent-worklog config list
 ```
 

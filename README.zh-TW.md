@@ -112,6 +112,39 @@ agent-worklog report --harness codex --period last-week
 agent-worklog report --harness codex --period last-week --no-llm
 ```
 
+想要一步步引導操作，而不是背一堆旗標的話，也可以使用 `run`：它會依序問要
+由哪個 harness、哪個期間、要多詳細，接著在寫報告前先預覽掃描結果給你確認：
+
+```bash
+agent-worklog run
+```
+
+加上 `--dry-run` 會把報告印到終端機，而不寫入檔案。
+
+`run` 與 `config init` 需要有互動式終端機，因此當 stdin 不是終端機時，它們會拒絕執行；
+非互動式的工作請改用 `scan` 與 `report`。
+
+### 互動式選單
+
+不帶任何參數執行指令，就會出現選單：
+
+```
+$ agent-worklog
+What do you want to do?
+  1  Generate a report
+  2  Scan sessions
+  3  Check setup (doctor)
+  4  Edit settings
+  q  Quit
+Choice:
+```
+
+每個選項都會執行對應的指令，只詢問該指令無法自行決定的問題。`Scan sessions`
+會先問要用哪個 harness，接著掃描上一個完整的週；想要其他期間，請改用 `run`
+或直接對 `scan` 下旗標。用 `agent-worklog --help` 查看指令清單；在腳本中請直接
+呼叫子指令，因為沒有終端機可以作答時，選單會以狀態碼 3 結束，而不會去讀取
+stdin。
+
 ## 指令參考
 
 | 指令 | 用途 |
@@ -119,7 +152,8 @@ agent-worklog report --harness codex --period last-week --no-llm
 | `doctor` | 檢查目前選用的 harness 與 `git` 是否就緒。 |
 | `scan` | 顯示哪些工作階段落在指定期間內，以及它們如何分組成 repository。 |
 | `report` | 產生指定期間的 Markdown 報告。 |
-| `config` | 顯示與編輯設定檔：`path`、`list`、`set`、`unset`。 |
+| `run` | 引導式精靈：挑選 harness 與期間、預覽掃描結果，再寫出報告。 |
+| `config` | 顯示與編輯設定檔：`path`、`list`、`init`、`set`、`unset`。 |
 
 `scan` 與 `report` 共用這些選項：
 
@@ -168,11 +202,23 @@ In Progress 各最多五條，不輸出 Key Files、Directories、Sessions、Bra
 Agent Worklog 的每項設定都先讀環境變數，環境變數沒有設定的部分則讀設定檔。每項設定的
 順序是：環境變數、設定檔、預設值。
 
-設定一次就會寫進設定檔：
+若要一次完成設定，`config init` 會逐項詢問每個設定，並在中括號內顯示目前生效的值。
+按 Enter 即保留該值：
+
+```
+$ agent-worklog config init
+Press Enter to keep the value in brackets. Every setting is optional.
+report.timezone [Asia/Taipei]:
+llm.model [gpt-5-mini]: gpt-5
+Wrote 1 setting to /home/dev/.config/agent-worklog/config.env
+```
+
+也可以逐項寫進設定檔：
 
 ```bash
 agent-worklog config set opencode.cli.model deepseek-r1
 agent-worklog config set report.timezone Europe/Berlin
+agent-worklog config set llm.model            # 省略數值即會詢問
 agent-worklog config list
 ```
 
