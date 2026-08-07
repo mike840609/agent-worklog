@@ -29,14 +29,17 @@ def test_terminal_context_restores_after_exception() -> None:
         reader=lambda: "q",
     )
 
-    with pytest.raises(RuntimeError, match="boom"):
-        with terminal:
-            raise RuntimeError("boom")
+    with pytest.raises(RuntimeError, match="boom"), terminal:
+        raise RuntimeError("boom")
 
     assert events == ["setup", "restore:token"]
 
 
 def test_read_key_normalizes_the_injected_reader() -> None:
-    terminal = TerminalInput(setup=lambda: None, restore=lambda token: None, reader=lambda: "\x1b[A")
+    terminal = TerminalInput(
+        setup=lambda: None,
+        restore=lambda token: None,
+        reader=lambda: "\x1b[A",
+    )
 
     assert terminal.read_key() == KeyPress(key=Key.UP)
