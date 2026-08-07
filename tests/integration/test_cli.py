@@ -1174,7 +1174,6 @@ def test_run_dry_run_prints_without_writing(
         now,
         harness,
         sanitize,
-        allow_remote_llm,
         detail,
         progress,
     ):
@@ -1259,7 +1258,6 @@ def test_a_dry_run_does_not_ask_where_to_write(
         now,
         harness,
         sanitize,
-        allow_remote_llm,
         detail,
         progress,
     ):
