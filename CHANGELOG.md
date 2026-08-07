@@ -12,7 +12,6 @@ All notable changes to this project are documented in this file.
 - `agent-worklog run` accepts `--dry-run`, printing the report instead of writing a file,
   matching what `report --dry-run` already did. A dry run skips the output-path question,
   since nothing is written for it to answer.
-
 - Add `agent-worklog run`, an interactive wizard that asks the harness, the period, the
   detail level, and the pruning questions one at a time, previews the scan for approval,
   and only then writes the report. It reuses the settings catalog and prompt seams the
@@ -22,7 +21,6 @@ All notable changes to this project are documented in this file.
   is scanned a second time.
 - Refuse to prompt when stdin is not a terminal, with exit code 3 and a message naming
   the non-interactive alternative. A `run` piped in CI fails fast instead of hanging.
-
 - Add `agent-worklog config init`, which walks every setting in turn showing the value
   in force, and let `agent-worklog config set <key>` ask for the value when it is left
   out. Both derive their prompts from the same settings catalog `config list` uses, so
