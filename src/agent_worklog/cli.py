@@ -226,6 +226,7 @@ def _build_scan_service(
         resolver=RepositoryResolver(runner=git_runner),
         progress=progress,
         excluded_repository_ids=frozenset(settings.report.excluded_repository_ids()),
+        runner=git_runner,
     )
 
 

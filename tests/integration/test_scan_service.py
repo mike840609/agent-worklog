@@ -355,3 +355,107 @@ def test_when_every_session_is_excluded_the_scan_counts_them_all() -> None:
     assert result.loaded_session_count == 0
     assert result.excluded_session_count == 3
     assert any("Excluded 3 sessions" in warning for warning in result.warnings)
+
+
+class BranchAwareSource:
+    """A live-repository session and a detached-worktree session that still
+    carries the branch its (now-deleted) worktree was checked out to."""
+
+    def __init__(self, *, live_cwd: str, detached_cwd: str, branch: str) -> None:
+        self._live_cwd = live_cwd
+        self._detached_cwd = detached_cwd
+        self._branch = branch
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return [
+            SessionDescriptor(harness="claude-code", session_id="live-1"),
+            SessionDescriptor(harness="claude-code", session_id="detached-1"),
+        ]
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        is_detached = descriptor.session_id == "detached-1"
+        return AgentSession(
+            harness="claude-code",
+            session_id=descriptor.session_id,
+            working_directory=self._detached_cwd if is_detached else self._live_cwd,
+            branch=self._branch if is_detached else None,
+            activities=[
+                SessionActivity(
+                    activity_id=f"{descriptor.session_id}:a1",
+                    activity_type=ActivityType.USER_MESSAGE,
+                    timestamp=datetime(2026, 7, 22, tzinfo=TZ),
+                    content="Add weekly report generation",
+                )
+            ],
+        )
+
+
+def test_scan_reattaches_a_detached_session_by_branch(tmp_path, fake_runner) -> None:
+    """A worktree removed from disk leaves its session with a fallback identity;
+    the live repository sharing its branch absorbs it back, and the scan says so."""
+
+    live_dir = tmp_path / "repo-a"
+    live_dir.mkdir()
+    source = BranchAwareSource(
+        live_cwd=str(live_dir),
+        detached_cwd="/deleted/worktree",
+        branch="feature/from-worktree",
+    )
+    resolver = IdResolver(
+        {
+            "live-1": RepositoryIdentity(
+                repository_id="git:github.com/mike/repo-a",
+                display_name="Repo A",
+                identity_type=RepositoryIdentityType.GIT_REMOTE,
+                normalized_remote="github.com/mike/repo-a",
+                branch="main",
+                working_directory=str(live_dir),
+                resolution_method="git_origin_remote",
+            ),
+            "detached-1": RepositoryIdentity(
+                repository_id="harness:claude-code:detached-1",
+                display_name="detached-1",
+                identity_type=RepositoryIdentityType.HARNESS_PROJECT,
+                working_directory="/deleted/worktree",
+                resolution_method="harness_project_id",
+            ),
+        }
+    )
+    fake_runner.set_output(
+        "for-each-ref --format=%(refname) refs/heads refs/remotes",
+        "refs/heads/feature/from-worktree",
+    )
+    service = ScanService(
+        source=source, period=period(), resolver=resolver, runner=fake_runner
+    )
+
+    result = service.scan()
+
+    assert list(result.sessions_by_repository) == ["git:github.com/mike/repo-a"]
+    assert {
+        item.session.session_id
+        for item in result.sessions_by_repository["git:github.com/mike/repo-a"]
+    } == {"live-1", "detached-1"}
+    assert any(
+        "Reattached 1 session(s) to their repository by branch" in warning
+        for warning in result.warnings
+    ), result.warnings
+    assert not any("fallback repository identity" in warning for warning in result.warnings)
+
+
+def test_scan_with_nothing_to_reattach_behaves_like_the_baseline(fake_runner) -> None:
+    """A scan wired with a runner but no detachable sessions must match a scan
+    run without one at all — reattachment must be invisible when it finds nothing."""
+
+    baseline = ScanService(
+        source=FakeSource(), period=period(), resolver=StaticResolver()
+    ).scan()
+    with_runner = ScanService(
+        source=FakeSource(),
+        period=period(),
+        resolver=StaticResolver(),
+        runner=fake_runner,
+    ).scan()
+
+    assert with_runner == baseline
+    assert not any("Reattached" in warning for warning in baseline.warnings)

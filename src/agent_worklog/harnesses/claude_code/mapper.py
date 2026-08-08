@@ -112,6 +112,22 @@ def _accumulate(target: dict[str, int], source: Mapping[str, int]) -> dict[str, 
     return target
 
 
+def _last_git_branch(records: Iterable[Mapping[str, Any]]) -> str | None:
+    """Return the last non-empty `gitBranch` seen, or None if the key never appears.
+
+    `gitBranch` rides on most line types (hook attachments, user turns, assistant
+    turns), not only the `user`/`assistant` records the rest of the mapper reads,
+    so this scans every record rather than piggybacking on the main loop.
+    """
+
+    branch: str | None = None
+    for record in records:
+        value = record.get("gitBranch")
+        if isinstance(value, str) and value:
+            branch = value
+    return branch
+
+
 def _tool_result_flags(
     records: Iterable[Mapping[str, Any]],
 ) -> dict[str, dict[str, object]]:
@@ -266,6 +282,7 @@ class ClaudeCodeJsonlMapper:
             created_at=first_timestamp or descriptor.created_at,
             updated_at=last_timestamp or descriptor.updated_at,
             working_directory=working_directory or descriptor.working_directory_hint,
+            branch=_last_git_branch(records),
             project_id_hint=descriptor.project_id_hint,
             activities=activities,
             token_usage=TokenUsage(
