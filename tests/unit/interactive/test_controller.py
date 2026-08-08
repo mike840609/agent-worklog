@@ -385,3 +385,76 @@ def test_setup_g_on_an_empty_scan_does_not_reach_the_result_screen() -> None:
 
     assert counters.get("scan") == 1
     assert counters.get("generate") is None
+
+
+def _setup_populated_scan(draft: ReportDraft) -> ScanResult:
+    """A scan with one real session, so generating from the settings screen has input."""
+    sessions = [
+        ResolvedSession(
+            session=AgentSession(
+                harness="opencode",
+                session_id="ses-0",
+                title="Session 0",
+                working_directory="/tmp/repo-a",
+                activities=[
+                    SessionActivity(
+                        activity_id=f"act-{i}",
+                        activity_type=ActivityType.USER_MESSAGE,
+                    )
+                    for i in range(5)
+                ],
+            ),
+            repository=RepositoryIdentity(
+                repository_id="repo-a",
+                display_name="repo-a",
+                identity_type=RepositoryIdentityType.PATH_FALLBACK,
+                working_directory="/tmp/repo-a",
+                resolution_method="test",
+            ),
+        )
+    ]
+    return ScanResult(
+        period=_period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=sessions,
+        sessions_by_repository={"repo-a": sessions},
+    )
+
+
+def test_setup_enter_on_the_action_row_generates() -> None:
+    """The action row is the visible route to the same thing `g` does."""
+    counters: dict[str, int] = {}
+    input_source = ScriptedInput(
+        [char("1")]
+        + [KeyPress(key=Key.DOWN)] * 7
+        + [KeyPress(key=Key.ENTER), char("q"), char("q")]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan, counters=counters),
+        input_source=input_source,
+        console=_console(),
+    )
+
+    assert counters.get("scan") == 1
+    assert counters.get("generate") == 1
+
+
+def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
+    """Generating writes a file, so a stray left/right while scrolling must not trigger it."""
+    counters: dict[str, int] = {}
+    input_source = ScriptedInput(
+        [char("1")]
+        + [KeyPress(key=Key.DOWN)] * 7
+        + [char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan, counters=counters),
+        input_source=input_source,
+        console=_console(),
+    )
+
+    assert counters.get("generate") is None

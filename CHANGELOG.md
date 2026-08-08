@@ -18,11 +18,13 @@ All notable changes to this project are documented in this file.
   below it, with an action and a Back row mixed into the same list — fourteen lines
   carrying seven facts, and the value under edit sitting eight rows from the cursor
   editing it. The settings are now the list: the cursor rests on a value and `←→`
-  changes it in place. Actions moved to the status bar, where Review Sessions already
-  keeps `a All` and `g Generate`, so the two screens work the same way. `g` generates
-  from the settings screen, which previously had no way to generate at all despite its
-  title, and dispatch now follows the field under the cursor rather than its position
-  in a list, so a reordered or added setting cannot silently edit its neighbour.
+  changes it in place, with `Generate report` on its own row below them rather than
+  buried among the settings it acts on. The screen previously had no way to generate
+  at all despite its title, so that row — and `g` alongside it — is new. It answers to
+  Enter only, because generating writes a file and a stray arrow key while scrolling
+  the settings should not produce one. Dispatch now follows the field under the cursor
+  rather than its position in a list, so a reordered or added setting cannot silently
+  edit its neighbour.
 - Session review and browse rows now show density — a dim date and message count
   per session (the conversation actually recorded in the report period), a `[sub]`
   tag for subagent sessions, and a date span plus message total per repository —

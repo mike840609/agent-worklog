@@ -32,7 +32,7 @@ from agent_worklog.interactive.render import (
     render_session_review,
     report_preview_capacity,
     report_result_options,
-    report_setup_fields,
+    report_setup_rows,
 )
 from agent_worklog.interactive.selection import SelectionState
 from agent_worklog.models.time_range import DateRange
@@ -332,8 +332,8 @@ def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str)
 
 
 def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
-    fields = report_setup_fields()
-    state.setup_cursor = _move(state.setup_cursor, key, len(fields))
+    rows = report_setup_rows()
+    state.setup_cursor = _move(state.setup_cursor, key, len(rows))
     if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = Screen.MAIN
         return
@@ -343,10 +343,17 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
     if _char(key, "g"):
         _generate_from_setup(state, actions)
         return
+    row = rows[state.setup_cursor]
+    if row == rows[-1]:
+        # Generating writes a file, so the action row answers to Enter alone —
+        # a stray left/right while scrolling the settings must not produce a report.
+        if key.key is Key.ENTER:
+            _generate_from_setup(state, actions)
+        return
     horizontal_edit = key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
     if key.key is not Key.ENTER and not horizontal_edit:
         return
-    _edit_setup_field(state, actions, field=fields[state.setup_cursor])
+    _edit_setup_field(state, actions, field=row)
 
 
 def _tree_rows(scan: ScanResult, state: _State) -> list:

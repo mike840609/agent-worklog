@@ -60,13 +60,14 @@ Turn coding-agent sessions into engineering reports
 ```
 
 選擇 **Generate a report** 後會先看到設定本身，游標就停在它所改動的值上，不需要從頭回答一連串
-問題。按 `g` 直接產生報告，或按 `r` 進入 **Review sessions**：那裡會依 repository 分組，在
-repository 上按 `Space` 可整組選取或取消，展開後也可以逐一切換 session。
+問題。**Generate report** 就排在設定下方，也可以直接按 `g`。按 `r` 進入 **Review sessions**：
+那裡會依 repository 分組，在 repository 上按 `Space` 可整組選取或取消，展開後也可以逐一切換
+session。
 
 ```text
 Generate Report
 ══════════════════════════════════════════════════════
-Adjust the settings, then press g to generate:
+Adjust the settings, then generate:
 
 ▶ Harness      OpenCode
   Period       Aug 03 – Aug 10
@@ -76,7 +77,9 @@ Adjust the settings, then press g to generate:
   Sanitize     Off
   Dry run      Off
 
-↑↓ jk │ ←→ hl Change │ r Review │ g Generate │ ? Help │ b Back │ q Menu
+  Generate report
+
+↑↓ jk │ ←→ hl Change │ Enter Select │ r Review │ g Generate │ ? Help │ b Back
 ```
 
 Review Sessions 會依每個 repository 在這段期間實際佔掉多少對話量排出長條，不必逐一打開

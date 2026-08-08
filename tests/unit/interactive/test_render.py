@@ -957,3 +957,19 @@ def test_review_numbers_repositories_in_display_order() -> None:
     assert text.count("1.") == 1
     assert text.count("2.") == 1
     assert text.count("3.") == 1
+
+
+def test_report_setup_separates_the_generate_action_from_the_settings() -> None:
+    """Generate is the screen's destination, so it sits below the settings, not among them."""
+
+    console, stream = _console()
+    draft = ReportDraft(harness="opencode", period=_period())
+
+    render_report_setup(console, draft, selected=7)
+
+    lines = stream.getvalue().splitlines()
+    action = next(i for i, line in enumerate(lines) if "Generate report" in line)
+    dry_run = next(i for i, line in enumerate(lines) if "Dry run" in line)
+    assert action > dry_run
+    assert lines[action - 1].strip() == ""
+    assert lines[action].startswith("▶")

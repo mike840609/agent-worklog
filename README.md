@@ -63,14 +63,15 @@ Turn coding-agent sessions into engineering reports
 ```
 
 Choosing Generate a report opens the settings first, so you can change only what matters
-before scanning — the cursor sits on the value it changes. Press `g` to generate straight
-away, or `r` for **Review sessions**, which groups the scan by repository; press `Space` on
-a repository to toggle the whole group, or expand it and toggle individual sessions.
+before scanning — the cursor sits on the value it changes. **Generate report** sits below
+them, or press `g`. `r` opens **Review sessions**, which groups the scan by repository;
+press `Space` on a repository to toggle the whole group, or expand it and toggle
+individual sessions.
 
 ```text
 Generate Report
 ══════════════════════════════════════════════════════
-Adjust the settings, then press g to generate:
+Adjust the settings, then generate:
 
 ▶ Harness      OpenCode
   Period       Aug 03 – Aug 10
@@ -80,7 +81,9 @@ Adjust the settings, then press g to generate:
   Sanitize     Off
   Dry run      Off
 
-↑↓ jk │ ←→ hl Change │ r Review │ g Generate │ ? Help │ b Back │ q Menu
+  Generate report
+
+↑↓ jk │ ←→ hl Change │ Enter Select │ r Review │ g Generate │ ? Help │ b Back
 ```
 
 Review Sessions weighs each repository by how much of the period it actually accounts for,

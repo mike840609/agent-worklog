@@ -47,8 +47,11 @@ _SETUP_FIELDS = [
     "Sanitize",
     "Dry run",
 ]
+# Generate is the screen's one terminal action, so it gets a row of its own below
+# a blank line. Review stays a key: it is a detour, not the destination.
+_GENERATE_ROW = "Generate report"
 _SETUP_LABEL_CELLS = 13
-_SETUP_SUBTITLE = "Adjust the settings, then press g to generate:"
+_SETUP_SUBTITLE = "Adjust the settings, then generate:"
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
 _DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
 _ERROR_HINTS = [
@@ -105,10 +108,10 @@ def main_menu_options() -> list[str]:
     return list(_MAIN_OPTIONS)
 
 
-def report_setup_fields() -> list[str]:
-    """Return the report settings in display order."""
+def report_setup_rows() -> list[str]:
+    """Return the navigable rows in display order: settings, then the action."""
 
-    return list(_SETUP_FIELDS)
+    return [*_SETUP_FIELDS, _GENERATE_ROW]
 
 
 def _option(label: str, index: int, selected: int) -> str:
@@ -387,11 +390,19 @@ def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) 
             style=style,
         )
     console.print()
+    action_selected = selected == len(_SETUP_FIELDS)
+    _print_viewport_line(
+        console,
+        f"{_CURSOR if action_selected else ' '} {_GENERATE_ROW}",
+        style="bold" if action_selected else "",
+    )
+    console.print()
     _print_hints(
         console,
         [
             "↑↓ jk",
             "←→ hl Change",
+            "Enter Select",
             "r Review",
             "g Generate",
             "? Help",
