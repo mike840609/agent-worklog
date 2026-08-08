@@ -64,7 +64,7 @@ class InteractiveActions:
 
     new_draft: Callable[[], ReportDraft]
     choose_harness: Callable[[str], str]
-    choose_period: Callable[[DateRange], DateRange]
+    choose_period: Callable[[str | None], tuple[str, DateRange]]
     scan: Callable[[ReportDraft], ScanResult]
     generate: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
     doctor: Callable[[str], list[str]]
@@ -315,7 +315,7 @@ def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str)
         if draft.harness != "opencode":
             draft.set_sanitize(False)
     elif field == "Period":
-        draft.set_period(actions.choose_period(draft.period))
+        draft.set_period(*actions.choose_period(draft.period_label))
     elif field == "Detail":
         detail = DetailLevel.BRIEF if draft.detail is DetailLevel.FULL else DetailLevel.FULL
         draft.set_detail(detail)
@@ -675,7 +675,7 @@ def _error_key(
         if state.draft.harness != "opencode":
             state.draft.set_sanitize(False)
     else:
-        state.draft.set_period(actions.choose_period(state.draft.period))
+        state.draft.set_period(*actions.choose_period(state.draft.period_label))
     state.selection = None
     if error.kind.startswith("browse"):
         _load_browse(state, actions, state.draft)

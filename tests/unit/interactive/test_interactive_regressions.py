@@ -120,7 +120,7 @@ def _actions(
     return InteractiveActions(
         new_draft=lambda: report_draft,
         choose_harness=lambda current: current,
-        choose_period=lambda current: current,
+        choose_period=lambda current: ("Last week", _period()),
         scan=do_scan,
         generate=lambda draft, scan, force: InteractiveReportResult(
             output_path=Path("reports/worklog.md"),
@@ -264,9 +264,9 @@ def test_harness_and_period_editors_do_not_fall_back_to_typed_prompts(
     )
 
     assert cli_actions._choose_harness("opencode") == "codex"
-    assert cli_actions._choose_period(DateRange.previous_week(now=now)) == DateRange.from_days(
-        days=7,
-        now=now,
+    assert cli_actions._choose_period("This week") == (
+        "Last week",
+        DateRange.previous_week(now=now),
     )
 
 

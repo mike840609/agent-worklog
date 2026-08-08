@@ -194,7 +194,7 @@ def test_non_opencode_sanitize_enter_stays_in_report_setup() -> None:
         actions=_actions(
             draft=draft,
             scan_callback=lambda value: _scan(),
-            choose_period=lambda current: current,
+            choose_period=lambda current: ("Last week", _period()),
             counters=counters,
         ),
         input_source=keys,
@@ -211,10 +211,10 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
     counters: dict[str, int] = {}
     period_calls = 0
 
-    def choose_period(current: DateRange) -> DateRange:
+    def choose_period(current: str | None) -> tuple[str, DateRange]:
         nonlocal period_calls
         period_calls += 1
-        return _period(10)
+        return ("Last 10 days", _period(10))
 
     def scan_callback(value: ReportDraft) -> ScanResult:
         return _scan(0) if value.period == _period() else _scan(1)
@@ -265,7 +265,7 @@ def test_browse_empty_state_says_configuration_exclusion() -> None:
         actions=_actions(
             draft=draft,
             scan_callback=lambda value: _scan(0, excluded=2),
-            choose_period=lambda current: current,
+            choose_period=lambda current: ("Last week", _period()),
             counters=counters,
         ),
         input_source=keys,
@@ -287,7 +287,7 @@ def test_report_empty_state_says_configuration_exclusion() -> None:
         actions=_actions(
             draft=draft,
             scan_callback=lambda value: _scan(0, excluded=2),
-            choose_period=lambda current: current,
+            choose_period=lambda current: ("Last week", _period()),
             counters=counters,
         ),
         input_source=keys,
@@ -335,7 +335,7 @@ def test_dry_run_result_can_preview_generated_report_content() -> None:
         actions=_actions(
             draft=draft,
             scan_callback=lambda value: _scan(),
-            choose_period=lambda current: current,
+            choose_period=lambda current: ("Last week", _period()),
             counters=counters,
             content="# Dry run report\n\nBody\n",
         ),
@@ -387,7 +387,7 @@ def test_review_back_and_reenter_preserves_repository_expansion() -> None:
         actions=_actions(
             draft=draft,
             scan_callback=lambda value: _scan(1),
-            choose_period=lambda current: current,
+            choose_period=lambda current: ("Last week", _period()),
             counters=counters,
         ),
         input_source=keys,

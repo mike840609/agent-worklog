@@ -34,7 +34,7 @@ def _draft_with_scan() -> ReportDraft:
 def test_period_change_clears_scan_and_selection() -> None:
     draft = _draft_with_scan()
 
-    draft.set_period(_period(21))
+    draft.set_period("Last 21 days", _period(21))
 
     assert draft.scan is None
     assert draft.selected_session_ids == set()
@@ -84,7 +84,7 @@ def test_setting_same_scan_identity_value_does_not_clear_cache() -> None:
     scan = draft.scan
 
     draft.set_harness("opencode")
-    draft.set_period(_period(20))
+    draft.set_period("Last 20 days", _period(20))
     draft.set_include_subagents(True)
     draft.set_sanitize(False)
 

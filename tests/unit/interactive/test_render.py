@@ -1025,3 +1025,31 @@ def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
 
     selected_action = _row(stream.getvalue(), "Generate report")
     assert _glyph_style(selected_action, "▶") == "1;36"
+
+
+def test_report_setup_names_the_period_as_well_as_dating_it() -> None:
+    """`Last week` and `Last 7 days` look alike as bare dates; the name separates them."""
+
+    console, stream = _console()
+    draft = ReportDraft(
+        harness="opencode",
+        period=_period(),
+        period_label="This week",
+    )
+
+    render_report_setup(console, draft, selected=0)
+
+    row = _row(stream.getvalue(), "Period")
+    assert "This week ·" in row
+
+
+def test_report_setup_shows_bare_dates_for_an_unnamed_period() -> None:
+    """A `--since` window has no name to show, and must not render one."""
+
+    console, stream = _console()
+    draft = ReportDraft(harness="opencode", period=_period())
+
+    render_report_setup(console, draft, selected=0)
+
+    row = _row(stream.getvalue(), "Period")
+    assert "·" not in row

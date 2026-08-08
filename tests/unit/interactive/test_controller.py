@@ -117,9 +117,9 @@ def _actions(
         count("choose_harness")
         return "codex" if current != "codex" else "opencode"
 
-    def choose_period(current: DateRange) -> DateRange:
+    def choose_period(current: str | None) -> tuple[str, DateRange]:
         count("choose_period")
-        return _period(10)
+        return ("Last 10 days", _period(10))
 
     def scan(draft_value: ReportDraft) -> ScanResult:
         count("scan")

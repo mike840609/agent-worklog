@@ -332,6 +332,14 @@ def _period_label(period: DateRange) -> str:
     return f"{period.since:%b %d} – {period.until:%b %d}"
 
 
+def _period_value(draft: ReportDraft) -> str:
+    """The setup row names the window as well as dating it, so `Last week` and
+    `Last 7 days` stop looking like the same thing on a Saturday."""
+
+    dates = _period_label(draft.period)
+    return f"{draft.period_label} · {dates}" if draft.period_label else dates
+
+
 def _harness_label(harness: str) -> str:
     return {
         "opencode": "OpenCode",
@@ -377,7 +385,7 @@ def _setup_value(draft: ReportDraft, field: str) -> str:
     if field == "Harness":
         return _harness_label(draft.harness)
     if field == "Period":
-        return _period_label(draft.period)
+        return _period_value(draft)
     if field == "Detail":
         return draft.detail.value.title()
     if field == "Subagents":
