@@ -61,6 +61,7 @@ class AgentSession(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     working_directory: str | None = None
+    branch: str | None = None
     project_id_hint: str | None = None
     activities: list[SessionActivity] = Field(default_factory=list)
     token_usage: TokenUsage | None = None

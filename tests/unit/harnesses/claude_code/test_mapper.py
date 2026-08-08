@@ -318,3 +318,31 @@ def test_every_activity_has_a_timestamp(records, descriptor) -> None:
 
     assert session.activities
     assert all(activity.timestamp is not None for activity in session.activities)
+
+
+def test_uses_the_last_git_branch_seen(records, descriptor) -> None:
+    """The fixture's `gitBranch` changes from "main" to "feat/retry" to "feat";
+    the last one written wins, matching the branch checked out when the
+    transcript ended."""
+
+    session = ClaudeCodeJsonlMapper().map(records, descriptor)
+
+    assert session.branch == "feat"
+
+
+def test_no_git_branch_key_yields_none(descriptor) -> None:
+    session = ClaudeCodeJsonlMapper().map(
+        [
+            {
+                "type": "user",
+                "origin": {"kind": "human"},
+                "message": {"role": "user", "content": "Add retry to the price fetcher"},
+                "uuid": "u-1",
+                "timestamp": "2026-07-21T01:00:00.000Z",
+                "cwd": "/repo/main",
+            }
+        ],
+        descriptor,
+    )
+
+    assert session.branch is None

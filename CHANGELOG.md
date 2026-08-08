@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Sessions from a deleted git worktree rejoin their repository. Identity comes from
+  running git in the session's working directory, so once a worktree is removed
+  there is nothing to ask, and its sessions detached into a separate row named
+  after the mangled path they used to live at. Worktrees are made and cleaned up
+  routinely, so every finished piece of work eventually drifted out of the
+  repository it belonged to — on one week's scan, 15 of 45 sessions. Claude Code
+  records the branch each session ran on, and that branch usually still exists, so
+  a detached session is reattached to the repository holding its branch. Only an
+  unambiguous match counts: a branch that two repositories both have, like `main`,
+  reattaches to neither, because filing someone's work under the wrong heading is
+  worse than leaving it where it fell. The inference is never silent — the scan
+  says how many sessions moved. Codex and OpenCode transcripts record no branch,
+  so this reaches Claude Code sessions only.
 - The interactive screens now read as one instrument panel. Every repository carries a
   proportional bar and a percentage of the period's message volume, so the week's real
   weight is visible without opening a row, and repositories are numbered in display order

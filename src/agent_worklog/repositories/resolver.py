@@ -121,3 +121,126 @@ class RepositoryResolver:
             identity_type=RepositoryIdentityType.UNKNOWN,
             resolution_method="per_session_unknown",
         )
+
+
+_LIVE_IDENTITY_TYPES = frozenset(
+    {RepositoryIdentityType.GIT_REMOTE, RepositoryIdentityType.GIT_COMMON_DIR}
+)
+_CANDIDATE_IDENTITY_TYPES = frozenset(
+    {RepositoryIdentityType.HARNESS_PROJECT, RepositoryIdentityType.PATH_FALLBACK}
+)
+
+
+def _live_repositories(
+    resolved: list[tuple[AgentSession, RepositoryIdentity]],
+) -> dict[str, RepositoryIdentity]:
+    """Distinct live repositories, deduplicated by id.
+
+    Several sessions in `resolved` typically resolve to the same repository; the
+    branch lookup must run once per repository, not once per session, so this
+    collapses duplicates before any git call happens.
+    """
+
+    live: dict[str, RepositoryIdentity] = {}
+    for _, identity in resolved:
+        if (
+            identity.identity_type in _LIVE_IDENTITY_TYPES
+            and identity.working_directory
+            and Path(identity.working_directory).exists()
+        ):
+            live.setdefault(identity.repository_id, identity)
+    return live
+
+
+def _branches_at(cwd: str, *, runner: Runner, cache: dict[str, frozenset[str]]) -> frozenset[str]:
+    """Every branch a live repository has, local or remote-tracking, normalized.
+
+    A single `for-each-ref` over `refs/heads` and `refs/remotes` covers both.
+    `%(refname)` rather than `%(refname:short)` is what makes the two
+    distinguishable afterwards: a merged list of short names cannot tell a local
+    branch that happens to contain a slash (this repo has `feat/ux-enhancement`)
+    from a remote-tracking ref that needs its leading remote name stripped
+    (`origin/feat/ux-enhancement` -> `feat/ux-enhancement`) — both would print as
+    `feat/ux-enhancement`-shaped strings. Guessing wrong there is exactly the
+    silent-wrong-attachment failure this function exists to avoid.
+    """
+
+    cached = cache.get(cwd)
+    if cached is not None:
+        return cached
+
+    try:
+        result = runner.run(
+            ["git", "-C", cwd, "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"]
+        )
+    except (FileNotFoundError, TimeoutError, OSError):
+        result = None
+
+    names: set[str] = set()
+    if result is not None and result.returncode == 0:
+        for line in result.stdout.splitlines():
+            ref = line.strip()
+            if not ref:
+                continue
+            if ref.startswith("refs/heads/"):
+                names.add(ref.removeprefix("refs/heads/"))
+            elif ref.startswith("refs/remotes/"):
+                _, _, branch = ref.removeprefix("refs/remotes/").partition("/")
+                if branch and branch != "HEAD":
+                    names.add(branch)
+
+    frozen = frozenset(names)
+    cache[cwd] = frozen
+    return frozen
+
+
+def reattach_by_branch(
+    resolved: list[tuple[AgentSession, RepositoryIdentity]],
+    *,
+    runner: Runner,
+) -> tuple[list[tuple[AgentSession, RepositoryIdentity]], int]:
+    """Reattach a detached worktree's session to its live repository by branch.
+
+    A worktree removed from disk defeats `RepositoryResolver.resolve`'s git
+    lookups, so the session falls back to a harness/path identity and appears as
+    its own detached row. The branch Claude Code recorded for that worktree
+    usually still exists in the live repository it was cut from, so this matches
+    on it — but only when exactly one live repository has that branch. `main`
+    exists in nearly every repository; a wrong match would silently put
+    someone's work under the wrong heading, so an ambiguous or absent match
+    leaves the entry untouched rather than guessing.
+    """
+
+    live_repositories = _live_repositories(resolved)
+    branch_cache: dict[str, frozenset[str]] = {}
+
+    reattached_count = 0
+    reattached: list[tuple[AgentSession, RepositoryIdentity]] = []
+    for session, identity in resolved:
+        branch = session.branch
+        if identity.identity_type in _CANDIDATE_IDENTITY_TYPES and branch:
+            matches = [
+                live
+                for live in live_repositories.values()
+                if live.working_directory is not None
+                and branch
+                in _branches_at(live.working_directory, runner=runner, cache=branch_cache)
+            ]
+            if len(matches) == 1:
+                matched = matches[0]
+                reattached.append(
+                    (
+                        session,
+                        matched.model_copy(
+                            update={
+                                "working_directory": identity.working_directory,
+                                "branch": branch,
+                            }
+                        ),
+                    )
+                )
+                reattached_count += 1
+                continue
+        reattached.append((session, identity))
+
+    return reattached, reattached_count

@@ -15,6 +15,7 @@ from agent_worklog.models.repository import (
 from agent_worklog.models.session import ActivityType, AgentSession
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.progress import NullProgressReporter, ProgressReporter, ProgressStage
+from agent_worklog.repositories.resolver import Runner, reattach_by_branch
 from agent_worklog.sessions.filtering import filter_session_to_period
 from agent_worklog.sessions.hierarchy import group_resolved_sessions
 
@@ -95,12 +96,14 @@ class ScanService:
         resolver: Resolver,
         progress: ProgressReporter | None = None,
         excluded_repository_ids: frozenset[str] = frozenset(),
+        runner: Runner | None = None,
     ) -> None:
         self._source = source
         self._period = period
         self._resolver = resolver
         self._progress = progress if progress is not None else NullProgressReporter()
         self._excluded_repository_ids = excluded_repository_ids
+        self._runner = runner
 
     def scan(self) -> ScanResult:
         self._progress.start(ProgressStage.DISCOVERING_SESSIONS)
@@ -109,13 +112,14 @@ class ScanService:
             ProgressStage.EXPORTING_SESSIONS,
             total=len(descriptors),
         )
-        resolved_sessions: list[ResolvedSession] = []
         warnings: list[str] = []
         failed_count = 0
         successful_exports = 0
-        excluded_session_count = 0
-        excluded_repository_names: dict[str, str] = {}
 
+        # Pass 1: load, filter to period, and resolve each session's repository
+        # identity. Reattachment (below) needs every identity up front, so the
+        # exclusion check and the fallback-identity warning wait for pass 2.
+        pairs: list[tuple[AgentSession, RepositoryIdentity]] = []
         for completed, descriptor in enumerate(descriptors, start=1):
             try:
                 try:
@@ -141,33 +145,51 @@ class ScanService:
                 if filtered is None:
                     continue
                 repository = self._resolver.resolve(filtered)
-                if repository.repository_id in self._excluded_repository_ids:
-                    # The setting could name a repository with no sessions in this
-                    # period; only a hit here counts, so nothing is reported lost
-                    # that was never present.
-                    excluded_session_count += 1
-                    excluded_repository_names[repository.repository_id] = (
-                        repository.display_name
-                    )
-                    continue
-                if repository.identity_type in {
-                    RepositoryIdentityType.HARNESS_PROJECT,
-                    RepositoryIdentityType.PATH_FALLBACK,
-                    RepositoryIdentityType.UNKNOWN,
-                }:
-                    warnings.append(
-                        f"Session {session.session_id} used fallback repository identity "
-                        f"{repository.repository_id}"
-                    )
-                resolved_sessions.append(
-                    ResolvedSession(session=filtered, repository=repository)
-                )
+                pairs.append((filtered, repository))
             finally:
                 self._progress.advance(completed)
 
         if descriptors and successful_exports == 0 and failed_count == len(descriptors):
             raise HarnessSourceError(
                 f"all {descriptors[0].harness} session loads failed"
+            )
+
+        if self._runner is not None:
+            pairs, reattached_count = reattach_by_branch(pairs, runner=self._runner)
+        else:
+            reattached_count = 0
+        if reattached_count:
+            warnings.append(
+                f"Reattached {reattached_count} session(s) to their repository by "
+                "branch after their worktree was removed"
+            )
+
+        # Pass 2: exclusion and the fallback-identity warning, now that fallback
+        # identities have had their chance to be reattached.
+        resolved_sessions: list[ResolvedSession] = []
+        excluded_session_count = 0
+        excluded_repository_names: dict[str, str] = {}
+        for filtered, repository in pairs:
+            if repository.repository_id in self._excluded_repository_ids:
+                # The setting could name a repository with no sessions in this
+                # period; only a hit here counts, so nothing is reported lost
+                # that was never present.
+                excluded_session_count += 1
+                excluded_repository_names[repository.repository_id] = (
+                    repository.display_name
+                )
+                continue
+            if repository.identity_type in {
+                RepositoryIdentityType.HARNESS_PROJECT,
+                RepositoryIdentityType.PATH_FALLBACK,
+                RepositoryIdentityType.UNKNOWN,
+            }:
+                warnings.append(
+                    f"Session {filtered.session_id} used fallback repository identity "
+                    f"{repository.repository_id}"
+                )
+            resolved_sessions.append(
+                ResolvedSession(session=filtered, repository=repository)
             )
 
         if excluded_session_count:
