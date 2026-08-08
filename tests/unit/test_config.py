@@ -21,6 +21,38 @@ def test_opencode_run_timeout_and_model_defaults() -> None:
     assert settings.harnesses.opencode.cli.model == ""
 
 
+def test_report_exclude_repositories_defaults_to_empty() -> None:
+    settings = AppSettings()
+
+    assert settings.report.exclude_repositories == ""
+
+
+def test_report_exclude_repositories_is_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES",
+        "dotfiles,  notes-vault",
+    )
+
+    settings = AppSettings()
+
+    assert settings.report.exclude_repositories == "dotfiles,  notes-vault"
+
+
+def test_excluded_repository_ids_parses_whitespace_and_empty_entries() -> None:
+    settings = AppSettings()
+    settings.report.exclude_repositories = " dotfiles , , notes-vault ,"
+
+    assert settings.report.excluded_repository_ids() == ("dotfiles", "notes-vault")
+
+
+def test_excluded_repository_ids_of_an_empty_setting_is_empty() -> None:
+    settings = AppSettings()
+
+    assert settings.report.excluded_repository_ids() == ()
+
+
 def test_opencode_run_timeout_and_model_are_configurable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

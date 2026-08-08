@@ -239,6 +239,83 @@ def test_days_window_uses_a_single_clock_read(
     assert captured["now_factory"]() == period.until
 
 
+def test_scan_says_sessions_were_excluded_when_configuration_drops_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An all-excluded scan is not a "nothing happened" scan and must not say so."""
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=0,
+                sessions_by_repository={},
+                excluded_session_count=1,
+                failed_session_count=0,
+                warnings=[],
+            )
+
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        lambda settings, period, root_only=False, *, harness, progress: StubScanService(),
+    )
+
+    result = runner.invoke(cli.app, ["scan", "--days", "7"])
+
+    assert result.exit_code == 4
+    assert "excluded by configuration" in result.stdout
+    assert "activity found" not in result.stdout
+
+
+def test_report_says_sessions_were_excluded_when_configuration_drops_them(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubReportService:
+        def __init__(self, output_path: Path, period: DateRange) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False):
+            report = WorklogReport(
+                generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                period=self.period,
+                repositories=[],
+            )
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="",
+                report=report,
+                scan=SimpleNamespace(excluded_session_count=1, failed_session_count=0),
+            )
+
+    def build(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness=cli.Harness.OPENCODE,
+        sanitize=False,
+        progress=None,
+        detail=cli.DetailLevel.FULL,
+    ):
+        return StubReportService(output_path, period)
+
+    monkeypatch.setattr(cli, "_build_report_service", build)
+
+    result = runner.invoke(
+        cli.app,
+        ["report", "--days", "7", "--output", str(tmp_path / "report.md")],
+    )
+
+    assert result.exit_code == 4
+    assert "excluded by configuration" in result.stdout
+    assert "activity found" not in result.stdout
+
+
 def test_report_passes_root_only_to_the_report_service(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -572,6 +649,24 @@ def test_config_set_writes_the_value_and_the_next_load_reads_it(monkeypatch, tmp
 
     assert result.exit_code == 0
     assert cli._load_settings().harnesses.opencode.cli.model == "gpt-5"
+
+
+def test_config_set_accepts_a_comma_separated_exclusion_list(
+    monkeypatch, tmp_path
+) -> None:
+    """The exclusion setting is a string so `config set` can store it verbatim."""
+
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.delenv("AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES", raising=False)
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["config", "set", "report.exclude_repositories", "dotfiles, notes-vault"],
+    )
+
+    assert result.exit_code == 0
+    assert cli._load_settings().report.exclude_repositories == "dotfiles, notes-vault"
 
 
 def test_config_set_rejects_an_unknown_key(monkeypatch, tmp_path) -> None:
@@ -1027,6 +1122,109 @@ def test_run_aborts_when_the_preview_is_declined(
     assert result.exit_code == 0
     assert "Aborted" in result.stdout
     assert not output_path.exists()
+
+
+def test_run_preview_says_sessions_were_excluded_when_configuration_drops_them(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_path = tmp_path / "worklog.md"
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=0,
+                sessions_by_repository={},
+                excluded_session_count=1,
+                failed_session_count=0,
+                warnings=[],
+            )
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=False,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        lambda settings, period, root_only=False, *, harness, sanitize, progress: StubScanService(),
+    )
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 4
+    assert "excluded by configuration" in result.stdout
+    assert "activity found" not in result.stdout
+
+
+def test_run_generation_says_sessions_were_excluded_when_configuration_drops_them(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_path = tmp_path / "worklog.md"
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "git:github.com/mike/agent-worklog": [
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                    ]
+                },
+                warnings=[],
+            )
+
+    class StubReportService:
+        def __init__(self, output_path: Path, period: DateRange) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            report = WorklogReport(
+                generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                period=self.period,
+                repositories=[],
+            )
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="",
+                report=report,
+                scan=SimpleNamespace(excluded_session_count=1, failed_session_count=0),
+            )
+
+    _answer_for_run(
+        monkeypatch,
+        output_path=output_path,
+        period=period,
+        final_accept=True,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        lambda *args, **kwargs: StubScanService(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_report_service",
+        lambda settings, period, output_path, no_llm, root_only=False, **kwargs: StubReportService(
+            output_path, period
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 4
+    assert "excluded by configuration" in result.stdout
+    assert "activity found" not in result.stdout
 
 
 def test_run_accepts_a_non_opencode_harness(

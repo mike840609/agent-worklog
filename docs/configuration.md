@@ -150,8 +150,19 @@ agent-worklog doctor --harness codex
 |---|---|---|
 | `AGENT_WORKLOG_REPORT__TIMEZONE` | `Asia/Taipei` | Calendar-week and naive ISO timestamp timezone. |
 | `AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY` | `reports` | Default Markdown output directory. |
+| `AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES` | `""` | Comma-separated repository ids to permanently leave out of every scan and report. |
 
 The `--output` CLI option overrides the configured output directory for one invocation.
+
+Repositories are matched by their `repository_id` — the string `scan` groups sessions
+under — not by the display name shown in the report. A repository with no activity in a
+period produces no warning; one that was actually excluded adds a warning naming it and
+the number of sessions dropped, and when exclusion removes everything the command says so
+instead of reporting "no activity found".
+
+```bash
+agent-worklog config set report.exclude_repositories "dotfiles,notes-vault"
+```
 
 ## OpenCode run settings
 

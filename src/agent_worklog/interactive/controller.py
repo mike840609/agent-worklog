@@ -175,11 +175,19 @@ def _load_browse(
         state.screen = Screen.RECOVERABLE_ERROR
         return
     if scan.loaded_session_count == 0:
-        state.error = _ErrorState(
-            kind="browse-empty",
-            title="No sessions found",
-            detail="No activity matched the selected harness and period.",
-        )
+        if scan.excluded_session_count > 0:
+            state.error = _ErrorState(
+                kind="browse-empty",
+                title="Sessions excluded by configuration",
+                detail="All sessions matched by the selected harness and period "
+                "were excluded by configuration.",
+            )
+        else:
+            state.error = _ErrorState(
+                kind="browse-empty",
+                title="No sessions found",
+                detail="No activity matched the selected harness and period.",
+            )
         state.screen = Screen.RECOVERABLE_ERROR
         return
     state.browser_scan = scan
@@ -211,11 +219,19 @@ def _review(state: _State, actions: InteractiveActions) -> None:
             state.screen = Screen.RECOVERABLE_ERROR
             return
         if scan.loaded_session_count == 0:
-            state.error = _ErrorState(
-                kind="report-empty",
-                title="No sessions found",
-                detail="No activity matched the selected harness and period.",
-            )
+            if scan.excluded_session_count > 0:
+                state.error = _ErrorState(
+                    kind="report-empty",
+                    title="Sessions excluded by configuration",
+                    detail="All sessions matched by the selected harness and period "
+                    "were excluded by configuration.",
+                )
+            else:
+                state.error = _ErrorState(
+                    kind="report-empty",
+                    title="No sessions found",
+                    detail="No activity matched the selected harness and period.",
+                )
             state.screen = Screen.RECOVERABLE_ERROR
             return
         draft.set_scan(scan)

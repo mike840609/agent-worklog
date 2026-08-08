@@ -19,6 +19,12 @@ All notable changes to this project are documented in this file.
   arithmetic. The cursor, expansion and selection glyphs each take their own
   colour rather than sharing the row's style, so the three meanings stacked in
   the gutter read as three signals instead of one run of symbols.
+- Add a `report.exclude_repositories` setting, a comma-separated list of repository
+  ids to leave out of every scan and report. A repository like `dotfiles` stops
+  reappearing every week to be unticked by hand in the interactive picker. The
+  exclusion is never silent: it adds a scan warning naming the repositories and how
+  many sessions were dropped, and when the exclusion removes everything the command
+  says the sessions were excluded rather than that none were found.
 
 ## 0.8.0 - 2026-08-07
 

@@ -60,6 +60,22 @@ class ReportSettings(BaseModel):
 
     timezone: str = "Asia/Taipei"
     output_directory: Path = Path("reports")
+    # A comma-separated string, not `list[str]`: a list cannot be validated or
+    # round-tripped by `config set`, which writes and rereads strings.
+    exclude_repositories: str = ""
+
+    def excluded_repository_ids(self) -> tuple[str, ...]:
+        """Normalise the string setting into the repository ids it names.
+
+        The format is this setting's own, so the parsing lives here rather
+        than at the call sites that filter on the result.
+        """
+
+        return tuple(
+            entry.strip()
+            for entry in self.exclude_repositories.split(",")
+            if entry.strip()
+        )
 
 
 class AppSettings(BaseSettings):
