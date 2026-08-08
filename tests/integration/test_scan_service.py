@@ -63,6 +63,27 @@ class StaticResolver:
         )
 
 
+def _identity(repository_id: str, display_name: str) -> RepositoryIdentity:
+    return RepositoryIdentity(
+        repository_id=repository_id,
+        display_name=display_name,
+        identity_type=RepositoryIdentityType.GIT_REMOTE,
+        normalized_remote=repository_id.removeprefix("git:"),
+        branch="main",
+        resolution_method="git_origin_remote",
+    )
+
+
+class IdResolver:
+    """Resolve each session to the identity its session id names."""
+
+    def __init__(self, mapping: dict[str, RepositoryIdentity]) -> None:
+        self._mapping = mapping
+
+    def resolve(self, session: AgentSession) -> RepositoryIdentity:
+        return self._mapping[session.session_id]
+
+
 def period() -> DateRange:
     return DateRange(
         since=datetime(2026, 7, 20, tzinfo=TZ),
@@ -206,3 +227,131 @@ def test_promptless_warning_names_claude_code_only_for_claude_code() -> None:
     assert "2.1.187" in claude_warning
     assert "Claude Code" not in codex_warning
     assert "2.1.187" not in codex_warning
+
+
+DOTFILES_ID = "git:github.com/mike/dotfiles"
+WORK_ID = "git:github.com/mike/work"
+
+
+def _dotfiles(session_id: str) -> RepositoryIdentity:
+    return _identity(DOTFILES_ID, "Dotfiles")
+
+
+def _work(session_id: str) -> RepositoryIdentity:
+    return _identity(WORK_ID, "Work")
+
+
+def _source(session_ids: list[str]) -> FakeSource:
+    source = FakeSource()
+    source.descriptors = [
+        SessionDescriptor(harness="opencode", session_id=session_id)
+        for session_id in session_ids
+    ]
+    return source
+
+
+def test_an_empty_excluded_set_leaves_the_scan_unchanged() -> None:
+    source = _source(["good-1", "good-2"])
+    source.fail_session_ids = {"bad"}
+    resolver = IdResolver({"good-1": _work("good-1"), "good-2": _work("good-2")})
+
+    baseline = ScanService(source=source, period=period(), resolver=resolver).scan()
+    with_exclusions = ScanService(
+        source=source,
+        period=period(),
+        resolver=resolver,
+        excluded_repository_ids=frozenset(),
+    ).scan()
+
+    assert with_exclusions == baseline
+    assert with_exclusions.excluded_session_count == 0
+
+
+def test_configuring_exclude_repositories_removes_only_that_repository() -> None:
+    source = _source(["dotfiles-1", "dotfiles-2", "work-1"])
+    resolver = IdResolver(
+        {
+            "dotfiles-1": _dotfiles("dotfiles-1"),
+            "dotfiles-2": _dotfiles("dotfiles-2"),
+            "work-1": _work("work-1"),
+        }
+    )
+    service = ScanService(
+        source=source,
+        period=period(),
+        resolver=resolver,
+        excluded_repository_ids=frozenset({DOTFILES_ID}),
+    )
+
+    result = service.scan()
+
+    assert result.loaded_session_count == 1
+    assert result.excluded_session_count == 2
+    assert list(result.sessions_by_repository) == [WORK_ID]
+    assert [item.session.session_id for item in result.resolved_sessions] == ["work-1"]
+
+
+def test_excluded_sessions_are_counted_and_named_in_a_warning() -> None:
+    source = _source(["dotfiles-1", "notes-1"])
+    resolver = IdResolver(
+        {
+            "dotfiles-1": _identity("git:github.com/mike/dotfiles", "Dotfiles"),
+            "notes-1": _identity("git:github.com/mike/notes", "Notes"),
+        }
+    )
+    service = ScanService(
+        source=source,
+        period=period(),
+        resolver=resolver,
+        excluded_repository_ids=frozenset(
+            {"git:github.com/mike/dotfiles", "git:github.com/mike/notes"}
+        ),
+    )
+
+    result = service.scan()
+
+    assert result.loaded_session_count == 0
+    assert result.excluded_session_count == 2
+    assert result.warnings == [
+        "Excluded 2 sessions from configured repositories: Dotfiles, Notes"
+    ]
+
+
+def test_a_configured_repository_with_no_activity_warns_nothing() -> None:
+    source = _source(["work-1"])
+    resolver = IdResolver({"work-1": _work("work-1")})
+    service = ScanService(
+        source=source,
+        period=period(),
+        resolver=resolver,
+        excluded_repository_ids=frozenset({DOTFILES_ID}),
+    )
+
+    result = service.scan()
+
+    assert result.loaded_session_count == 1
+    assert result.excluded_session_count == 0
+    assert not any("excluded" in warning for warning in result.warnings)
+
+
+def test_when_every_session_is_excluded_the_scan_counts_them_all() -> None:
+    source = _source(["dotfiles-1", "dotfiles-2", "dotfiles-3"])
+    resolver = IdResolver(
+        {
+            "dotfiles-1": _dotfiles("dotfiles-1"),
+            "dotfiles-2": _dotfiles("dotfiles-2"),
+            "dotfiles-3": _dotfiles("dotfiles-3"),
+        }
+    )
+    service = ScanService(
+        source=source,
+        period=period(),
+        resolver=resolver,
+        excluded_repository_ids=frozenset({DOTFILES_ID}),
+    )
+
+    result = service.scan()
+
+    assert result.loaded_session_count == 0
+    assert result.excluded_session_count == 3
+    assert any("Excluded 3 sessions" in warning for warning in result.warnings)

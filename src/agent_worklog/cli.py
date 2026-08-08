@@ -225,6 +225,7 @@ def _build_scan_service(
         period=period,
         resolver=RepositoryResolver(runner=git_runner),
         progress=progress,
+        excluded_repository_ids=frozenset(settings.report.excluded_repository_ids()),
     )
 
 
@@ -304,6 +305,28 @@ def _build_report_service(
         include_subagents=not root_only,
         sanitized=sanitize,
     )
+
+
+def _no_sessions_message(
+    harness: Harness,
+    *,
+    excluded: bool,
+    failed: bool = False,
+) -> str:
+    """The empty-scan error, naming exclusion when the configuration caused it.
+
+    A scan must never be a mystery: "none found" is the honest description
+    only when exclusion removed everything. Sessions that failed to load are
+    a different cause carrying their own scan warnings, so an exclusion
+    message would blame the configuration for someone else's corrupt export.
+    """
+
+    if excluded and not failed:
+        return (
+            f"all {harness.value} sessions in the requested period "
+            "were excluded by configuration"
+        )
+    return f"no {harness.value} activity found in the requested period"
 
 
 def _handle_expected_error(exc: Exception, *, code: int) -> None:
@@ -403,7 +426,11 @@ def scan(
             result = service.scan()
             if result.loaded_session_count == 0:
                 raise NoSessionsError(
-                    f"no {harness.value} activity found in the requested period"
+                    _no_sessions_message(
+                        harness,
+                        excluded=result.excluded_session_count > 0,
+                        failed=result.failed_session_count > 0,
+                    )
                 )
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
@@ -483,7 +510,11 @@ def report(
             result = service.generate(force=force, dry_run=dry_run)
             if not result.report.repositories and not result.report.narrative_text:
                 raise NoSessionsError(
-                    f"no {harness.value} activity found in the requested period"
+                    _no_sessions_message(
+                        harness,
+                        excluded=result.scan.excluded_session_count > 0,
+                        failed=result.scan.failed_session_count > 0,
+                    )
                 )
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
@@ -875,7 +906,11 @@ def run(
             scan = scan_service.scan()
             if scan.loaded_session_count == 0:
                 raise NoSessionsError(
-                    f"no {harness.value} activity found in the requested period"
+                    _no_sessions_message(
+                        harness,
+                        excluded=scan.excluded_session_count > 0,
+                        failed=scan.failed_session_count > 0,
+                    )
                 )
         reporter.scan_result(scan)
         for warning in scan.warnings:
@@ -903,7 +938,11 @@ def run(
             result = service.generate(force=force, dry_run=dry_run, scan=scan)
             if not result.report.repositories:
                 raise NoSessionsError(
-                    f"no {harness.value} activity found in the requested period"
+                    _no_sessions_message(
+                        harness,
+                        excluded=result.scan.excluded_session_count > 0,
+                        failed=result.scan.failed_session_count > 0,
+                    )
                 )
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)

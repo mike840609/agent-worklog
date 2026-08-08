@@ -64,6 +64,7 @@ def _scan() -> ScanResult:
             "repo-b": sessions[2:],
         },
         warnings=["one warning"],
+        excluded_session_count=2,
     )
 
 
@@ -143,6 +144,7 @@ def test_filtered_scan_preserves_scan_metadata_and_filters_groups() -> None:
     assert filtered.period == scan.period
     assert filtered.candidate_session_count == 5
     assert filtered.failed_session_count == 2
+    assert filtered.excluded_session_count == 2
     assert filtered.warnings == ["one warning"]
     assert filtered.loaded_session_count == 1
     assert [item.session.session_id for item in filtered.resolved_sessions] == ["ses-a1"]

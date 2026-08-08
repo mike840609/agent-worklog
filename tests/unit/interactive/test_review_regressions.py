@@ -112,7 +112,7 @@ def _resolved(
     )
 
 
-def _scan(count: int = 1, *, unsafe_labels: bool = False) -> ScanResult:
+def _scan(count: int = 1, *, unsafe_labels: bool = False, excluded: int = 0) -> ScanResult:
     sessions = [
         _resolved(
             f"ses-{index}",
@@ -131,6 +131,7 @@ def _scan(count: int = 1, *, unsafe_labels: bool = False) -> ScanResult:
         failed_session_count=0,
         resolved_sessions=sessions,
         sessions_by_repository={"repo-a": sessions} if sessions else {},
+        excluded_session_count=excluded,
     )
 
 
@@ -243,6 +244,59 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
     assert period_calls == 1
     assert counters.get("scan", 0) == 2
     assert draft.period == _period(10)
+
+
+def test_browse_empty_state_says_configuration_exclusion() -> None:
+    """An empty browse whose cause is the exclusion setting must say so."""
+
+    draft = ReportDraft(harness="opencode", period=_period())
+    counters: dict[str, int] = {}
+    console, stream = _console()
+    keys = ScriptedInput(
+        [
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.ENTER),
+            char("b"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_callback=lambda value: _scan(0, excluded=2),
+            choose_period=lambda current: current,
+            counters=counters,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "excluded by configuration" in text
+    assert "No activity matched" not in text
+
+
+def test_report_empty_state_says_configuration_exclusion() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    counters: dict[str, int] = {}
+    console, stream = _console()
+    keys = ScriptedInput([char("1"), char("r"), char("b"), char("q"), char("q")])
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_callback=lambda value: _scan(0, excluded=2),
+            choose_period=lambda current: current,
+            counters=counters,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "excluded by configuration" in text
+    assert "No activity matched" not in text
 
 
 def test_user_labels_are_rendered_as_literal_text_not_rich_markup() -> None:

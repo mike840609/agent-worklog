@@ -44,6 +44,15 @@ def test_setting_keys_cover_the_leaves_of_the_settings_tree() -> None:
     assert "harnesses.opencode.cli" not in keys
 
 
+def test_setting_keys_include_the_report_exclude_repositories_leaf() -> None:
+    keys = {setting.key: setting for setting in setting_keys()}
+
+    assert keys["report.exclude_repositories"].variable == (
+        "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES"
+    )
+    assert keys["report.exclude_repositories"].default == ""
+
+
 def test_setting_key_defaults_are_rendered_the_way_a_user_types_them() -> None:
     keys = {setting.key: setting for setting in setting_keys()}
 

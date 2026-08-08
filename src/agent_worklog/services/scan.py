@@ -81,6 +81,7 @@ class ScanResult:
     resolved_sessions: list[ResolvedSession] = field(default_factory=list)
     sessions_by_repository: dict[str, list[ResolvedSession]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    excluded_session_count: int = 0
 
 
 class ScanService:
@@ -93,11 +94,13 @@ class ScanService:
         period: DateRange,
         resolver: Resolver,
         progress: ProgressReporter | None = None,
+        excluded_repository_ids: frozenset[str] = frozenset(),
     ) -> None:
         self._source = source
         self._period = period
         self._resolver = resolver
         self._progress = progress if progress is not None else NullProgressReporter()
+        self._excluded_repository_ids = excluded_repository_ids
 
     def scan(self) -> ScanResult:
         self._progress.start(ProgressStage.DISCOVERING_SESSIONS)
@@ -110,6 +113,8 @@ class ScanService:
         warnings: list[str] = []
         failed_count = 0
         successful_exports = 0
+        excluded_session_count = 0
+        excluded_repository_names: dict[str, str] = {}
 
         for completed, descriptor in enumerate(descriptors, start=1):
             try:
@@ -136,6 +141,15 @@ class ScanService:
                 if filtered is None:
                     continue
                 repository = self._resolver.resolve(filtered)
+                if repository.repository_id in self._excluded_repository_ids:
+                    # The setting could name a repository with no sessions in this
+                    # period; only a hit here counts, so nothing is reported lost
+                    # that was never present.
+                    excluded_session_count += 1
+                    excluded_repository_names[repository.repository_id] = (
+                        repository.display_name
+                    )
+                    continue
                 if repository.identity_type in {
                     RepositoryIdentityType.HARNESS_PROJECT,
                     RepositoryIdentityType.PATH_FALLBACK,
@@ -156,6 +170,12 @@ class ScanService:
                 f"all {descriptors[0].harness} session loads failed"
             )
 
+        if excluded_session_count:
+            warnings.append(
+                f"Excluded {excluded_session_count} sessions from configured "
+                f"repositories: {', '.join(sorted(excluded_repository_names.values()))}"
+            )
+
         return ScanResult(
             period=self._period,
             candidate_session_count=len(descriptors),
@@ -164,4 +184,5 @@ class ScanService:
             resolved_sessions=resolved_sessions,
             sessions_by_repository=group_resolved_sessions(resolved_sessions),
             warnings=warnings,
+            excluded_session_count=excluded_session_count,
         )

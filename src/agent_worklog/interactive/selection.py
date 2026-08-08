@@ -127,4 +127,5 @@ class SelectionState:
             resolved_sessions=selected,
             sessions_by_repository=group_resolved_sessions(selected),
             warnings=list(self.scan.warnings),
+            excluded_session_count=self.scan.excluded_session_count,
         )
