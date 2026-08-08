@@ -9,6 +9,7 @@ from rich.console import Console
 
 from agent_worklog.interactive.models import ReportDraft
 from agent_worklog.interactive.render import (
+    build_visible_rows,
     render_main_menu,
     render_recoverable_error,
     render_report_result,
@@ -413,3 +414,136 @@ def test_session_review_drops_metadata_when_too_narrow_for_both_columns() -> Non
 
     row = next(line for line in stream.getvalue().splitlines() if "Meta d1" in line)
     assert "Aug 5" not in row
+
+
+def test_session_browser_lists_repositories_most_recent_first() -> None:
+    """Harness order is arbitrary, so the freshest work would otherwise hide mid-list."""
+
+    console, stream = _console()
+    stale = _dense_resolved("s1", "repo-stale", last_day=3, volume=1)
+    fresh = _dense_resolved("f1", "repo-fresh", last_day=6, volume=1)
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=[stale, fresh],
+        sessions_by_repository={"repo-stale": [stale], "repo-fresh": [fresh]},
+    )
+
+    render_session_browser(console, scan, expanded_repositories=set(), cursor=0)
+
+    text = stream.getvalue()
+    assert text.index("repo-fresh") < text.index("repo-stale")
+
+
+def test_undated_repositories_sort_last_without_comparing_none() -> None:
+    """A scanned session always has a date, but a fixture without one must not crash."""
+
+    dated = _dense_resolved("ses-d", "repo-dated", last_day=4, volume=1)
+    undated = _resolved("ses-u", "repo-undated")
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=[undated, dated],
+        sessions_by_repository={"repo-undated": [undated], "repo-dated": [dated]},
+    )
+
+    rows = build_visible_rows(scan, set())
+
+    assert [row.repository_id for row in rows] == ["repo-dated", "repo-undated"]
+
+
+def test_session_review_lists_sessions_most_recent_first() -> None:
+    """Density metadata only pays off once the rows it annotates are ordered."""
+
+    console, stream = _console()
+    items = [
+        _dense_resolved("older", "repo-x", last_day=3, volume=1),
+        _dense_resolved("newer", "repo-x", last_day=6, volume=1),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories={"repo-x"},
+        cursor=0,
+    )
+
+    text = stream.getvalue()
+    assert text.index("Meta newer") < text.index("Meta older")
+
+
+def test_undated_sessions_sort_after_dated_ones_in_the_same_repository() -> None:
+    """A row with no date carries no signal, so it belongs below the dated work."""
+
+    undated = _resolved("ses-undated", "repo-a")
+    dated = _dense_resolved("ses-dated", "repo-a", last_day=4, volume=1)
+    sessions = [undated, dated]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=sessions,
+        sessions_by_repository={"repo-a": sessions},
+    )
+
+    rows = build_visible_rows(scan, {"repo-a"})
+
+    assert [row.session_id for row in rows if row.session_id is not None] == [
+        "ses-dated",
+        "ses-undated",
+    ]
+
+
+def test_repositories_with_equal_recency_fall_back_to_display_name() -> None:
+    """Recency alone is a partial order; the name completes it so runs agree."""
+
+    zulu = _dense_resolved("ses-z", "repo-zulu", last_day=5, volume=1)
+    alpha = _dense_resolved("ses-a", "repo-alpha", last_day=5, volume=1)
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=[zulu, alpha],
+        sessions_by_repository={"repo-zulu": [zulu], "repo-alpha": [alpha]},
+    )
+
+    rows = build_visible_rows(scan, set())
+
+    assert [row.repository_id for row in rows] == ["repo-alpha", "repo-zulu"]
+
+
+def test_sessions_with_equal_recency_fall_back_to_session_id() -> None:
+    """Same-day sessions share a timestamp, so the id keeps their order fixed."""
+
+    second = _dense_resolved("ses-b", "repo-x", last_day=5, volume=1)
+    first = _dense_resolved("ses-a", "repo-x", last_day=5, volume=1)
+    sessions = [second, first]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=sessions,
+        sessions_by_repository={"repo-x": sessions},
+    )
+
+    rows = build_visible_rows(scan, {"repo-x"})
+
+    assert [row.session_id for row in rows if row.session_id is not None] == [
+        "ses-a",
+        "ses-b",
+    ]
