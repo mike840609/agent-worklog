@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Session review and browse rows now show density — a dim date and message count
+  per session (the conversation actually recorded in the report period), a `[sub]`
+  tag for subagent sessions, and a date span plus message total per repository —
+  so the interactive screens carry enough signal to judge whether a session
+  belongs in the weekly report without opening it. Titles stay left-aligned in a
+  fixed column with the metadata in its own column to the right, so a long list
+  reads down a single column of titles.
+
 ## 0.8.0 - 2026-08-07
 
 - Running `agent-worklog` with no arguments opens a menu for generating a report, scanning

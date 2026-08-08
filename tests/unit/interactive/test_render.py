@@ -22,17 +22,17 @@ from agent_worklog.models.repository import (
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
+from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 
 
-def _console() -> tuple[Console, StringIO]:
+def _console(width: int = 100) -> tuple[Console, StringIO]:
     stream = StringIO()
     return (
-        Console(file=stream, color_system=None, force_terminal=False, width=100),
+        Console(file=stream, color_system=None, force_terminal=False, width=width),
         stream,
     )
 
@@ -217,6 +217,112 @@ def test_recoverable_error_renders_safe_detail_and_options() -> None:
     assert "❯ Back" in text
 
 
+def _dense_resolved(
+    session_id: str,
+    repo: str,
+    *,
+    last_day: int,
+    volume: int,
+    subagent: bool = False,
+) -> ResolvedSession:
+    activities = [
+        SessionActivity(
+            activity_id=f"{session_id}:m{i}",
+            activity_type=ActivityType.USER_MESSAGE if i == 0 else ActivityType.ASSISTANT_MESSAGE,
+            timestamp=datetime(2026, 8, last_day, tzinfo=TZ),
+            content="hi",
+        )
+        for i in range(volume)
+    ]
+    return ResolvedSession(
+        session=AgentSession(
+            harness="opencode",
+            session_id=session_id,
+            title=f"Meta {session_id}",
+            parent_session_id="parent" if subagent else None,
+            created_at=datetime(2026, 8, last_day, tzinfo=TZ),
+            activities=activities,
+        ),
+        repository=RepositoryIdentity(
+            repository_id=repo,
+            display_name=repo,
+            identity_type=RepositoryIdentityType.PATH_FALLBACK,
+            working_directory=f"/tmp/{repo}",
+            resolution_method="test",
+        ),
+    )
+
+
+def test_session_review_renders_density_and_subagent_tag() -> None:
+    console, stream = _console()
+    items = [
+        _dense_resolved("d1", "repo-x", last_day=5, volume=2, subagent=True),
+        _dense_resolved("d2", "repo-x", last_day=4, volume=1),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+    state = SelectionState.from_scan(scan)
+
+    render_session_review(console, state, expanded_repositories={"repo-x"}, cursor=1)
+
+    text = stream.getvalue()
+    assert "Aug 5 · 2 msgs" in text
+    assert "Aug 4 · 1 msg" in text
+    assert "[sub]" in text
+
+
+def test_session_browser_renders_repository_and_session_density() -> None:
+    console, stream = _console()
+    items = [
+        _dense_resolved("d1", "repo-a", last_day=3, volume=1),
+        _dense_resolved("d2", "repo-a", last_day=5, volume=2),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-a": items},
+    )
+
+    render_session_browser(console, scan, expanded_repositories={"repo-a"}, cursor=0)
+
+    text = stream.getvalue()
+    assert "Aug 3–5 · 3 msgs" in text
+    assert "Aug 5 · 2 msgs" in text
+
+
+def test_session_review_density_survives_truncation() -> None:
+    console, stream = _console(width=40)
+    session_id = (
+        "trunc1-with-a-very-long-session-title-"
+        "that-will-clip-at-forty-cells-wide"
+    )
+    items = [_dense_resolved(session_id, "repo-t", last_day=5, volume=2)]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-t": items},
+    )
+    state = SelectionState.from_scan(scan)
+
+    render_session_review(console, state, expanded_repositories={"repo-t"}, cursor=0)
+
+    text = stream.getvalue()
+    assert "Aug 5 · 2 msgs" in text
+    assert f"Meta {session_id}" not in text
+
+
 def test_session_review_labels_a_deselected_noise_session_with_its_reason() -> None:
     console, stream = _console()
     untitled = ResolvedSession(
@@ -252,3 +358,58 @@ def test_session_review_labels_a_deselected_noise_session_with_its_reason() -> N
     )
 
     assert "No title" in stream.getvalue()
+
+
+def test_session_review_aligns_titles_in_one_column() -> None:
+    """Ragged title starts make a long list unscannable, so metadata goes right."""
+
+    console, stream = _console(width=80)
+    items = [
+        _dense_resolved("d1", "repo-x", last_day=5, volume=2, subagent=True),
+        _dense_resolved("d2", "repo-x", last_day=4, volume=120),
+        _dense_resolved("d3", "repo-x", last_day=6, volume=7),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=3,
+        loaded_session_count=3,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories={"repo-x"},
+        cursor=0,
+    )
+
+    rows = [line for line in stream.getvalue().splitlines() if "Meta d" in line]
+    assert len(rows) == 3
+    assert len({line.index("Meta d") for line in rows}) == 1
+
+
+def test_session_review_drops_metadata_when_too_narrow_for_both_columns() -> None:
+    """Below the title floor the metadata yields, rather than squeezing titles to nothing."""
+
+    console, stream = _console(width=24)
+    items = [_dense_resolved("d1", "repo-x", last_day=5, volume=2)]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories={"repo-x"},
+        cursor=0,
+    )
+
+    row = next(line for line in stream.getvalue().splitlines() if "Meta d1" in line)
+    assert "Aug 5" not in row

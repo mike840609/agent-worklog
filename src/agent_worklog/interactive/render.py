@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import tzinfo
 from pathlib import Path
 
+from rich.cells import cell_len
 from rich.console import Console
 from rich.text import Text
 
+from agent_worklog.interactive.density import (
+    is_subagent,
+    repository_meta,
+    session_meta,
+)
 from agent_worklog.interactive.models import ReportDraft
 from agent_worklog.interactive.selection import SelectionMark, SelectionState, noise_reason
+from agent_worklog.models.session import AgentSession
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.scan import ScanResult
@@ -41,6 +49,8 @@ _MARKERS = {
     SelectionMark.NONE: "○",
     SelectionMark.PARTIAL: "◐",
 }
+_ROW_GAP = 3
+_MIN_TITLE_CELLS = 12
 
 
 def main_menu_options() -> list[str]:
@@ -72,6 +82,54 @@ def _print_viewport_line(
         no_wrap=True,
         overflow="ellipsis",
     )
+
+
+def _print_viewport_text(console: Console, text: Text) -> None:
+    """Print a pre-composed row, truncating rather than wrapping."""
+    console.print(text, no_wrap=True, overflow="ellipsis")
+
+
+def session_row_meta(
+    session: AgentSession,
+    tz: tzinfo | None,
+    reason: str | None = None,
+) -> str:
+    """Compose the dim right-hand metadata for one session row."""
+    facts = " · ".join(fact for fact in (session_meta(session, tz), reason) if fact)
+    if not is_subagent(session):
+        return facts
+    return f"[sub] {facts}" if facts else "[sub]"
+
+
+def _session_row(
+    *,
+    prefix: str,
+    mark: str | None,
+    title: str,
+    meta: str,
+    meta_width: int,
+    console_width: int,
+    selected: bool,
+) -> Text:
+    """Left-align the title in a fixed column, with dim metadata in its own column.
+
+    The title absorbs truncation so the metadata column holds still: a ragged
+    left edge on the titles is what makes a long list hard to scan.
+    """
+    row_style = "bold" if selected else ""
+    lead = f"{prefix}     {mark} " if mark is not None else f"{prefix}      "
+    text = Text(lead, style=row_style)
+    budget = console_width - cell_len(lead) - meta_width - _ROW_GAP
+    if not meta_width or budget < _MIN_TITLE_CELLS:
+        # Too narrow to hold both columns; the title wins and the viewport clips it.
+        text.append(title, style=row_style)
+        return text
+    body = Text(title, style=row_style)
+    body.truncate(budget, overflow="ellipsis", pad=True)
+    text.append_text(body)
+    text.append(" " * _ROW_GAP)
+    text.append(meta, style="dim")
+    return text
 
 
 def _print_option_line(console: Console, label: str, index: int, selected: int) -> None:
@@ -197,6 +255,12 @@ def _session_titles(scan: ScanResult) -> dict[str, str]:
     }
 
 
+def _sessions_by_id(scan: ScanResult) -> dict[str, AgentSession]:
+    return {
+        item.session.session_id: item.session for item in scan.resolved_sessions
+    }
+
+
 def build_filtered_rows(
     scan: ScanResult,
     expanded_repositories: set[str],
@@ -306,13 +370,19 @@ def render_session_review(
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
     titles = _session_titles(selection.scan)
-    noise_labels = {
-        item.session.session_id: noise_reason(item.session)
-        for item in selection.scan.resolved_sessions
+    sessions = _sessions_by_id(selection.scan)
+    metas = {
+        row.session_id: session_row_meta(
+            sessions[row.session_id],
+            selection.scan.period.since.tzinfo,
+            noise_reason(sessions[row.session_id]),
+        )
+        for _, row in visible
+        if row.session_id is not None
     }
+    meta_width = max((cell_len(value) for value in metas.values()), default=0)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
-        style = "bold" if index == cursor else ""
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories or bool(query)
             arrow = "▼" if expanded else "▶"
@@ -323,20 +393,28 @@ def render_session_review(
             )
             total = len(selection.scan.sessions_by_repository[row.repository_id])
             name = _repository_display_name(selection.scan, row.repository_id)
-            _print_viewport_line(
-                console,
+            text = Text(
                 f"{prefix} {arrow} {mark} {name}   {selected} / {total}",
-                style=style,
+                style="bold" if index == cursor else "",
             )
+            density = repository_meta(row.repository_id, selection.scan)
+            if density:
+                text.append(f"   {density}", style="dim")
+            _print_viewport_text(console, text)
         else:
             assert row.session_id is not None
             mark = "●" if row.session_id in selection.selected_session_ids else "○"
-            reason = noise_labels[row.session_id]
-            suffix = f"   {reason}" if reason else ""
-            _print_viewport_line(
+            _print_viewport_text(
                 console,
-                f"{prefix}     {mark} {titles[row.session_id]}{suffix}",
-                style=style,
+                _session_row(
+                    prefix=prefix,
+                    mark=mark,
+                    title=titles[row.session_id],
+                    meta=metas[row.session_id],
+                    meta_width=meta_width,
+                    console_width=console.size.width,
+                    selected=index == cursor,
+                ),
             )
     if hidden_below:
         _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
@@ -382,25 +460,44 @@ def render_session_browser(
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
     titles = _session_titles(scan)
+    sessions = _sessions_by_id(scan)
+    metas = {
+        row.session_id: session_row_meta(
+            sessions[row.session_id],
+            scan.period.since.tzinfo,
+        )
+        for _, row in visible
+        if row.session_id is not None
+    }
+    meta_width = max((cell_len(value) for value in metas.values()), default=0)
     for index, row in visible:
         prefix = "❯" if index == cursor else " "
-        style = "bold" if index == cursor else ""
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories or bool(query)
             arrow = "▼" if expanded else "▶"
             name = _repository_display_name(scan, row.repository_id)
             count = len(scan.sessions_by_repository[row.repository_id])
-            _print_viewport_line(
-                console,
+            text = Text(
                 f"{prefix} {arrow} {name}   {count}",
-                style=style,
+                style="bold" if index == cursor else "",
             )
+            density = repository_meta(row.repository_id, scan)
+            if density:
+                text.append(f"   {density}", style="dim")
+            _print_viewport_text(console, text)
         else:
             assert row.session_id is not None
-            _print_viewport_line(
+            _print_viewport_text(
                 console,
-                f"{prefix}     {titles[row.session_id]}",
-                style=style,
+                _session_row(
+                    prefix=prefix,
+                    mark=None,
+                    title=titles[row.session_id],
+                    meta=metas[row.session_id],
+                    meta_width=meta_width,
+                    console_width=console.size.width,
+                    selected=index == cursor,
+                ),
             )
     if hidden_below:
         _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
