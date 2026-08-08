@@ -13,3 +13,6 @@ build/
 .superpowers/
 reports/
 .env
+# Per-task scratch state from the /do orchestrator. Only this subdirectory:
+# .claude/ itself can hold project settings worth committing.
+.claude/do-tasks/
