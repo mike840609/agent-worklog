@@ -11,6 +11,9 @@ All notable changes to this project are documented in this file.
   belongs in the weekly report without opening it. Titles stay left-aligned in a
   fixed column with the metadata in its own column to the right, so a long list
   reads down a single column of titles.
+- The session review and browse headers now total message volume alongside the
+  session count, so the selection can be judged by how much of the period it
+  covers rather than by how many rows it holds.
 
 ## 0.8.0 - 2026-08-07
 

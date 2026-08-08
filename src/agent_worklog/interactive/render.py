@@ -14,7 +14,9 @@ from agent_worklog.interactive.density import (
     is_subagent,
     last_activity_at,
     repository_meta,
+    scan_volume,
     session_meta,
+    volume_label,
 )
 from agent_worklog.interactive.models import ReportDraft
 from agent_worklog.interactive.selection import SelectionMark, SelectionState, noise_reason
@@ -375,6 +377,19 @@ def _scan_warning_label(scan: ScanResult) -> str | None:
     return "⚠ " + "   ".join(parts)
 
 
+def _review_header(selection: SelectionState) -> str:
+    """Compose the Review Sessions title, volume clause included.
+
+    A scan can legitimately be all tool-call activity, and a ``0 / 0 msgs``
+    suffix is noise, so the clause is dropped rather than shown empty.
+    """
+    counts = f"Review Sessions   {selection.selected_count} / {selection.total_count} selected"
+    if not selection.total_volume:
+        return counts
+    volume = f"{selection.selected_volume} / {volume_label(selection.total_volume)}"
+    return f"{counts} · {volume}"
+
+
 def render_session_review(
     console: Console,
     selection: SelectionState,
@@ -385,11 +400,7 @@ def render_session_review(
     query: str = "",
     searching: bool = False,
 ) -> None:
-    _print_viewport_line(
-        console,
-        f"Review Sessions   {selection.selected_count} / {selection.total_count} selected",
-        style="bold",
-    )
+    _print_viewport_line(console, _review_header(selection), style="bold")
     warning_label = _scan_warning_label(selection.scan)
     if warning_label:
         _print_viewport_line(console, warning_label, style="yellow")
@@ -470,6 +481,15 @@ def render_session_review(
     )
 
 
+def _browser_header(scan: ScanResult) -> str:
+    """Compose the Browse Sessions title: a scan total, with no selection to compare it to."""
+    sessions = f"Browse Sessions   {scan.loaded_session_count} sessions"
+    volume = scan_volume(scan)
+    if not volume:
+        return sessions
+    return f"{sessions} · {volume_label(volume)}"
+
+
 def render_session_browser(
     console: Console,
     scan: ScanResult,
@@ -479,11 +499,7 @@ def render_session_browser(
     query: str = "",
     searching: bool = False,
 ) -> None:
-    _print_viewport_line(
-        console,
-        f"Browse Sessions   {scan.loaded_session_count} sessions",
-        style="bold",
-    )
+    _print_viewport_line(console, _browser_header(scan), style="bold")
     warning_label = _scan_warning_label(scan)
     if warning_label:
         _print_viewport_line(console, warning_label, style="yellow")

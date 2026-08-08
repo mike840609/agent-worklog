@@ -278,6 +278,63 @@ def test_session_review_renders_density_and_subagent_tag() -> None:
     assert "[sub]" in text
 
 
+def test_session_review_header_totals_selected_and_available_message_volume() -> None:
+    console, stream = _console()
+    items = [
+        _dense_resolved("d1", "repo-x", last_day=5, volume=12),
+        _dense_resolved("d2", "repo-x", last_day=4, volume=8),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+    state = SelectionState.from_scan(scan)
+    state.toggle_session("d2")
+
+    render_session_review(console, state, expanded_repositories=set(), cursor=0)
+
+    header = stream.getvalue().splitlines()[0]
+    assert header == "Review Sessions   1 / 2 selected · 12 / 20 msgs"
+
+
+def test_session_review_header_renders_a_lone_message_in_the_singular() -> None:
+    console, stream = _console()
+    items = [_dense_resolved("d1", "repo-x", last_day=5, volume=1)]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    header = stream.getvalue().splitlines()[0]
+    assert header == "Review Sessions   1 / 1 selected · 1 / 1 msg"
+
+
+def test_session_review_header_omits_volume_when_the_scan_holds_no_messages() -> None:
+    """A scan of pure tool-call activity would otherwise headline ``0 / 0 msgs``."""
+
+    console, stream = _console()
+
+    render_session_review(console, _selection(), expanded_repositories=set(), cursor=0)
+
+    header = stream.getvalue().splitlines()[0]
+    assert header == "Review Sessions   1 / 3 selected"
+
+
 def test_session_browser_renders_repository_and_session_density() -> None:
     console, stream = _console()
     items = [
@@ -298,6 +355,36 @@ def test_session_browser_renders_repository_and_session_density() -> None:
     text = stream.getvalue()
     assert "Aug 3–5 · 3 msgs" in text
     assert "Aug 5 · 2 msgs" in text
+
+
+def test_session_browser_header_totals_message_volume() -> None:
+    console, stream = _console()
+    items = [
+        _dense_resolved("d1", "repo-a", last_day=3, volume=1),
+        _dense_resolved("d2", "repo-a", last_day=5, volume=2),
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-a": items},
+    )
+
+    render_session_browser(console, scan, expanded_repositories=set(), cursor=0)
+
+    header = stream.getvalue().splitlines()[0]
+    assert header == "Browse Sessions   2 sessions · 3 msgs"
+
+
+def test_session_browser_header_omits_volume_when_the_scan_holds_no_messages() -> None:
+    console, stream = _console()
+
+    render_session_browser(console, _selection().scan, expanded_repositories=set(), cursor=0)
+
+    header = stream.getvalue().splitlines()[0]
+    assert header == "Browse Sessions   3 sessions"
 
 
 def test_session_review_density_survives_truncation() -> None:

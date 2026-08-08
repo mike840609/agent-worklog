@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from agent_worklog.interactive.density import message_volume, scan_volume
 from agent_worklog.models.session import AgentSession
 from agent_worklog.services.scan import ScanResult
 from agent_worklog.sessions.hierarchy import group_resolved_sessions
@@ -53,6 +54,23 @@ class SelectionState:
     @property
     def total_count(self) -> int:
         return len(self.scan.resolved_sessions)
+
+    @property
+    def selected_volume(self) -> int:
+        """Messages carried by the selection.
+
+        Row counts cannot answer whether a selection covers the week's work: one
+        session of 300 messages and seventeen of 3 read identically as counts.
+        """
+        return sum(
+            message_volume(item.session)
+            for item in self.scan.resolved_sessions
+            if item.session.session_id in self.selected_session_ids
+        )
+
+    @property
+    def total_volume(self) -> int:
+        return scan_volume(self.scan)
 
     def _all_session_ids(self) -> set[str]:
         return {item.session.session_id for item in self.scan.resolved_sessions}

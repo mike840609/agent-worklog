@@ -287,7 +287,7 @@ The report review supports the chosen **repository + individual session** select
 Example:
 
 ```text
- Review Sessions                         15 / 18 selected
+ Review Sessions   15 / 18 selected · 240 / 260 msgs
 
  ▼ ● agent-worklog                         8 / 9   Aug 3–8 · 24 msgs
       ● Fix sanitize export                        Aug 3 · 4 msgs
@@ -317,6 +317,12 @@ Repository rows append a date span and summed message count.
 When the terminal is too narrow to hold both columns, the title absorbs the
 truncation; below a floor of 12 title cells the metadata is dropped instead,
 so a row never collapses to an ellipsis with no title in it.
+
+The header totals the same message volume across the selection, because the
+question in front of the user is whether the selection covers the period and a
+row count cannot answer it: three light sessions and one heavy one read as
+`3 / 4 selected · 9 / 309 msgs` against `1 / 4 selected · 300 / 309 msgs`. A
+scan holding no messages at all omits the clause rather than showing `0 / 0`.
 
 ### Repository states
 

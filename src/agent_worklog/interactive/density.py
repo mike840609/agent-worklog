@@ -1,4 +1,4 @@
-"""Per-row information density for the interactive session lists."""
+"""Information density for the interactive session lists and their headers."""
 
 from datetime import datetime, tzinfo
 
@@ -44,7 +44,7 @@ def session_meta(session: AgentSession, tz: tzinfo | None) -> str:
         parts.append(_day_label(timestamp, tz))
     volume = message_volume(session)
     if volume:
-        parts.append(_volume_label(volume))
+        parts.append(volume_label(volume))
     return " · ".join(parts)
 
 
@@ -66,11 +66,17 @@ def repository_meta(repository_id: str, scan: ScanResult) -> str:
     parts = [_span_label(min(dates), max(dates), tz)]
     volume = sum(message_volume(item.session) for item in sessions)
     if volume:
-        parts.append(_volume_label(volume))
+        parts.append(volume_label(volume))
     return " · ".join(parts)
 
 
-def _volume_label(volume: int) -> str:
+def scan_volume(scan: ScanResult) -> int:
+    """Sum message volume across every session a scan resolved."""
+    return sum(message_volume(item.session) for item in scan.resolved_sessions)
+
+
+def volume_label(volume: int) -> str:
+    """Render a message count with its unit, e.g. ``1 msg`` or ``240 msgs``."""
     return f"{volume} msg" if volume == 1 else f"{volume} msgs"
 
 
