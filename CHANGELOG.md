@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Moving the cursor no longer strobes the screen. Each keypress cleared the terminal
+  and then reprinted the frame line by line, so between the erase and the last line
+  there was a blank or half-drawn screen to see. Frames are now painted over each
+  other from the home position in a single write: every line erases only its own
+  tail, and one erase at the end drops whatever a taller previous frame left below.
+  Nothing is ever cleared, so there is no empty state to catch. Output to a pipe or
+  a log is unchanged — the cursor control is only emitted to a real terminal.
 - The interactive screens now read as one instrument panel. Every repository carries a
   proportional bar and a percentage of the period's message volume, so the week's real
   weight is visible without opening a row, and repositories are numbered in display order

@@ -133,9 +133,24 @@ def _move(cursor: int, key: KeyPress, count: int) -> int:
     return cursor
 
 
-def _clear_if_terminal(console: Console) -> None:
-    if console.is_terminal:
-        console.clear()
+# Clearing and then reprinting shows the terminal an empty screen between the two,
+# which is the flicker. Painting the next frame over the last from the home position
+# never blanks anything: each line erases only its own tail, and one erase at the end
+# removes whatever a taller previous frame left below.
+_HOME = "\x1b[H"
+_ERASE_LINE = "\x1b[K"
+_ERASE_BELOW = "\x1b[J"
+
+
+def _paint(console: Console, frame: str) -> None:
+    """Write one frame over the last, in a single write and with no blank state."""
+
+    lines = frame.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    body = "".join(f"{line}{_ERASE_LINE}\n" for line in lines)
+    console.file.write(f"{_HOME}{body}{_ERASE_BELOW}")
+    console.file.flush()
 
 
 def _reset_search(state: _State) -> None:
@@ -763,7 +778,15 @@ def _help_key(state: _State, key: KeyPress) -> None:
 
 
 def _render(state: _State, console: Console) -> None:
-    _clear_if_terminal(console)
+    if not console.is_terminal:
+        _render_screen(state, console)
+        return
+    with console.capture() as capture:
+        _render_screen(state, console)
+    _paint(console, capture.get())
+
+
+def _render_screen(state: _State, console: Console) -> None:
     if state.screen is Screen.MAIN:
         render_main_menu(console, selected=state.main_cursor)
     elif state.screen is Screen.REPORT_SETUP:

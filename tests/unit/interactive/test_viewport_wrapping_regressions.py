@@ -167,9 +167,11 @@ def test_report_preview_reserves_last_terminal_line_when_both_indicators_show() 
 def test_interactive_screens_fit_every_reasonable_terminal_size() -> None:
     """Chrome grew a rule, a subtitle and a wrapping status bar; none may crowd out the list.
 
-    Fourteen rows is the floor this screen guarantees: below it the fixed chrome alone
-    can exceed the terminal. Above it, every size must render inside its budget with the
-    cursor row on screen.
+    This became load-bearing when the loop started painting frames from the home
+    position instead of clearing between them: a frame taller than the terminal
+    scrolls, and every paint after it lands one line off. Fourteen rows is the floor
+    this screen guarantees — below it the fixed chrome alone can exceed the terminal.
+    Above it, every size must render inside its budget with the cursor row on screen.
     """
 
     scan = _scan(12, long_titles=True)
