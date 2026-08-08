@@ -117,9 +117,9 @@ def _actions(
         count("choose_harness")
         return "codex" if current != "codex" else "opencode"
 
-    def choose_period(current: DateRange) -> DateRange:
+    def choose_period(current: str | None) -> tuple[str, DateRange]:
         count("choose_period")
-        return _period(10)
+        return ("Last 10 days", _period(10))
 
     def scan(draft_value: ReportDraft) -> ScanResult:
         count("scan")
@@ -218,6 +218,7 @@ def test_setup_detail_edit_does_not_require_a_scan() -> None:
     input_source = ScriptedInput(
         [
             char("1"),
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
@@ -333,6 +334,7 @@ def test_setup_edits_the_field_under_the_cursor() -> None:
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
             char("l"),
             char("q"),
             char("q"),
@@ -427,9 +429,7 @@ def test_setup_enter_on_the_action_row_generates() -> None:
     """The action row is the visible route to the same thing `g` does."""
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("1")]
-        + [KeyPress(key=Key.DOWN)] * 7
-        + [KeyPress(key=Key.ENTER), char("q"), char("q")]
+        [char("1"), KeyPress(key=Key.ENTER), char("q"), char("q")]
     )
 
     run_interactive(
@@ -446,9 +446,7 @@ def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
     """Generating writes a file, so a stray left/right while scrolling must not trigger it."""
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("1")]
-        + [KeyPress(key=Key.DOWN)] * 7
-        + [char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
+        [char("1"), char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
     )
 
     run_interactive(

@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- The main menu explains each option with a dim clause in its own column, the
+  way mole's menu does: `Generate Report` says what it will produce, `Settings`
+  says what it edits. On a terminal too narrow for the clauses, the options fall
+  back to bare labels.
+- The Generate Report screen leads with its action. `Generate report` now sits
+  first, above a blank line and a grey `Settings` label, with the settings beneath
+  it — the screen opens on the action, so Enter immediately produces the report
+  and the settings stay one arrow down. The cursor row takes the cursor's own
+  bold-cyan colour on every screen, so where the cursor sits reads as one thing
+  instead of two.
+- Moving the cursor no longer flashes the screen. Every keypress cleared the
+  terminal and then reprinted the whole frame, so between the erase and the last
+  line there was a blank or half-drawn screen to see. Frames are now painted over
+  each other instead: only the rows whose bytes actually changed are rewritten in
+  place, so an up/down move repaints just the two cursor rows, and the cursor is
+  hidden while the frame lands and parked below it afterwards. Nothing is ever
+  cleared. Output to a pipe or a log is unchanged — the cursor control is only
+  emitted to a real terminal.
 - Sessions from a deleted git worktree rejoin their repository. Identity comes from
   running git in the session's working directory, so once a worktree is removed
   there is nothing to ask, and its sessions detached into a separate row named
@@ -17,6 +35,17 @@ All notable changes to this project are documented in this file.
   worse than leaving it where it fell. The inference is never silent — the scan
   says how many sessions moved. Codex and OpenCode transcripts record no branch,
   so this reaches Claude Code sessions only.
+- The interactive menu opens on the week in progress rather than the last complete
+  one. Run it on a Friday and every session since Monday was outside the window,
+  with nothing on screen saying so — the scan looked empty and the tool looked
+  broken. The period row now names its window as well as dating it, so `This week`
+  and `Last week` stop reading as two similar pairs of dates.
+- `←→` on the period reaches all five windows. It advertised four and delivered
+  two: the cycle located the current window by comparing timestamps against a
+  freshly derived list, and a rolling window's end is the moment it was built, so
+  every other press failed to match and snapped back to the first entry. `Last 14
+  days` and `Last 30 days` could not be selected at all. Windows are identified by
+  name now, which no clock can invalidate.
 - The interactive screens now read as one instrument panel. Every repository carries a
   proportional bar and a percentage of the period's message volume, so the week's real
   weight is visible without opening a row, and repositories are numbered in display order

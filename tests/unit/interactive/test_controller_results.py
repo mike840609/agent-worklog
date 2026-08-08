@@ -99,7 +99,7 @@ def _actions() -> InteractiveActions:
     return InteractiveActions(
         new_draft=lambda: draft,
         choose_harness=lambda current: current,
-        choose_period=lambda current: current,
+        choose_period=lambda current: ("Last week", _period()),
         scan=lambda current: _scan(),
         generate=lambda current, scan, force: InteractiveReportResult(
             output_path=Path("reports/worklog.md"),

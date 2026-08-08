@@ -6,6 +6,8 @@ import ``build_interactive_actions`` without creating an import cycle.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from agent_worklog.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
@@ -24,10 +26,8 @@ def _new_draft() -> ReportDraft:
     now = cli._now_in_timezone(settings.report.timezone)
     enabled = cli._enabled_harnesses(settings)
     harness = cli.Harness.OPENCODE if cli.Harness.OPENCODE in enabled else enabled[0]
-    return ReportDraft(
-        harness=harness.value,
-        period=DateRange.previous_week(now=now),
-    )
+    label, period = _named_periods(now)[0]
+    return ReportDraft(harness=harness.value, period=period, period_label=label)
 
 
 def _choose_harness(current: str) -> str:
@@ -46,24 +46,36 @@ def _choose_harness(current: str) -> str:
     return enabled[(index + 1) % len(enabled)]
 
 
-def _choose_period(current: DateRange) -> DateRange:
-    """Cycle through useful built-in periods without opening a typed prompt."""
+def _named_periods(now: datetime) -> list[tuple[str, DateRange]]:
+    """The periods `→` cycles, in order, each with the name shown on screen."""
+
+    return [
+        ("This week", DateRange.current_week(now=now)),
+        ("Last week", DateRange.previous_week(now=now)),
+        ("Last 7 days", DateRange.from_days(days=7, now=now)),
+        ("Last 14 days", DateRange.from_days(days=14, now=now)),
+        ("Last 30 days", DateRange.from_days(days=30, now=now)),
+    ]
+
+
+def _choose_period(current_label: str | None) -> tuple[str, DateRange]:
+    """Advance to the next named period.
+
+    Identified by name rather than by comparing timestamps. A rolling period's
+    `until` is the moment it was built, so re-deriving the list a second later
+    never matched the stored range: the cycle fell back to the first entry every
+    other press, and the 14- and 30-day windows could not be reached at all.
+    """
 
     from agent_worklog import cli
 
     settings = cli._load_settings()
     now = cli._now_in_timezone(settings.report.timezone)
-    periods = [
-        DateRange.previous_week(now=now),
-        DateRange.from_days(days=7, now=now),
-        DateRange.from_days(days=14, now=now),
-        DateRange.from_days(days=30, now=now),
-    ]
-    try:
-        index = periods.index(current)
-    except ValueError:
+    periods = _named_periods(now)
+    names = [name for name, _ in periods]
+    if current_label not in names:
         return periods[0]
-    return periods[(index + 1) % len(periods)]
+    return periods[(names.index(current_label) + 1) % len(periods)]
 
 
 def _scan(draft: ReportDraft) -> ScanResult:

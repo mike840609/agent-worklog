@@ -43,3 +43,17 @@ class DateRange(BaseModel):
             since=current_monday - timedelta(days=7),
             until=current_monday,
         )
+
+    @classmethod
+    def current_week(cls, *, now: datetime) -> DateRange:
+        """Monday 00:00 of the week in progress, up to now."""
+
+        if now.tzinfo is None:
+            raise ValueError("now must be timezone-aware")
+        monday = (now - timedelta(days=now.weekday())).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        return cls(since=monday, until=now)

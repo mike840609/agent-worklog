@@ -30,6 +30,7 @@ from agent_worklog.interactive.render import (
     render_report_setup,
     render_session_browser,
     render_session_review,
+    report_generate_row,
     report_preview_capacity,
     report_result_options,
     report_setup_rows,
@@ -64,7 +65,7 @@ class InteractiveActions:
 
     new_draft: Callable[[], ReportDraft]
     choose_harness: Callable[[str], str]
-    choose_period: Callable[[DateRange], DateRange]
+    choose_period: Callable[[str | None], tuple[str, DateRange]]
     scan: Callable[[ReportDraft], ScanResult]
     generate: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
     doctor: Callable[[str], list[str]]
@@ -133,9 +134,50 @@ def _move(cursor: int, key: KeyPress, count: int) -> int:
     return cursor
 
 
-def _clear_if_terminal(console: Console) -> None:
-    if console.is_terminal:
-        console.clear()
+# Clearing and then reprinting shows the terminal an empty screen between the two,
+# which is the flicker. The next frame is painted over the last instead: only the
+# rows whose bytes actually changed are rewritten in place, the cursor is hidden
+# while the frame lands, and one erase after the last frame row drops whatever the
+# previous frame — or an action's prompt — left below it.
+_CURSOR_HIDE = "\x1b[?25l"
+_CURSOR_SHOW = "\x1b[?25h"
+_HOME = "\x1b[H"
+_ERASE_LINE = "\x1b[K"
+_ERASE_BELOW = "\x1b[J"
+
+
+def _paint(console: Console, frame: str, previous: list[str] | None) -> list[str]:
+    """Write one frame over the last, rewriting only the rows that changed.
+
+    Moving the cursor changes exactly two rows, so exactly two rows are
+    rewritten: nothing else on screen moves, so there is nothing to flash. The
+    cursor is hidden while the frame lands, then parked below it — actions that
+    hand off to typer prompts print there, and the next paint positions every
+    row absolutely anyway.
+    """
+
+    lines = frame.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    changed = (
+        list(enumerate(lines))
+        if previous is None
+        else [
+            (index, line)
+            for index, line in enumerate(lines)
+            if index >= len(previous) or previous[index] != line
+        ]
+    )
+    out: list[str] = [_HOME] if previous is None else []
+    for index, line in changed:
+        out.append(f"\x1b[{index + 1};1H")
+        out.append(line)
+        out.append(_ERASE_LINE)
+    out.append(f"\x1b[{len(lines) + 1};1H")
+    out.append(_ERASE_BELOW)
+    console.file.write(f"{_CURSOR_HIDE}{''.join(out)}{_CURSOR_SHOW}")
+    console.file.flush()
+    return lines
 
 
 def _reset_search(state: _State) -> None:
@@ -315,7 +357,7 @@ def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str)
         if draft.harness != "opencode":
             draft.set_sanitize(False)
     elif field == "Period":
-        draft.set_period(actions.choose_period(draft.period))
+        draft.set_period(*actions.choose_period(draft.period_label))
     elif field == "Detail":
         detail = DetailLevel.BRIEF if draft.detail is DetailLevel.FULL else DetailLevel.FULL
         draft.set_detail(detail)
@@ -344,7 +386,7 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         _generate_from_setup(state, actions)
         return
     row = rows[state.setup_cursor]
-    if row == rows[-1]:
+    if row == report_generate_row():
         # Generating writes a file, so the action row answers to Enter alone —
         # a stray left/right while scrolling the settings must not produce a report.
         if key.key is Key.ENTER:
@@ -675,7 +717,7 @@ def _error_key(
         if state.draft.harness != "opencode":
             state.draft.set_sanitize(False)
     else:
-        state.draft.set_period(actions.choose_period(state.draft.period))
+        state.draft.set_period(*actions.choose_period(state.draft.period_label))
     state.selection = None
     if error.kind.startswith("browse"):
         _load_browse(state, actions, state.draft)
@@ -762,8 +804,7 @@ def _help_key(state: _State, key: KeyPress) -> None:
         state.help_return_screen = None
 
 
-def _render(state: _State, console: Console) -> None:
-    _clear_if_terminal(console)
+def _render_screen(state: _State, console: Console) -> None:
     if state.screen is Screen.MAIN:
         render_main_menu(console, selected=state.main_cursor)
     elif state.screen is Screen.REPORT_SETUP:
@@ -872,6 +913,21 @@ def _dispatch(
         _help_key(state, key)
 
 
+def _render(
+    state: _State,
+    console: Console,
+    previous: list[str] | None,
+) -> list[str] | None:
+    """Paint the current screen over the last one, or print it plain off a TTY."""
+
+    if not console.is_terminal:
+        _render_screen(state, console)
+        return None
+    with console.capture() as capture:
+        _render_screen(state, console)
+    return _paint(console, capture.get(), previous)
+
+
 def run_interactive(
     *,
     actions: InteractiveActions,
@@ -881,8 +937,9 @@ def run_interactive(
     """Run the terminal interaction until the user explicitly leaves it."""
 
     state = _State()
+    previous_frame: list[str] | None = None
     while state.screen is not Screen.EXIT:
-        _render(state, console)
+        previous_frame = _render(state, console, previous_frame)
         try:
             key = _read_key(input_source)
         except KeyboardInterrupt:

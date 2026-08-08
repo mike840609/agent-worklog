@@ -32,3 +32,32 @@ def test_date_range_rejects_naive_values() -> None:
             since=datetime(2026, 7, 20),
             until=datetime(2026, 7, 21),
         )
+
+
+def test_current_week_starts_at_this_weeks_monday() -> None:
+    """A weekly report wants the week in progress, not the one that already closed."""
+
+    now = datetime(2026, 8, 8, 15, 30, tzinfo=TZ)
+
+    period = DateRange.current_week(now=now)
+
+    assert period.since == datetime(2026, 8, 3, tzinfo=TZ)
+    assert period.until == now
+
+
+def test_current_week_on_a_monday_starts_that_morning() -> None:
+    """Run on a Monday the window is a few hours long, not empty and not last week."""
+
+    now = datetime(2026, 8, 3, 9, 0, tzinfo=TZ)
+
+    period = DateRange.current_week(now=now)
+
+    assert period.since == datetime(2026, 8, 3, tzinfo=TZ)
+    assert period.until == now
+
+
+def test_current_week_rejects_a_naive_clock() -> None:
+    """Harnesses record aware timestamps; a naive bound would compare against them wrongly."""
+
+    with pytest.raises(ValueError):
+        DateRange.current_week(now=datetime(2026, 8, 8, 15, 30))

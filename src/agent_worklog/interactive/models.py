@@ -27,6 +27,7 @@ class Screen(StrEnum):
 class ReportDraft:
     harness: str
     period: DateRange
+    period_label: str | None = None
     include_subagents: bool = True
     sanitize: bool = False
     detail: DetailLevel = DetailLevel.FULL
@@ -52,10 +53,12 @@ class ReportDraft:
             self.harness = harness
             self.clear_scan()
 
-    def set_period(self, period: DateRange) -> None:
+    def set_period(self, label: str | None, period: DateRange) -> None:
+        """Carry the period's display name with the range that produced it."""
         if period != self.period:
             self.period = period
             self.clear_scan()
+        self.period_label = label
 
     def set_include_subagents(self, include_subagents: bool) -> None:
         if include_subagents != self.include_subagents:
