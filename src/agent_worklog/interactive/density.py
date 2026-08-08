@@ -32,7 +32,7 @@ def is_subagent(session: AgentSession) -> bool:
 
 
 def session_meta(session: AgentSession, tz: tzinfo | None) -> str:
-    """Render density for one session row, e.g. ``Aug 5 · 12 msgs``.
+    """Render density for one session row, e.g. ``Aug 5 │ 12 msgs``.
 
     Harnesses record activity timestamps in UTC, so the day is resolved in the
     report's own timezone: a session worked at 2am local is otherwise labelled
@@ -45,11 +45,11 @@ def session_meta(session: AgentSession, tz: tzinfo | None) -> str:
     volume = message_volume(session)
     if volume:
         parts.append(volume_label(volume))
-    return " · ".join(parts)
+    return " │ ".join(parts)
 
 
 def repository_meta(repository_id: str, scan: ScanResult) -> str:
-    """Render density for a repository row, e.g. ``Aug 3–5 · 240 msgs``.
+    """Render density for a repository row, e.g. ``Aug 3–5 │ 240 msgs``.
 
     An all-undated repository returns ``""`` (no date, no summed volume): volume
     without a date is shown per-session only, while the repo row's span needs at
@@ -67,7 +67,7 @@ def repository_meta(repository_id: str, scan: ScanResult) -> str:
     volume = sum(message_volume(item.session) for item in sessions)
     if volume:
         parts.append(volume_label(volume))
-    return " · ".join(parts)
+    return " │ ".join(parts)
 
 
 def scan_volume(scan: ScanResult) -> int:

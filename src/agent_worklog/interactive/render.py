@@ -13,6 +13,7 @@ from rich.text import Text
 from agent_worklog.interactive.density import (
     is_subagent,
     last_activity_at,
+    message_volume,
     repository_meta,
     scan_volume,
     session_meta,
@@ -48,6 +49,13 @@ _SETUP_OPTIONS = [
 ]
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
 _DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
+_ERROR_HINTS = [
+    "↑↓ jk",
+    "PgUp/PgDn Detail",
+    "Enter Select",
+    "? Help",
+    "b Back",
+]
 _MARKERS = {
     SelectionMark.ALL: "●",
     SelectionMark.NONE: "○",
@@ -67,6 +75,26 @@ _ROW_GAP = 3
 _MIN_TITLE_CELLS = 12
 # Aware, so it orders against the aware UTC timestamps the harnesses record.
 _UNDATED = datetime.min.replace(tzinfo=UTC)
+# mole-style visual language: a ▶ cursor, a ═ rule under each screen title, and
+# a single pipe-separated status bar. The bar scale is shared by every row on
+# screen, so one glyph column means one thing.
+_CURSOR = "▶"
+_RULE_CHAR = "═"
+_HINT_SEPARATOR = " │ "
+_BAR_FULL = "█"
+_BAR_EMPTY = "░"
+_BAR_CELLS = 12
+_BAR_STYLE = "cyan"
+_PERCENT_CELLS = 4  # "100%" at its widest
+# Bars are the first thing to go on a narrow terminal: the title column matters
+# more than the decoration.
+_MIN_BAR_WIDTH = 80
+# ponytail: the guidance line is the first chrome to go on a short terminal, the same
+# trade the bar column makes on a narrow one — content outranks decoration. Below this
+# height the list would otherwise render zero rows.
+_MIN_SUBTITLE_HEIGHT = 16
+_REVIEW_SUBTITLE = "Select sessions to include in the report:"
+_BROWSE_SUBTITLE = "Select a repository to explore:"
 
 
 def main_menu_options() -> list[str]:
@@ -82,7 +110,7 @@ def report_setup_options() -> list[str]:
 
 
 def _option(label: str, index: int, selected: int) -> str:
-    return f"{'❯' if index == selected else ' '} {label}"
+    return f"{_CURSOR if index == selected else ' '} {label}"
 
 
 def _print_viewport_line(
@@ -105,13 +133,94 @@ def _print_viewport_text(console: Console, text: Text) -> None:
     console.print(text, no_wrap=True, overflow="ellipsis")
 
 
+def _print_header(console: Console, title: str, *, subtitle: str | None = None) -> None:
+    """Print the screen title, a rule under it, and an optional subtitle below that."""
+    _print_viewport_line(console, title, style="bold")
+    _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
+    if subtitle and console.size.height >= _MIN_SUBTITLE_HEIGHT:
+        _print_viewport_line(console, subtitle, style="dim")
+
+
+def _header_lines(console: Console, subtitle: str | None) -> int:
+    """How many lines `_print_header` will actually spend, so reservations match."""
+    return 3 if subtitle and console.size.height >= _MIN_SUBTITLE_HEIGHT else 2
+
+
+def _hint_lines(hints: list[str], width: int) -> list[str]:
+    """Pack hints into as few ` │ `-joined lines as the width allows."""
+
+    packed: list[str] = []
+    line: list[str] = []
+    for hint in hints:
+        if line and cell_len(_HINT_SEPARATOR.join([*line, hint])) > width:
+            packed.append(_HINT_SEPARATOR.join(line))
+            line = [hint]
+        else:
+            line.append(hint)
+    if line:
+        packed.append(_HINT_SEPARATOR.join(line))
+    return packed
+
+
+def _print_hints(console: Console, hints: list[str]) -> None:
+    """Lay the hints out as mole's single status bar, wrapping only when forced.
+
+    Truncating would silently drop `q Quit` off the right edge on a narrow
+    terminal, so an over-long bar takes a second line instead.
+    """
+    for line in _hint_lines(hints, console.size.width):
+        _print_viewport_line(console, line, style="dim")
+
+
+@dataclass(frozen=True)
+class _BarScale:
+    """One scale shared by every row on screen. ``cells == 0`` disables the column."""
+
+    peak: int  # max repository volume in the filtered set
+    total: int  # total volume in the filtered set
+    cells: int  # _BAR_CELLS, or 0 when disabled
+
+
+def _bar_scale(
+    scan: ScanResult,
+    rows: list[VisibleRow],
+    *,
+    console_width: int,
+) -> _BarScale:
+    volumes = [
+        sum(message_volume(item.session) for item in scan.sessions_by_repository[row.repository_id])
+        for row in rows
+        if row.kind == "repository"
+    ]
+    total = sum(volumes)
+    enabled = bool(total) and console_width >= _MIN_BAR_WIDTH
+    return _BarScale(peak=max(volumes, default=0), total=total, cells=_BAR_CELLS if enabled else 0)
+
+
+def _bar_cell(scale: _BarScale, volume: int) -> Text:
+    """Return the pre-styled bar+percent block."""
+    if not scale.cells:
+        return Text("")
+    filled = 0 if not volume else max(1, round(volume / scale.peak * scale.cells))
+    filled = min(filled, scale.cells)
+    percent = f"{volume / scale.total:.0%}" if scale.total else ""
+    block = Text.assemble(
+        (_BAR_FULL * filled, _BAR_STYLE),
+        (_BAR_EMPTY * (scale.cells - filled), "dim"),
+        " ",
+        (f"{percent:>{_PERCENT_CELLS}}", "dim"),
+        " ",
+    )
+    return block
+
+
 def session_row_meta(
     session: AgentSession,
     tz: tzinfo | None,
     reason: str | None = None,
 ) -> str:
     """Compose the dim right-hand metadata for one session row."""
-    facts = " · ".join(fact for fact in (session_meta(session, tz), reason) if fact)
+    facts = " │ ".join(fact for fact in (session_meta(session, tz), reason) if fact)
     if not is_subagent(session):
         return facts
     return f"[sub] {facts}" if facts else "[sub]"
@@ -120,11 +229,11 @@ def session_row_meta(
 def _cursor_glyph(active: bool) -> tuple[str, str]:
     """The cursor holds column 0 on both row kinds, so the left edge never moves."""
 
-    return ("❯", _CURSOR_STYLE) if active else (" ", "")
+    return (_CURSOR, _CURSOR_STYLE) if active else (" ", "")
 
 
 def _expansion_glyph(expanded: bool) -> tuple[str, str]:
-    return ("▼" if expanded else "▶", _EXPANSION_STYLE)
+    return ("▾" if expanded else "▸", _EXPANSION_STYLE)
 
 
 def _mark_glyph(mark: SelectionMark) -> tuple[str, str]:
@@ -224,29 +333,31 @@ def report_result_options(*, dry_run: bool) -> list[str]:
 def report_preview_capacity(terminal_height: int) -> int:
     """Content lines available while reserving the terminal's final display row."""
 
-    return max(0, terminal_height - 7)
+    return max(0, terminal_height - 8)
 
 
 def render_main_menu(console: Console, *, selected: int) -> None:
-    _print_viewport_line(console, "Agent Worklog", style="bold")
-    _print_viewport_line(
+    _print_header(
         console,
-        "Turn coding-agent sessions into engineering reports",
-        style="dim",
+        "Agent Worklog",
+        subtitle="Turn coding-agent sessions into engineering reports",
     )
     console.print()
     for index, label in enumerate(_MAIN_OPTIONS):
         _print_option_line(console, label, index, selected)
     console.print()
-    _print_viewport_line(
+    _print_hints(
         console,
-        "↑↓ / jk Navigate   Enter Select   1-4 Select   ? Help   q Quit",
-        style="dim",
+        ["↑↓ jk", "Enter Select", "1-4", "? Help", "q Quit"],
     )
 
 
 def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) -> None:
-    _print_viewport_line(console, "Generate Report", style="bold")
+    _print_header(
+        console,
+        "Generate Report",
+        subtitle="Adjust the report, then Review or Generate:",
+    )
     console.print()
     _print_viewport_line(console, f"Harness      {_harness_label(draft.harness)}")
     _print_viewport_line(console, f"Period       {_period_label(draft.period)}")
@@ -273,10 +384,9 @@ def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) 
             style = "bold" if not style else f"bold {style}"
         _print_viewport_line(console, _option(label, index, selected), style=style)
     console.print()
-    _print_viewport_line(
+    _print_hints(
         console,
-        "↑↓ / jk Navigate   ←→ / hl Change   Enter Edit   r Review   ? Help   b Back   q Main menu",
-        style="dim",
+        ["↑↓ jk", "←→ hl Change", "Enter Edit", "r Review", "? Help", "b Back", "q Menu"],
     )
 
 
@@ -340,6 +450,23 @@ def _repository_display_name(scan: ScanResult, repository_id: str) -> str:
     if not sessions:
         return repository_id
     return redact_text(sessions[0].repository.display_name)
+
+
+def _repository_numbers(rows: list[VisibleRow]) -> tuple[dict[str, int], int]:
+    """Number repositories in filtered display order, plus the shared column width.
+
+    The number is an absolute display index, so a repository keeps its number
+    while the viewport scrolls underneath. The width covers every visible repo:
+    ``len(str(count))`` digits plus the dot, so the column holds still at 9 and
+    at 10 repositories.
+    """
+    numbers: dict[str, int] = {}
+    count = 0
+    for row in rows:
+        if row.kind == "repository":
+            count += 1
+            numbers[row.repository_id] = count
+    return numbers, len(str(count)) + 1
 
 
 def _session_titles(scan: ScanResult) -> dict[str, str]:
@@ -440,7 +567,7 @@ def _review_header(selection: SelectionState) -> str:
     if not selection.total_volume:
         return counts
     volume = f"{selection.selected_volume} / {volume_label(selection.total_volume)}"
-    return f"{counts} · {volume}"
+    return f"{counts} │ {volume}"
 
 
 def render_session_review(
@@ -453,20 +580,37 @@ def render_session_review(
     query: str = "",
     searching: bool = False,
 ) -> None:
-    _print_viewport_line(console, _review_header(selection), style="bold")
+    _print_header(
+        console,
+        _review_header(selection),
+        subtitle=_REVIEW_SUBTITLE,
+    )
     warning_label = _scan_warning_label(selection.scan)
     if warning_label:
         _print_viewport_line(console, warning_label, style="yellow")
     if message:
         _print_viewport_line(console, message)
     _render_search_status(console, query, searching)
+    hints = [
+        "↑↓ jk",
+        "←→ hl",
+        "Space Toggle",
+        "a All",
+        "n None",
+        "g Generate",
+        "R Rescan",
+        "/ Search",
+        "? Help",
+        "b Back",
+    ]
     console.print()
     rows = build_filtered_rows(selection.scan, expanded_repositories, query=query)
     visible, hidden_above, hidden_below = _visible_window(
         rows,
         cursor=cursor,
         terminal_height=console.size.height,
-        reserved_lines=(7 if message else 6)
+        reserved_lines=(3 if message else 2) + _header_lines(console, _REVIEW_SUBTITLE)
+        + len(_hint_lines(hints, console.size.width))
         + (1 if warning_label else 0)
         + (1 if searching or query else 0),
     )
@@ -483,6 +627,8 @@ def render_session_review(
         for _, row in visible
         if row.session_id is not None
     }
+    repository_numbers, number_width = _repository_numbers(rows)
+    bar_scale = _bar_scale(selection.scan, rows, console_width=console.size.width)
     tree: list[_ListRow] = []
     for index, row in visible:
         cursor_here = index == cursor
@@ -495,13 +641,21 @@ def render_session_review(
             )
             total = len(selection.scan.sessions_by_repository[row.repository_id])
             name = _repository_display_name(selection.scan, row.repository_id)
+            volume = sum(
+                message_volume(item.session)
+                for item in selection.scan.sessions_by_repository[row.repository_id]
+            )
+            bar_block = _bar_cell(bar_scale, volume)
             tree.append(
                 _ListRow(
                     lead=Text.assemble(
                         _cursor_glyph(cursor_here),
                         " ",
+                        f"{repository_numbers[row.repository_id]:>{number_width - 1}}.",
+                        " ",
                         _expansion_glyph(expanded),
                         " ",
+                        bar_block,
                         _mark_glyph(mark),
                         " ",
                     ),
@@ -517,11 +671,17 @@ def render_session_review(
                 if row.session_id in selection.selected_session_ids
                 else SelectionMark.NONE
             )
+            bar_block = _bar_cell(bar_scale, message_volume(sessions[row.session_id]))
             tree.append(
                 _ListRow(
                     lead=Text.assemble(
                         _cursor_glyph(cursor_here),
-                        "     ",
+                        " ",
+                        " " * number_width,
+                        " ",
+                        " ",
+                        " ",
+                        bar_block,
                         _mark_glyph(mark),
                         " ",
                     ),
@@ -534,16 +694,7 @@ def render_session_review(
     if hidden_below:
         _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
     console.print()
-    _print_viewport_line(
-        console,
-        "↑↓ / jk Navigate   ←→ / hl Collapse/Expand   Space Toggle",
-        style="dim",
-    )
-    _print_viewport_line(
-        console,
-        "a All   n None   g Generate   R Rescan   / Search   ? Help   b Back",
-        style="dim",
-    )
+    _print_hints(console, hints)
 
 
 def _browser_header(scan: ScanResult) -> str:
@@ -552,7 +703,7 @@ def _browser_header(scan: ScanResult) -> str:
     volume = scan_volume(scan)
     if not volume:
         return sessions
-    return f"{sessions} · {volume_label(volume)}"
+    return f"{sessions} │ {volume_label(volume)}"
 
 
 def render_session_browser(
@@ -564,18 +715,33 @@ def render_session_browser(
     query: str = "",
     searching: bool = False,
 ) -> None:
-    _print_viewport_line(console, _browser_header(scan), style="bold")
+    _print_header(
+        console,
+        _browser_header(scan),
+        subtitle=_BROWSE_SUBTITLE,
+    )
     warning_label = _scan_warning_label(scan)
     if warning_label:
         _print_viewport_line(console, warning_label, style="yellow")
     _render_search_status(console, query, searching)
+    hints = [
+        "↑↓ jk",
+        "←→ hl",
+        "R Rescan",
+        "/ Search",
+        "? Help",
+        "b Back",
+    ]
     console.print()
     rows = build_filtered_rows(scan, expanded_repositories, query=query)
     visible, hidden_above, hidden_below = _visible_window(
         rows,
         cursor=cursor,
         terminal_height=console.size.height,
-        reserved_lines=5 + (1 if warning_label else 0) + (1 if searching or query else 0),
+        reserved_lines=2 + _header_lines(console, _BROWSE_SUBTITLE)
+        + len(_hint_lines(hints, console.size.width))
+        + (1 if warning_label else 0)
+        + (1 if searching or query else 0),
     )
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
@@ -589,6 +755,8 @@ def render_session_browser(
         for _, row in visible
         if row.session_id is not None
     }
+    repository_numbers, number_width = _repository_numbers(rows)
+    bar_scale = _bar_scale(scan, rows, console_width=console.size.width)
     tree: list[_ListRow] = []
     for index, row in visible:
         cursor_here = index == cursor
@@ -596,13 +764,21 @@ def render_session_browser(
             expanded = row.repository_id in expanded_repositories or bool(query)
             name = _repository_display_name(scan, row.repository_id)
             count = len(scan.sessions_by_repository[row.repository_id])
+            volume = sum(
+                message_volume(item.session)
+                for item in scan.sessions_by_repository[row.repository_id]
+            )
+            bar_block = _bar_cell(bar_scale, volume)
             tree.append(
                 _ListRow(
                     lead=Text.assemble(
                         _cursor_glyph(cursor_here),
                         " ",
+                        f"{repository_numbers[row.repository_id]:>{number_width - 1}}.",
+                        " ",
                         _expansion_glyph(expanded),
                         " ",
+                        bar_block,
                     ),
                     title=f"{name}   {count}",
                     meta=repository_meta(row.repository_id, scan),
@@ -611,9 +787,18 @@ def render_session_browser(
             )
         else:
             assert row.session_id is not None
+            bar_block = _bar_cell(bar_scale, message_volume(sessions[row.session_id]))
             tree.append(
                 _ListRow(
-                    lead=Text.assemble(_cursor_glyph(cursor_here), "      "),
+                    lead=Text.assemble(
+                        _cursor_glyph(cursor_here),
+                        " ",
+                        " " * number_width,
+                        " ",
+                        " ",
+                        " ",
+                        bar_block,
+                    ),
                     title=titles[row.session_id],
                     meta=metas[row.session_id],
                     selected=cursor_here,
@@ -623,11 +808,7 @@ def render_session_browser(
     if hidden_below:
         _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
     console.print()
-    _print_viewport_line(
-        console,
-        "↑↓ / jk Navigate   ←→ / hl Collapse/Expand   R Rescan   / Search   ? Help   b Back",
-        style="dim",
-    )
+    _print_hints(console, hints)
 
 
 def render_report_result(
@@ -640,10 +821,9 @@ def render_report_result(
     selected: int,
     dry_run: bool = False,
 ) -> None:
-    _print_viewport_line(
+    _print_header(
         console,
         "✓ Dry run complete" if dry_run else "✓ Report generated",
-        style="bold",
     )
     console.print()
     _print_viewport_line(console, f"Period         {_period_label(period)}")
@@ -655,17 +835,16 @@ def render_report_result(
     for index, label in enumerate(report_result_options(dry_run=dry_run)):
         _print_option_line(console, label, index, selected)
     console.print()
-    _print_viewport_line(
+    _print_hints(
         console,
-        "↑↓ / jk Navigate   Enter Select   ? Help   q Main menu",
-        style="dim",
+        ["↑↓ jk", "Enter Select", "? Help", "q Menu"],
     )
 
 
 def render_report_preview(console: Console, *, content: str, offset: int) -> None:
     """Render a literal, scrollable dry-run report preview."""
 
-    _print_viewport_line(console, "Report Preview", style="bold")
+    _print_header(console, "Report Preview")
     console.print()
     lines = content.splitlines() or [""]
     capacity = report_preview_capacity(console.size.height)
@@ -678,10 +857,15 @@ def render_report_preview(console: Console, *, content: str, offset: int) -> Non
         _print_viewport_line(console, line)
     if end < len(lines):
         _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
-    _print_viewport_line(
+    _print_hints(
         console,
-        "↑↓ / jk Scroll   PgUp/PgDn Page   g/G Top/Bottom   ? Help   b Back",
-        style="dim",
+        [
+            "↑↓ jk Scroll",
+            "PgUp/PgDn",
+            "g/G Top/Bottom",
+            "? Help",
+            "b Back",
+        ],
     )
 
 
@@ -706,10 +890,19 @@ def _detail_window(
     return lines[offset:end], hidden_above, hidden_below
 
 
-def recoverable_error_detail_capacity(terminal_height: int, option_count: int) -> int:
-    """Rows available for error detail while actions remain visible."""
+def recoverable_error_detail_capacity(
+    terminal_height: int,
+    option_count: int,
+    console_width: int,
+) -> int:
+    """Rows available for error detail while actions remain visible.
 
-    return max(0, terminal_height - option_count - 6)
+    The footer height is derived from the screen's own hint lines at the given
+    width, so the capacity always matches what actually renders.
+    """
+
+    footer_lines = len(_hint_lines(_ERROR_HINTS, console_width))
+    return max(0, terminal_height - option_count - 6 - footer_lines)
 
 
 def render_recoverable_error(
@@ -721,13 +914,15 @@ def render_recoverable_error(
     selected: int,
     detail_offset: int = 0,
 ) -> None:
-    _print_viewport_line(console, f"✗ {title}", style="bold")
+    _print_header(console, f"✗ {title}")
     console.print()
     lines = redact_text(detail).splitlines() or [""]
     visible, hidden_above, hidden_below = _detail_window(
         lines,
         offset=detail_offset,
-        capacity=recoverable_error_detail_capacity(console.size.height, len(options)),
+        capacity=recoverable_error_detail_capacity(
+            console.size.height, len(options), console.size.width
+        ),
     )
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more detail lines", style="dim")
@@ -739,17 +934,13 @@ def render_recoverable_error(
     for index, label in enumerate(options):
         _print_option_line(console, label, index, selected)
     console.print()
-    _print_viewport_line(
-        console,
-        "↑↓ / jk Navigate   PgUp/PgDn Detail   Enter Select   ? Help   b Back",
-        style="dim",
-    )
+    _print_hints(console, _ERROR_HINTS)
 
 
 def render_help(console: Console) -> None:
     """Render the shared keyboard shortcut reference."""
 
-    _print_viewport_line(console, "Keyboard shortcuts", style="bold")
+    _print_header(console, "Keyboard shortcuts")
     console.print()
     for line in (
         "↑↓ / jk        Move selection or scroll one line",
@@ -766,4 +957,4 @@ def render_help(console: Console) -> None:
     ):
         _print_viewport_line(console, line)
     console.print()
-    _print_viewport_line(console, "b / Esc / Enter Back", style="dim")
+    _print_hints(console, ["b / Esc / Enter Back"])

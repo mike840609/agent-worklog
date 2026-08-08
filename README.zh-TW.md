@@ -48,14 +48,15 @@ pipx install agent-worklog
 ```text
 $ agent-worklog
 Agent Worklog
+══════════════════════════════════════════════════════
 Turn coding-agent sessions into engineering reports
 
-❯ Generate Report
+▶ Generate Report
   Browse Sessions
   Check Setup
   Settings
 
-↑↓ / jk Navigate   Enter Select   q Quit
+↑↓ jk │ Enter Select │ 1-4 │ ? Help │ q Quit
 ```
 
 選擇產生報告後會先看到設定摘要，不需要從頭回答一連串問題。這就是原本
@@ -64,6 +65,8 @@ Turn coding-agent sessions into engineering reports
 
 ```text
 Generate Report
+══════════════════════════════════════════════════════
+Adjust the report, then Review or Generate:
 
 Harness      OpenCode
 Period       Aug 03 – Aug 10
@@ -73,7 +76,7 @@ Narrative    Enabled
 Sanitize     Off
 Dry run      Off
 
-❯ Review sessions
+▶ Review sessions
   Harness
   Period
   Detail
@@ -83,7 +86,25 @@ Dry run      Off
   Dry run
   Back
 
-↑↓ / jk Navigate   Enter Edit   r Review   b Back
+↑↓ jk │ ←→ hl Change │ Enter Edit │ r Review │ ? Help │ b Back │ q Menu
+```
+
+Review Sessions 會依每個 repository 在這段期間實際佔掉多少對話量排出長條，不必逐一打開
+就能看出主要工作落在哪裡：
+
+```text
+Review Sessions   6 / 6 selected │ 252 / 252 msgs
+══════════════════════════════════════════════════════
+Select sessions to include in the report:
+
+  1. ▾ ████████████  71% ● agent-worklog   3 / 3    Aug 5 │ 180 msgs
+▶      ████░░░░░░░░  24% ● Add the interactive menu Aug 5 │ 60 msgs
+       ████░░░░░░░░  24% ● Redact before writing    Aug 5 │ 60 msgs
+       ████░░░░░░░░  24% ● Group worktrees          Aug 5 │ 60 msgs
+  2. ▸ ████░░░░░░░░  24% ● obsidian-wiki   2 / 2    Aug 4 │ 60 msgs
+  3. ▸ █░░░░░░░░░░░   5% ● dotfiles   1 / 1         Aug 3 │ 12 msgs
+
+↑↓ jk │ ←→ hl │ Space Toggle │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
 
 或直接下指令：

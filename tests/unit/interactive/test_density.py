@@ -135,7 +135,7 @@ def test_session_meta_renders_date_and_volume() -> None:
             _activity(ActivityType.TOOL_CALL, datetime(2026, 8, 5, 9, 2, tzinfo=TZ)),
         ],
     )
-    assert session_meta(session, TZ) == "Aug 5 · 2 msgs"
+    assert session_meta(session, TZ) == "Aug 5 │ 2 msgs"
 
 
 def test_session_meta_omits_volume_when_zero() -> None:
@@ -172,7 +172,7 @@ def test_repository_meta_spans_dates_and_sums_volume() -> None:
             )
         ),
     ]
-    assert repository_meta("repo", _scan(items)) == "Aug 3–5 · 3 msgs"
+    assert repository_meta("repo", _scan(items)) == "Aug 3–5 │ 3 msgs"
 
 
 def test_repository_meta_cross_month_uses_en_dash() -> None:
@@ -194,7 +194,7 @@ def test_repository_meta_cross_month_uses_en_dash() -> None:
             )
         ),
     ]
-    assert repository_meta("repo", _scan(items)) == "Jul 30 – Aug 4 · 2 msgs"
+    assert repository_meta("repo", _scan(items)) == "Jul 30 – Aug 4 │ 2 msgs"
 
 
 def test_repository_meta_empty_when_no_dates() -> None:
@@ -213,7 +213,7 @@ def test_repository_meta_single_date() -> None:
             )
         )
     ]
-    assert repository_meta("repo", _scan(items)) == "Aug 5 · 1 msg"
+    assert repository_meta("repo", _scan(items)) == "Aug 5 │ 1 msg"
 
 
 def test_session_meta_renders_the_day_in_the_report_timezone() -> None:
@@ -223,7 +223,7 @@ def test_session_meta_renders_the_day_in_the_report_timezone() -> None:
         activities=[_activity(ActivityType.USER_MESSAGE, datetime(2026, 8, 5, 18, tzinfo=UTC))]
     )
 
-    assert session_meta(session, TZ) == "Aug 6 · 1 msg"
+    assert session_meta(session, TZ) == "Aug 6 │ 1 msg"
 
 
 def test_repository_meta_spans_days_in_the_report_timezone() -> None:
@@ -237,4 +237,4 @@ def test_repository_meta_spans_days_in_the_report_timezone() -> None:
         )
     ]
 
-    assert repository_meta("repo", _scan(items)) == "Aug 6 · 1 msg"
+    assert repository_meta("repo", _scan(items)) == "Aug 6 │ 1 msg"
