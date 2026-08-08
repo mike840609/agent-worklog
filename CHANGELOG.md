@@ -13,6 +13,25 @@ All notable changes to this project are documented in this file.
   previously spent two. The cursor is now `▶` and the expansion arrows are `▾`/`▸`, so the
   three glyphs stacked in the gutter differ in shape rather than only in colour. The bar
   column is dropped below 80 columns, where the title matters more than the decoration.
+- The Generate Report screen no longer prints its settings twice. It listed every
+  setting's value in a read-only block and then repeated all seven names as a menu
+  below it, with an action and a Back row mixed into the same list — fourteen lines
+  carrying seven facts, and the value under edit sitting eight rows from the cursor
+  editing it. The settings are now the list: the cursor rests on a value and `←→`
+  changes it in place, with `Generate report` on its own row below them rather than
+  buried among the settings it acts on. The screen previously had no way to generate
+  at all despite its title, so that row — and `g` alongside it — is new. It answers to
+  Enter only, because generating writes a file and a stray arrow key while scrolling
+  the settings should not produce one. Dispatch now follows the field under the cursor
+  rather than its position in a list, so a reordered or added setting cannot silently
+  edit its neighbour.
+  Each row also explains itself: a line under the list says what the setting the cursor
+  is on actually does, since a name and a value only ever said what it was set to.
+  `Sanitize` reading `N/A` on Claude Code or Codex now says why rather than leaving the
+  reader to guess.
+  The action row carries the cursor's own colour so it does not read as an eighth
+  setting, with bold still reserved for wherever the cursor actually is — colour for
+  role, weight for position, the split the row glyphs already use.
 - Session review and browse rows now show density — a dim date and message count
   per session (the conversation actually recorded in the report period), a `[sub]`
   tag for subagent sessions, and a date span plus message total per repository —

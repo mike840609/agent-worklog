@@ -32,7 +32,7 @@ from agent_worklog.interactive.render import (
     render_session_review,
     report_preview_capacity,
     report_result_options,
-    report_setup_options,
+    report_setup_rows,
 )
 from agent_worklog.interactive.selection import SelectionState
 from agent_worklog.models.time_range import DateRange
@@ -306,56 +306,54 @@ def _clear_expansions_if_scan_was_invalidated(
         state.expanded_repositories = set()
 
 
-def _edit_setup_choice(
-    state: _State,
-    actions: InteractiveActions,
-    *,
-    choice: int,
-) -> None:
+def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str) -> None:
     assert state.draft is not None
     draft = state.draft
     had_scan = draft.scan is not None
-    if choice == 0:
-        _review(state, actions)
-    elif choice == 1:
+    if field == "Harness":
         draft.set_harness(actions.choose_harness(draft.harness))
         if draft.harness != "opencode":
             draft.set_sanitize(False)
-    elif choice == 2:
+    elif field == "Period":
         draft.set_period(actions.choose_period(draft.period))
-    elif choice == 3:
+    elif field == "Detail":
         detail = DetailLevel.BRIEF if draft.detail is DetailLevel.FULL else DetailLevel.FULL
         draft.set_detail(detail)
-    elif choice == 4:
+    elif field == "Subagents":
         draft.set_include_subagents(not draft.include_subagents)
-    elif choice == 5:
+    elif field == "Narrative":
         draft.set_narrative(not draft.narrative)
-    elif choice == 6:
+    elif field == "Sanitize":
         if draft.harness == "opencode":
             draft.set_sanitize(not draft.sanitize)
-    elif choice == 7:
+    elif field == "Dry run":
         draft.set_dry_run(not draft.dry_run)
-    elif choice == 8:
-        state.screen = Screen.MAIN
     _clear_expansions_if_scan_was_invalidated(state, draft, had_scan=had_scan)
 
 
 def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
-    options = report_setup_options()
-    state.setup_cursor = _move(state.setup_cursor, key, len(options))
-    if _char(key, "q"):
-        state.screen = Screen.MAIN
-        return
-    if key.key is Key.ESCAPE or _char(key, "b"):
+    rows = report_setup_rows()
+    state.setup_cursor = _move(state.setup_cursor, key, len(rows))
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = Screen.MAIN
         return
     if _char(key, "r"):
         _review(state, actions)
         return
+    if _char(key, "g"):
+        _generate_from_setup(state, actions)
+        return
+    row = rows[state.setup_cursor]
+    if row == rows[-1]:
+        # Generating writes a file, so the action row answers to Enter alone —
+        # a stray left/right while scrolling the settings must not produce a report.
+        if key.key is Key.ENTER:
+            _generate_from_setup(state, actions)
+        return
     horizontal_edit = key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
     if key.key is not Key.ENTER and not horizontal_edit:
         return
-    _edit_setup_choice(state, actions, choice=state.setup_cursor)
+    _edit_setup_field(state, actions, field=row)
 
 
 def _tree_rows(scan: ScanResult, state: _State) -> list:
@@ -500,6 +498,19 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
     state.review_message = None
     state.error = None
     state.screen = Screen.REPORT_RESULT
+
+
+def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
+    """Scan the way Review does, then generate against the selection it built.
+
+    `_generate` needs `state.selection`, which only `_review` establishes, and
+    `_review` is also what surfaces a failed or empty scan. Reusing it means
+    generating from here cannot reach a state that reviewing first could not.
+    """
+    _review(state, actions)
+    if state.screen is not Screen.SESSION_REVIEW:
+        return
+    _generate(state, actions, force=False)
 
 
 def _rescan_review(state: _State, actions: InteractiveActions) -> None:

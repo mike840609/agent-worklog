@@ -36,8 +36,9 @@ class VisibleRow:
 
 
 _MAIN_OPTIONS = ["Generate Report", "Browse Sessions", "Check Setup", "Settings"]
-_SETUP_OPTIONS = [
-    "Review sessions",
+# The settings are the list: each value sits under the cursor that changes it,
+# rather than in a read-only block above a second copy of every name.
+_SETUP_FIELDS = [
     "Harness",
     "Period",
     "Detail",
@@ -45,8 +46,23 @@ _SETUP_OPTIONS = [
     "Narrative",
     "Sanitize",
     "Dry run",
-    "Back",
 ]
+# Generate is the screen's one terminal action, so it gets a row of its own below
+# a blank line. Review stays a key: it is a detour, not the destination.
+_GENERATE_ROW = "Generate report"
+_SETUP_LABEL_CELLS = 13
+# Each row's name and value say what it is set to, never what it does. One line
+# under the cursor's row carries that, rather than seven lines of it at once.
+_SETUP_HELP = {
+    "Harness": "Which coding agent's sessions to read: OpenCode, Claude Code or Codex.",
+    "Period": "The date window the report covers.",
+    "Detail": "Full keeps every section. Brief drops files, sessions and usage.",
+    "Subagents": "Include sessions spawned as subagents, or only the ones you started.",
+    "Narrative": "Write the prose review with the local opencode run, or emit structure only.",
+    "Sanitize": "Ask OpenCode to redact session content on export.",
+    "Dry run": "Print the report instead of writing a file.",
+    "Generate report": "Scan the period and produce the report.",
+}
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
 _DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
 _ERROR_HINTS = [
@@ -69,6 +85,10 @@ _MARK_STYLES = {
     SelectionMark.PARTIAL: "yellow",
 }
 _CURSOR_STYLE = "bold cyan"
+# Colour marks the role and bold marks the cursor — the same split the row glyphs
+# already use. The action takes the cursor's own colour, so a selected action row
+# and the cursor on it read as one thing rather than two.
+_ACTION_STYLE = "cyan"
 # The expansion arrow recedes behind the glyphs that carry a decision.
 _EXPANSION_STYLE = "dim"
 _ROW_GAP = 3
@@ -103,10 +123,10 @@ def main_menu_options() -> list[str]:
     return list(_MAIN_OPTIONS)
 
 
-def report_setup_options() -> list[str]:
-    """Return report-setup actions in display order."""
+def report_setup_rows() -> list[str]:
+    """Return the navigable rows in display order: settings, then the action."""
 
-    return list(_SETUP_OPTIONS)
+    return [*_SETUP_FIELDS, _GENERATE_ROW]
 
 
 def _option(label: str, index: int, selected: int) -> str:
@@ -352,41 +372,68 @@ def render_main_menu(console: Console, *, selected: int) -> None:
     )
 
 
+def _setup_value(draft: ReportDraft, field: str) -> str:
+    """The current value shown beside one setting's name."""
+    if field == "Harness":
+        return _harness_label(draft.harness)
+    if field == "Period":
+        return _period_label(draft.period)
+    if field == "Detail":
+        return draft.detail.value.title()
+    if field == "Subagents":
+        return _bool_label(draft.include_subagents, "Included", "Excluded")
+    if field == "Narrative":
+        return _bool_label(draft.narrative, "Enabled", "Disabled")
+    if field == "Sanitize":
+        if draft.harness != "opencode":
+            return "N/A"
+        return _bool_label(draft.sanitize, "On", "Off")
+    return _bool_label(draft.dry_run, "On", "Off")
+
+
+def _setup_help(draft: ReportDraft, row: str) -> str:
+    """The line describing what one row does, not what it is set to."""
+    if row == "Sanitize" and draft.harness != "opencode":
+        return "Only OpenCode can redact on export, so this does nothing here."
+    return _SETUP_HELP[row]
+
+
 def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) -> None:
-    _print_header(
-        console,
-        "Generate Report",
-        subtitle="Adjust the report, then Review or Generate:",
-    )
+    _print_header(console, "Generate Report")
     console.print()
-    _print_viewport_line(console, f"Harness      {_harness_label(draft.harness)}")
-    _print_viewport_line(console, f"Period       {_period_label(draft.period)}")
-    _print_viewport_line(console, f"Detail       {draft.detail.value.title()}")
-    _print_viewport_line(
-        console,
-        f"Subagents    {_bool_label(draft.include_subagents, 'Included', 'Excluded')}",
-    )
-    _print_viewport_line(
-        console,
-        f"Narrative    {_bool_label(draft.narrative, 'Enabled', 'Disabled')}",
-    )
-    sanitize = (
-        _bool_label(draft.sanitize, "On", "Off")
-        if draft.harness == "opencode"
-        else "N/A"
-    )
-    _print_viewport_line(console, f"Sanitize     {sanitize}")
-    _print_viewport_line(console, f"Dry run      {_bool_label(draft.dry_run, 'On', 'Off')}")
-    console.print()
-    for index, label in enumerate(_SETUP_OPTIONS):
-        style = "dim" if label == "Sanitize" and draft.harness != "opencode" else ""
+    for index, field in enumerate(_SETUP_FIELDS):
+        style = "dim" if field == "Sanitize" and draft.harness != "opencode" else ""
         if index == selected:
-            style = "bold" if not style else f"bold {style}"
-        _print_viewport_line(console, _option(label, index, selected), style=style)
+            style = f"bold {style}".strip()
+        cursor = _CURSOR if index == selected else " "
+        _print_viewport_line(
+            console,
+            f"{cursor} {field:<{_SETUP_LABEL_CELLS}}{_setup_value(draft, field)}",
+            style=style,
+        )
+    console.print()
+    action_selected = selected == len(_SETUP_FIELDS)
+    _print_viewport_line(
+        console,
+        f"{_CURSOR if action_selected else ' '} {_GENERATE_ROW}",
+        style=_CURSOR_STYLE if action_selected else _ACTION_STYLE,
+    )
+    console.print()
+    rows = [*_SETUP_FIELDS, _GENERATE_ROW]
+    _print_viewport_line(console, _setup_help(draft, rows[selected]), style="dim")
     console.print()
     _print_hints(
         console,
-        ["↑↓ jk", "←→ hl Change", "Enter Edit", "r Review", "? Help", "b Back", "q Menu"],
+        [
+            "↑↓ jk",
+            "←→ hl Change",
+            "Enter Select",
+            "r Review",
+            "g Generate",
+            "? Help",
+            "b Back",
+            "q Menu",
+        ],
     )
 
 
