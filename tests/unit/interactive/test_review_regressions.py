@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -68,11 +68,20 @@ def _period(day: int = 3) -> DateRange:
     )
 
 
-def _activities(count: int = 5) -> list[SessionActivity]:
-    """Real scans never yield activity-less sessions; keep fixtures substantive."""
+def _activities(count: int = 5, *, at: datetime | None = None) -> list[SessionActivity]:
+    """Real scans never yield activity-less or undated sessions; keep fixtures substantive.
 
+    filter_session_to_period drops every activity without a timestamp, so a
+    dateless activity cannot survive a scan and must not stand in for one here.
+    """
+
+    moment = at or datetime(2026, 8, 5, tzinfo=TZ)
     return [
-        SessionActivity(activity_id=f"act-{i}", activity_type=ActivityType.USER_MESSAGE)
+        SessionActivity(
+            activity_id=f"act-{i}",
+            activity_type=ActivityType.USER_MESSAGE,
+            timestamp=moment,
+        )
         for i in range(count)
     ]
 
@@ -83,6 +92,7 @@ def _resolved(
     repository_id: str = "repo-a",
     repository_name: str | None = None,
     title: str | None = None,
+    at: datetime | None = None,
 ) -> ResolvedSession:
     return ResolvedSession(
         session=AgentSession(
@@ -90,7 +100,7 @@ def _resolved(
             session_id=session_id,
             title=title or session_id,
             working_directory=f"/tmp/{repository_id}",
-            activities=_activities(),
+            activities=_activities(at=at),
         ),
         repository=RepositoryIdentity(
             repository_id=repository_id,
@@ -108,6 +118,9 @@ def _scan(count: int = 1, *, unsafe_labels: bool = False) -> ScanResult:
             f"ses-{index}",
             repository_name="repo [/] name" if unsafe_labels else "repo-a",
             title="add [link=x] support" if unsafe_labels and index == 0 else f"Session {index}",
+            # Descending recency, so the newest-first display order matches these indices
+            # and these tests keep asserting on windowing rather than on ordering.
+            at=datetime(2026, 8, 9, tzinfo=TZ) - timedelta(minutes=index),
         )
         for index in range(count)
     ]
