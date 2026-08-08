@@ -36,8 +36,9 @@ class VisibleRow:
 
 
 _MAIN_OPTIONS = ["Generate Report", "Browse Sessions", "Check Setup", "Settings"]
-_SETUP_OPTIONS = [
-    "Review sessions",
+# The settings are the list: each value sits under the cursor that changes it,
+# rather than in a read-only block above a second copy of every name.
+_SETUP_FIELDS = [
     "Harness",
     "Period",
     "Detail",
@@ -45,8 +46,9 @@ _SETUP_OPTIONS = [
     "Narrative",
     "Sanitize",
     "Dry run",
-    "Back",
 ]
+_SETUP_LABEL_CELLS = 13
+_SETUP_SUBTITLE = "Adjust the settings, then press g to generate:"
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
 _DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
 _ERROR_HINTS = [
@@ -103,10 +105,10 @@ def main_menu_options() -> list[str]:
     return list(_MAIN_OPTIONS)
 
 
-def report_setup_options() -> list[str]:
-    """Return report-setup actions in display order."""
+def report_setup_fields() -> list[str]:
+    """Return the report settings in display order."""
 
-    return list(_SETUP_OPTIONS)
+    return list(_SETUP_FIELDS)
 
 
 def _option(label: str, index: int, selected: int) -> str:
@@ -352,41 +354,50 @@ def render_main_menu(console: Console, *, selected: int) -> None:
     )
 
 
+def _setup_value(draft: ReportDraft, field: str) -> str:
+    """The current value shown beside one setting's name."""
+    if field == "Harness":
+        return _harness_label(draft.harness)
+    if field == "Period":
+        return _period_label(draft.period)
+    if field == "Detail":
+        return draft.detail.value.title()
+    if field == "Subagents":
+        return _bool_label(draft.include_subagents, "Included", "Excluded")
+    if field == "Narrative":
+        return _bool_label(draft.narrative, "Enabled", "Disabled")
+    if field == "Sanitize":
+        if draft.harness != "opencode":
+            return "N/A"
+        return _bool_label(draft.sanitize, "On", "Off")
+    return _bool_label(draft.dry_run, "On", "Off")
+
+
 def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) -> None:
-    _print_header(
-        console,
-        "Generate Report",
-        subtitle="Adjust the report, then Review or Generate:",
-    )
+    _print_header(console, "Generate Report", subtitle=_SETUP_SUBTITLE)
     console.print()
-    _print_viewport_line(console, f"Harness      {_harness_label(draft.harness)}")
-    _print_viewport_line(console, f"Period       {_period_label(draft.period)}")
-    _print_viewport_line(console, f"Detail       {draft.detail.value.title()}")
-    _print_viewport_line(
-        console,
-        f"Subagents    {_bool_label(draft.include_subagents, 'Included', 'Excluded')}",
-    )
-    _print_viewport_line(
-        console,
-        f"Narrative    {_bool_label(draft.narrative, 'Enabled', 'Disabled')}",
-    )
-    sanitize = (
-        _bool_label(draft.sanitize, "On", "Off")
-        if draft.harness == "opencode"
-        else "N/A"
-    )
-    _print_viewport_line(console, f"Sanitize     {sanitize}")
-    _print_viewport_line(console, f"Dry run      {_bool_label(draft.dry_run, 'On', 'Off')}")
-    console.print()
-    for index, label in enumerate(_SETUP_OPTIONS):
-        style = "dim" if label == "Sanitize" and draft.harness != "opencode" else ""
+    for index, field in enumerate(_SETUP_FIELDS):
+        style = "dim" if field == "Sanitize" and draft.harness != "opencode" else ""
         if index == selected:
-            style = "bold" if not style else f"bold {style}"
-        _print_viewport_line(console, _option(label, index, selected), style=style)
+            style = f"bold {style}".strip()
+        cursor = _CURSOR if index == selected else " "
+        _print_viewport_line(
+            console,
+            f"{cursor} {field:<{_SETUP_LABEL_CELLS}}{_setup_value(draft, field)}",
+            style=style,
+        )
     console.print()
     _print_hints(
         console,
-        ["↑↓ jk", "←→ hl Change", "Enter Edit", "r Review", "? Help", "b Back", "q Menu"],
+        [
+            "↑↓ jk",
+            "←→ hl Change",
+            "r Review",
+            "g Generate",
+            "? Help",
+            "b Back",
+            "q Menu",
+        ],
     )
 
 

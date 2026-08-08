@@ -129,7 +129,7 @@ def test_main_menu_renders_navigation_and_footer() -> None:
     assert "q Quit" in text
 
 
-def test_report_setup_renders_current_values_and_review_action() -> None:
+def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
 
@@ -143,7 +143,8 @@ def test_report_setup_renders_current_values_and_review_action() -> None:
     assert "Narrative" in text and "Enabled" in text
     assert "Sanitize" in text and "Off" in text
     assert "Dry run" in text
-    assert "▶ Review sessions" in text
+    assert "▶ Harness" in text
+    assert "g Generate" in text
     assert "r Review" in text
     assert "b Back" in text
 

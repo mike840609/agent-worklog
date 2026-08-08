@@ -21,7 +21,7 @@ from agent_worklog.models.repository import (
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
+from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.services.scan import ScanResult
 
@@ -220,7 +220,6 @@ def test_setup_detail_edit_does_not_require_a_scan() -> None:
             char("1"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
-            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("b"),
             char("q"),
@@ -270,3 +269,119 @@ def test_zero_sessions_is_recoverable_by_changing_period() -> None:
 
     assert counters["scan"] == 1
     assert counters["choose_period"] == 1
+
+
+def test_setup_g_generates_without_visiting_review() -> None:
+    """Generate is reachable from the settings screen, not only from Review."""
+    counters: dict[str, int] = {}
+
+    def populated_scan(draft: ReportDraft) -> ScanResult:
+        sessions = [
+            ResolvedSession(
+                session=AgentSession(
+                    harness="opencode",
+                    session_id="ses-0",
+                    title="Session 0",
+                    working_directory="/tmp/repo-a",
+                    activities=[
+                        SessionActivity(
+                            activity_id=f"act-{i}",
+                            activity_type=ActivityType.USER_MESSAGE,
+                        )
+                        for i in range(5)
+                    ],
+                ),
+                repository=RepositoryIdentity(
+                    repository_id="repo-a",
+                    display_name="repo-a",
+                    identity_type=RepositoryIdentityType.PATH_FALLBACK,
+                    working_directory="/tmp/repo-a",
+                    resolution_method="test",
+                ),
+            )
+        ]
+        return ScanResult(
+            period=_period(),
+            candidate_session_count=1,
+            loaded_session_count=1,
+            failed_session_count=0,
+            resolved_sessions=sessions,
+            sessions_by_repository={"repo-a": sessions},
+        )
+
+    input_source = ScriptedInput([char("1"), char("g"), char("q"), char("q")])
+
+    run_interactive(
+        actions=_actions(scan_callback=populated_scan, counters=counters),
+        input_source=input_source,
+        console=_console(),
+    )
+
+    assert counters.get("scan") == 1
+    assert counters.get("generate") == 1
+
+
+def test_setup_edits_the_field_under_the_cursor() -> None:
+    """Dispatch follows the cursor's field, not a hardcoded list position."""
+    draft = ReportDraft(harness="opencode", period=_period())
+    input_source = ScriptedInput(
+        [
+            char("1"),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
+            char("l"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(draft=draft),
+        input_source=input_source,
+        console=_console(),
+    )
+
+    assert draft.dry_run is True
+    assert draft.include_subagents is True
+    assert draft.narrative is True
+
+
+def test_setup_escape_returns_to_main_without_a_back_row() -> None:
+    """`b` and `Esc` carry Back, so it needs no row of its own."""
+    input_source = ScriptedInput([char("1"), KeyPress(key=Key.ESCAPE), char("q")])
+
+    run_interactive(
+        actions=_actions(),
+        input_source=input_source,
+        console=_console(),
+    )
+
+
+def test_setup_g_on_an_empty_scan_does_not_reach_the_result_screen() -> None:
+    """An empty scan must surface as an error, not as a report of nothing."""
+    counters: dict[str, int] = {}
+
+    def empty_scan(draft: ReportDraft) -> ScanResult:
+        return ScanResult(
+            period=_period(),
+            candidate_session_count=0,
+            loaded_session_count=0,
+            failed_session_count=0,
+            resolved_sessions=[],
+            sessions_by_repository={},
+        )
+
+    input_source = ScriptedInput([char("1"), char("g"), char("b"), char("q"), char("q")])
+
+    run_interactive(
+        actions=_actions(scan_callback=empty_scan, counters=counters),
+        input_source=input_source,
+        console=_console(),
+    )
+
+    assert counters.get("scan") == 1
+    assert counters.get("generate") is None
