@@ -1004,3 +1004,24 @@ def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
     text = stream.getvalue()
     assert "Sanitize     N/A" in text
     assert "Only OpenCode can redact on export" in text
+
+
+def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
+    """The destination must not read as an eighth setting; colour carries the role."""
+
+    console, stream = _color_console()
+    draft = ReportDraft(harness="opencode", period=_period())
+
+    render_report_setup(console, draft, selected=2)
+
+    text = stream.getvalue()
+    action = _row(text, "Generate report")
+    settings = _row(text, "Dry run")
+    assert _glyph_style(action, "G") == "36"
+    assert "36" not in _glyph_style(settings, "D")
+
+    console, stream = _color_console()
+    render_report_setup(console, draft, selected=7)
+
+    selected_action = _row(stream.getvalue(), "Generate report")
+    assert _glyph_style(selected_action, "▶") == "1;36"

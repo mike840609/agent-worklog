@@ -85,6 +85,10 @@ _MARK_STYLES = {
     SelectionMark.PARTIAL: "yellow",
 }
 _CURSOR_STYLE = "bold cyan"
+# Colour marks the role and bold marks the cursor — the same split the row glyphs
+# already use. The action takes the cursor's own colour, so a selected action row
+# and the cursor on it read as one thing rather than two.
+_ACTION_STYLE = "cyan"
 # The expansion arrow recedes behind the glyphs that carry a decision.
 _EXPANSION_STYLE = "dim"
 _ROW_GAP = 3
@@ -412,7 +416,7 @@ def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) 
     _print_viewport_line(
         console,
         f"{_CURSOR if action_selected else ' '} {_GENERATE_ROW}",
-        style="bold" if action_selected else "",
+        style=_CURSOR_STYLE if action_selected else _ACTION_STYLE,
     )
     console.print()
     rows = [*_SETUP_FIELDS, _GENERATE_ROW]

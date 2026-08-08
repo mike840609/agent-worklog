@@ -29,6 +29,9 @@ All notable changes to this project are documented in this file.
   is on actually does, since a name and a value only ever said what it was set to.
   `Sanitize` reading `N/A` on Claude Code or Codex now says why rather than leaving the
   reader to guess.
+  The action row carries the cursor's own colour so it does not read as an eighth
+  setting, with bold still reserved for wherever the cursor actually is — colour for
+  role, weight for position, the split the row glyphs already use.
 - Session review and browse rows now show density — a dim date and message count
   per session (the conversation actually recorded in the report period), a `[sub]`
   tag for subagent sessions, and a date span plus message total per repository —
