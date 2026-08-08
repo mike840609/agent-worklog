@@ -129,7 +129,7 @@ def test_main_menu_renders_navigation_and_footer() -> None:
     assert "q Quit" in text
 
 
-def test_report_setup_renders_current_values_and_review_action() -> None:
+def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
 
@@ -143,7 +143,8 @@ def test_report_setup_renders_current_values_and_review_action() -> None:
     assert "Narrative" in text and "Enabled" in text
     assert "Sanitize" in text and "Off" in text
     assert "Dry run" in text
-    assert "▶ Review sessions" in text
+    assert "▶ Harness" in text
+    assert "g Generate" in text
     assert "r Review" in text
     assert "b Back" in text
 
@@ -956,3 +957,71 @@ def test_review_numbers_repositories_in_display_order() -> None:
     assert text.count("1.") == 1
     assert text.count("2.") == 1
     assert text.count("3.") == 1
+
+
+def test_report_setup_separates_the_generate_action_from_the_settings() -> None:
+    """Generate is the screen's destination, so it sits below the settings, not among them."""
+
+    console, stream = _console()
+    draft = ReportDraft(harness="opencode", period=_period())
+
+    render_report_setup(console, draft, selected=7)
+
+    lines = stream.getvalue().splitlines()
+    action = next(i for i, line in enumerate(lines) if "Generate report" in line)
+    dry_run = next(i for i, line in enumerate(lines) if "Dry run" in line)
+    assert action > dry_run
+    assert lines[action - 1].strip() == ""
+    assert lines[action].startswith("▶")
+
+
+def test_report_setup_describes_the_row_under_the_cursor() -> None:
+    """A name and a value say what a setting is set to, never what it does."""
+
+    console, stream = _console()
+    draft = ReportDraft(harness="opencode", period=_period())
+
+    render_report_setup(console, draft, selected=2)
+    detail_help = stream.getvalue()
+
+    console, stream = _console()
+    render_report_setup(console, draft, selected=7)
+    action_help = stream.getvalue()
+
+    assert "Brief drops files" in detail_help
+    assert "Brief drops files" not in action_help
+    assert "Scan the period and produce the report." in action_help
+
+
+def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
+    """`N/A` states that a setting is off the table without saying why."""
+
+    console, stream = _console()
+    draft = ReportDraft(harness="claude-code", period=_period())
+
+    render_report_setup(console, draft, selected=5)
+
+    text = stream.getvalue()
+    assert "Sanitize     N/A" in text
+    assert "Only OpenCode can redact on export" in text
+
+
+def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
+    """The destination must not read as an eighth setting; colour carries the role."""
+
+    console, stream = _color_console()
+    draft = ReportDraft(harness="opencode", period=_period())
+
+    render_report_setup(console, draft, selected=2)
+
+    text = stream.getvalue()
+    action = _row(text, "Generate report")
+    settings = _row(text, "Dry run")
+    assert _glyph_style(action, "G") == "36"
+    assert "36" not in _glyph_style(settings, "D")
+
+    console, stream = _color_console()
+    render_report_setup(console, draft, selected=7)
+
+    selected_action = _row(stream.getvalue(), "Generate report")
+    assert _glyph_style(selected_action, "▶") == "1;36"
