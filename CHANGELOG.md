@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- The interactive screens now read as one instrument panel. Every repository carries a
+  proportional bar and a percentage of the period's message volume, so the week's real
+  weight is visible without opening a row, and repositories are numbered in display order
+  so a long list can be talked about. Each screen titles itself above a rule and states
+  what it is asking for, and the scattered footer hints collapse into a single
+  pipe-separated status bar — one line on a normal terminal, where the review screen
+  previously spent two. The cursor is now `▶` and the expansion arrows are `▾`/`▸`, so the
+  three glyphs stacked in the gutter differ in shape rather than only in colour. The bar
+  column is dropped below 80 columns, where the title matters more than the decoration.
 - Session review and browse rows now show density — a dim date and message count
   per session (the conversation actually recorded in the report period), a `[sub]`
   tag for subagent sessions, and a date span plus message total per repository —

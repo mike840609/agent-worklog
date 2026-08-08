@@ -167,7 +167,7 @@ def test_recoverable_error_keeps_actions_inside_viewport_with_long_detail() -> N
 def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
     console, main_stream = _console(width=30, height=30)
     interactive_render.render_main_menu(console, selected=0)
-    assert len(main_stream.getvalue().splitlines()) == 9
+    assert len(main_stream.getvalue().splitlines()) == 11
 
     console, setup_stream = _console(width=30, height=30)
     interactive_render.render_report_setup(
@@ -175,7 +175,7 @@ def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
         ReportDraft(harness="opencode", period=_period()),
         selected=0,
     )
-    assert len(setup_stream.getvalue().splitlines()) == 21
+    assert len(setup_stream.getvalue().splitlines()) == 25
 
     console, result_stream = _console(width=30, height=30)
     interactive_render.render_report_result(
@@ -186,13 +186,13 @@ def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
         output_path=Path("/very/long/output/path/that/must/not/wrap/worklog.md"),
         selected=0,
     )
-    assert len(result_stream.getvalue().splitlines()) == 12
+    assert len(result_stream.getvalue().splitlines()) == 14
 
 
 def test_preview_capacity_reserves_final_terminal_line() -> None:
-    assert interactive_render.report_preview_capacity(20) == 13
-    assert interactive_render.report_preview_capacity(8) == 1
-    assert interactive_render.report_preview_capacity(7) == 0
+    assert interactive_render.report_preview_capacity(20) == 12
+    assert interactive_render.report_preview_capacity(9) == 1
+    assert interactive_render.report_preview_capacity(8) == 0
 
 
 def test_posix_navigation_sequences_include_horizontal_and_paging_keys() -> None:

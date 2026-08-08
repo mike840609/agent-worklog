@@ -609,7 +609,9 @@ def _error_back_screen(error: _ErrorState) -> Screen:
 
 def _scroll_error_detail(error: _ErrorState, key: KeyPress, console: Console) -> bool:
     lines = error.detail.splitlines() or [""]
-    capacity = recoverable_error_detail_capacity(console.size.height, len(_error_options(error)))
+    capacity = recoverable_error_detail_capacity(
+        console.size.height, len(_error_options(error)), console.size.width
+    )
     page = max(1, capacity)
     max_offset = max(0, len(lines) - 1)
     if key.key is Key.PAGE_UP:

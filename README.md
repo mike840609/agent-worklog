@@ -51,14 +51,15 @@ Run it with no arguments for the terminal-native menu:
 ```text
 $ agent-worklog
 Agent Worklog
+══════════════════════════════════════════════════════
 Turn coding-agent sessions into engineering reports
 
-❯ Generate Report
+▶ Generate Report
   Browse Sessions
   Check Setup
   Settings
 
-↑↓ / jk Navigate   Enter Select   q Quit
+↑↓ jk │ Enter Select │ 1-4 │ ? Help │ q Quit
 ```
 
 Choosing Generate a report opens a summary first, so you can change only what matters
@@ -67,6 +68,8 @@ repository to toggle the whole group, or expand it and toggle individual session
 
 ```text
 Generate Report
+══════════════════════════════════════════════════════
+Adjust the report, then Review or Generate:
 
 Harness      OpenCode
 Period       Aug 03 – Aug 10
@@ -76,7 +79,7 @@ Narrative    Enabled
 Sanitize     Off
 Dry run      Off
 
-❯ Review sessions
+▶ Review sessions
   Harness
   Period
   Detail
@@ -86,7 +89,25 @@ Dry run      Off
   Dry run
   Back
 
-↑↓ / jk Navigate   Enter Edit   r Review   b Back
+↑↓ jk │ ←→ hl Change │ Enter Edit │ r Review │ ? Help │ b Back │ q Menu
+```
+
+Review Sessions weighs each repository by how much of the period it actually accounts for,
+so the biggest contributors are visible without opening anything:
+
+```text
+Review Sessions   6 / 6 selected │ 252 / 252 msgs
+══════════════════════════════════════════════════════
+Select sessions to include in the report:
+
+  1. ▾ ████████████  71% ● agent-worklog   3 / 3    Aug 5 │ 180 msgs
+▶      ████░░░░░░░░  24% ● Add the interactive menu Aug 5 │ 60 msgs
+       ████░░░░░░░░  24% ● Redact before writing    Aug 5 │ 60 msgs
+       ████░░░░░░░░  24% ● Group worktrees          Aug 5 │ 60 msgs
+  2. ▸ ████░░░░░░░░  24% ● obsidian-wiki   2 / 2    Aug 4 │ 60 msgs
+  3. ▸ █░░░░░░░░░░░   5% ● dotfiles   1 / 1         Aug 3 │ 12 msgs
+
+↑↓ jk │ ←→ hl │ Space Toggle │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
 
 Or drive the commands directly:

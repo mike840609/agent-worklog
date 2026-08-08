@@ -406,7 +406,7 @@ def test_report_setup_footer_lists_supported_main_menu_shortcut() -> None:
         selected=0,
     )
 
-    assert "q Main menu" in stream.getvalue()
+    assert "q Menu" in stream.getvalue()
 
 
 def test_selection_from_scan_copies_caller_owned_set() -> None:

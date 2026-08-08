@@ -122,9 +122,9 @@ def test_main_menu_renders_navigation_and_footer() -> None:
 
     text = stream.getvalue()
     assert "Agent Worklog" in text
-    assert "❯ Generate Report" in text
+    assert "▶ Generate Report" in text
     assert "Browse Sessions" in text
-    assert "↑↓ / jk Navigate" in text
+    assert "↑↓ jk" in text
     assert "Enter Select" in text
     assert "q Quit" in text
 
@@ -143,7 +143,7 @@ def test_report_setup_renders_current_values_and_review_action() -> None:
     assert "Narrative" in text and "Enabled" in text
     assert "Sanitize" in text and "Off" in text
     assert "Dry run" in text
-    assert "❯ Review sessions" in text
+    assert "▶ Review sessions" in text
     assert "r Review" in text
     assert "b Back" in text
 
@@ -242,7 +242,7 @@ def test_recoverable_error_renders_safe_detail_and_options() -> None:
     text = stream.getvalue()
     assert "Could not read OpenCode sessions" in text
     assert "session store missing" in text
-    assert "❯ Back" in text
+    assert "▶ Back" in text
 
 
 def _dense_resolved(
@@ -300,8 +300,8 @@ def test_session_review_renders_density_and_subagent_tag() -> None:
     render_session_review(console, state, expanded_repositories={"repo-x"}, cursor=1)
 
     text = stream.getvalue()
-    assert "Aug 5 · 2 msgs" in text
-    assert "Aug 4 · 1 msg" in text
+    assert "Aug 5 │ 2 msgs" in text
+    assert "Aug 4 │ 1 msg" in text
     assert "[sub]" in text
 
 
@@ -325,7 +325,7 @@ def test_session_review_header_totals_selected_and_available_message_volume() ->
     render_session_review(console, state, expanded_repositories=set(), cursor=0)
 
     header = stream.getvalue().splitlines()[0]
-    assert header == "Review Sessions   1 / 2 selected · 12 / 20 msgs"
+    assert header == "Review Sessions   1 / 2 selected │ 12 / 20 msgs"
 
 
 def test_session_review_header_renders_a_lone_message_in_the_singular() -> None:
@@ -348,7 +348,7 @@ def test_session_review_header_renders_a_lone_message_in_the_singular() -> None:
     )
 
     header = stream.getvalue().splitlines()[0]
-    assert header == "Review Sessions   1 / 1 selected · 1 / 1 msg"
+    assert header == "Review Sessions   1 / 1 selected │ 1 / 1 msg"
 
 
 def test_session_review_header_omits_volume_when_the_scan_holds_no_messages() -> None:
@@ -380,8 +380,8 @@ def test_session_browser_renders_repository_and_session_density() -> None:
     render_session_browser(console, scan, expanded_repositories={"repo-a"}, cursor=0)
 
     text = stream.getvalue()
-    assert "Aug 3–5 · 3 msgs" in text
-    assert "Aug 5 · 2 msgs" in text
+    assert "Aug 3–5 │ 3 msgs" in text
+    assert "Aug 5 │ 2 msgs" in text
 
 
 def test_session_browser_header_totals_message_volume() -> None:
@@ -402,7 +402,7 @@ def test_session_browser_header_totals_message_volume() -> None:
     render_session_browser(console, scan, expanded_repositories=set(), cursor=0)
 
     header = stream.getvalue().splitlines()[0]
-    assert header == "Browse Sessions   2 sessions · 3 msgs"
+    assert header == "Browse Sessions   2 sessions │ 3 msgs"
 
 
 def test_session_browser_header_omits_volume_when_the_scan_holds_no_messages() -> None:
@@ -434,7 +434,7 @@ def test_session_review_density_survives_truncation() -> None:
     render_session_review(console, state, expanded_repositories={"repo-t"}, cursor=0)
 
     text = stream.getvalue()
-    assert "Aug 5 · 2 msgs" in text
+    assert "Aug 5 │ 2 msgs" in text
     assert f"Meta {session_id}" not in text
 
 
@@ -632,8 +632,8 @@ def test_session_review_gives_the_three_repository_glyphs_three_styles() -> None
     render_session_review(console, _selection(), expanded_repositories={"repo-a"}, cursor=0)
 
     line = _row(stream.getvalue(), "repo-a")
-    assert _glyph_style(line, "❯") == "1;36"
-    assert _glyph_style(line, "▼") == "2"
+    assert _glyph_style(line, "▶") == "1;36"
+    assert _glyph_style(line, "▾") == "2"
     assert _glyph_style(line, "◐") == "33"
 
 
@@ -716,8 +716,8 @@ def test_session_browser_separates_the_cursor_from_the_expansion_glyph() -> None
     )
 
     line = _row(stream.getvalue(), "repo-y")
-    assert _glyph_style(line, "❯") == "1;36"
-    assert _glyph_style(line, "▶") == "2"
+    assert _glyph_style(line, "▶") == "1;36"
+    assert _glyph_style(line, "▸") == "2"
 
 
 def test_undated_repositories_sort_last_without_comparing_none() -> None:
@@ -830,3 +830,129 @@ def test_sessions_with_equal_recency_fall_back_to_session_id() -> None:
         "ses-a",
         "ses-b",
     ]
+
+
+def _volume_scan(*repos: tuple[str, int]) -> ScanResult:
+    items = [_dense_resolved(f"s-{name}", name, last_day=5, volume=vol) for name, vol in repos]
+    by_repo: dict[str, list] = {}
+    for item in items:
+        by_repo.setdefault(item.repository.repository_id, []).append(item)
+    return ScanResult(
+        period=_period(),
+        candidate_session_count=len(items),
+        loaded_session_count=len(items),
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository=by_repo,
+    )
+
+
+def test_review_bar_fills_completely_for_the_largest_repository() -> None:
+    """The peak repository fills its bar edge to edge, not lumped at a fraction."""
+
+    console, stream = _console()
+    scan = _volume_scan(("big", 100), ("small", 50))
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    row = _row(stream.getvalue(), "big")
+    assert row.count("█") == 12
+    assert row.count("░") == 0
+    small = _row(stream.getvalue(), "small")
+    assert small.count("█") == 6
+
+
+def test_review_percentages_are_shares_of_the_total_not_of_the_peak() -> None:
+    """Equal volumes must read as equal shares even when they are not the peak."""
+
+    console, stream = _console()
+    scan = _volume_scan(("one", 50), ("two", 50))
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    assert "50%" in _row(stream.getvalue(), "one")
+    assert "50%" in _row(stream.getvalue(), "two")
+
+
+def test_review_gives_a_low_volume_repository_at_least_one_filled_cell() -> None:
+    """A near-empty repository must still show a sliver of activity, not a barren bar."""
+
+    console, stream = _console()
+    scan = _volume_scan(("huge", 1000), ("tiny", 1))
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    assert "█" in _row(stream.getvalue(), "tiny")
+
+
+def test_review_renders_no_bar_when_the_scan_holds_no_messages() -> None:
+    """Nothing to measure means nothing to draw, so the bar and its percent vanish."""
+
+    console, stream = _console()
+    scan = _volume_scan(("a", 0), ("b", 0))
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    text = stream.getvalue()
+    assert "█" not in text
+    assert "░" not in text
+    assert "%" not in text
+
+
+def test_review_drops_the_bar_column_on_a_narrow_terminal() -> None:
+    """The bar is the first column to yield, so names survive a narrow screen."""
+
+    console, stream = _console(width=60)
+    scan = _volume_scan(("big", 100), ("small", 50))
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    text = stream.getvalue()
+    assert "█" not in text
+    assert "░" not in text
+    assert "big" in text
+    assert "small" in text
+
+
+def test_review_numbers_repositories_in_display_order() -> None:
+    """Numbering follows the sorted display order, not the scan's raw arrival."""
+
+    console, stream = _console()
+    scan = _volume_scan(("alpha", 30), ("beta", 20), ("gamma", 10))
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    text = stream.getvalue()
+    assert text.count("1.") == 1
+    assert text.count("2.") == 1
+    assert text.count("3.") == 1
