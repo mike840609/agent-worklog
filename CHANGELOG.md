@@ -14,6 +14,11 @@ All notable changes to this project are documented in this file.
 - The session review and browse headers now total message volume alongside the
   session count, so the selection can be judged by how much of the period it
   covers rather than by how many rows it holds.
+- Repository and session rows now share one metadata column, so repositories can
+  be weighed against each other by reading down the screen instead of by
+  arithmetic. The cursor, expansion and selection glyphs each take their own
+  colour rather than sharing the row's style, so the three meanings stacked in
+  the gutter read as three signals instead of one run of symbols.
 
 ## 0.8.0 - 2026-08-07
 

@@ -53,6 +53,16 @@ _MARKERS = {
     SelectionMark.NONE: "○",
     SelectionMark.PARTIAL: "◐",
 }
+# Three glyphs sit side by side carrying three unrelated meanings, so colour is
+# what tells them apart. Plain ANSI names only, to follow the terminal's theme.
+_MARK_STYLES = {
+    SelectionMark.ALL: "green",
+    SelectionMark.NONE: "dim",
+    SelectionMark.PARTIAL: "yellow",
+}
+_CURSOR_STYLE = "bold cyan"
+# The expansion arrow recedes behind the glyphs that carry a decision.
+_EXPANSION_STYLE = "dim"
 _ROW_GAP = 3
 _MIN_TITLE_CELLS = 12
 # Aware, so it orders against the aware UTC timestamps the harnesses record.
@@ -107,35 +117,78 @@ def session_row_meta(
     return f"[sub] {facts}" if facts else "[sub]"
 
 
-def _session_row(
-    *,
-    prefix: str,
-    mark: str | None,
-    title: str,
-    meta: str,
-    meta_width: int,
-    console_width: int,
-    selected: bool,
-) -> Text:
+def _cursor_glyph(active: bool) -> tuple[str, str]:
+    """The cursor holds column 0 on both row kinds, so the left edge never moves."""
+
+    return ("❯", _CURSOR_STYLE) if active else (" ", "")
+
+
+def _expansion_glyph(expanded: bool) -> tuple[str, str]:
+    return ("▼" if expanded else "▶", _EXPANSION_STYLE)
+
+
+def _mark_glyph(mark: SelectionMark) -> tuple[str, str]:
+    return _MARKERS[mark], _MARK_STYLES[mark]
+
+
+@dataclass(frozen=True)
+class _ListRow:
+    """One tree row, decomposed so both kinds lay out against the same columns."""
+
+    lead: Text
+    title: str
+    meta: str
+    selected: bool
+
+
+def _meta_column_width(rows: list[_ListRow], *, console_width: int) -> int:
+    """Width of the metadata column every visible row shares.
+
+    Measured across both kinds, because a per-kind width is exactly how the
+    repository and session rows drifted onto different columns. The cap keeps
+    the widest lead's title above its floor: one very long session's metadata
+    would otherwise starve every title on screen, the whole column with it.
+    """
+
+    widest_meta = max((cell_len(row.meta) for row in rows), default=0)
+    widest_lead = max((row.lead.cell_len for row in rows), default=0)
+    affordable = console_width - widest_lead - _ROW_GAP - _MIN_TITLE_CELLS
+    return min(widest_meta, max(0, affordable))
+
+
+def _list_row(row: _ListRow, *, meta_width: int, console_width: int) -> Text:
     """Left-align the title in a fixed column, with dim metadata in its own column.
 
     The title absorbs truncation so the metadata column holds still: a ragged
-    left edge on the titles is what makes a long list hard to scan.
+    left edge on the titles is what makes a long list hard to scan. Metadata too
+    wide for the shared column is dropped rather than squeezed, so a narrow
+    terminal never leaves a row as an ellipsis with no name in it. The lead
+    arrives pre-styled, its glyphs already separated by role.
     """
-    row_style = "bold" if selected else ""
-    lead = f"{prefix}     {mark} " if mark is not None else f"{prefix}      "
-    text = Text(lead, style=row_style)
-    budget = console_width - cell_len(lead) - meta_width - _ROW_GAP
-    if not meta_width or budget < _MIN_TITLE_CELLS:
-        # Too narrow to hold both columns; the title wins and the viewport clips it.
-        text.append(title, style=row_style)
+    row_style = "bold" if row.selected else ""
+    text = row.lead.copy()
+    if not row.meta or cell_len(row.meta) > meta_width:
+        text.append(row.title, style=row_style)
         return text
-    body = Text(title, style=row_style)
-    body.truncate(budget, overflow="ellipsis", pad=True)
+    body = Text(row.title, style=row_style)
+    body.truncate(
+        console_width - row.lead.cell_len - meta_width - _ROW_GAP,
+        overflow="ellipsis",
+        pad=True,
+    )
     text.append_text(body)
     text.append(" " * _ROW_GAP)
-    text.append(meta, style="dim")
+    text.append(row.meta, style="dim")
     return text
+
+
+def _print_list_rows(console: Console, rows: list[_ListRow]) -> None:
+    """Print a tree, every row laid against the one metadata column it shares."""
+
+    width = console.size.width
+    meta_width = _meta_column_width(rows, console_width=width)
+    for row in rows:
+        _print_viewport_text(console, _list_row(row, meta_width=meta_width, console_width=width))
 
 
 def _print_option_line(console: Console, label: str, index: int, selected: int) -> None:
@@ -430,42 +483,54 @@ def render_session_review(
         for _, row in visible
         if row.session_id is not None
     }
-    meta_width = max((cell_len(value) for value in metas.values()), default=0)
+    tree: list[_ListRow] = []
     for index, row in visible:
-        prefix = "❯" if index == cursor else " "
+        cursor_here = index == cursor
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories or bool(query)
-            arrow = "▼" if expanded else "▶"
-            mark = _MARKERS[selection.repository_mark(row.repository_id)]
+            mark = selection.repository_mark(row.repository_id)
             selected = sum(
                 item.session.session_id in selection.selected_session_ids
                 for item in selection.scan.sessions_by_repository[row.repository_id]
             )
             total = len(selection.scan.sessions_by_repository[row.repository_id])
             name = _repository_display_name(selection.scan, row.repository_id)
-            text = Text(
-                f"{prefix} {arrow} {mark} {name}   {selected} / {total}",
-                style="bold" if index == cursor else "",
+            tree.append(
+                _ListRow(
+                    lead=Text.assemble(
+                        _cursor_glyph(cursor_here),
+                        " ",
+                        _expansion_glyph(expanded),
+                        " ",
+                        _mark_glyph(mark),
+                        " ",
+                    ),
+                    title=f"{name}   {selected} / {total}",
+                    meta=repository_meta(row.repository_id, selection.scan),
+                    selected=cursor_here,
+                )
             )
-            density = repository_meta(row.repository_id, selection.scan)
-            if density:
-                text.append(f"   {density}", style="dim")
-            _print_viewport_text(console, text)
         else:
             assert row.session_id is not None
-            mark = "●" if row.session_id in selection.selected_session_ids else "○"
-            _print_viewport_text(
-                console,
-                _session_row(
-                    prefix=prefix,
-                    mark=mark,
+            mark = (
+                SelectionMark.ALL
+                if row.session_id in selection.selected_session_ids
+                else SelectionMark.NONE
+            )
+            tree.append(
+                _ListRow(
+                    lead=Text.assemble(
+                        _cursor_glyph(cursor_here),
+                        "     ",
+                        _mark_glyph(mark),
+                        " ",
+                    ),
                     title=titles[row.session_id],
                     meta=metas[row.session_id],
-                    meta_width=meta_width,
-                    console_width=console.size.width,
-                    selected=index == cursor,
-                ),
+                    selected=cursor_here,
+                )
             )
+    _print_list_rows(console, tree)
     if hidden_below:
         _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
     console.print()
@@ -524,36 +589,37 @@ def render_session_browser(
         for _, row in visible
         if row.session_id is not None
     }
-    meta_width = max((cell_len(value) for value in metas.values()), default=0)
+    tree: list[_ListRow] = []
     for index, row in visible:
-        prefix = "❯" if index == cursor else " "
+        cursor_here = index == cursor
         if row.kind == "repository":
             expanded = row.repository_id in expanded_repositories or bool(query)
-            arrow = "▼" if expanded else "▶"
             name = _repository_display_name(scan, row.repository_id)
             count = len(scan.sessions_by_repository[row.repository_id])
-            text = Text(
-                f"{prefix} {arrow} {name}   {count}",
-                style="bold" if index == cursor else "",
+            tree.append(
+                _ListRow(
+                    lead=Text.assemble(
+                        _cursor_glyph(cursor_here),
+                        " ",
+                        _expansion_glyph(expanded),
+                        " ",
+                    ),
+                    title=f"{name}   {count}",
+                    meta=repository_meta(row.repository_id, scan),
+                    selected=cursor_here,
+                )
             )
-            density = repository_meta(row.repository_id, scan)
-            if density:
-                text.append(f"   {density}", style="dim")
-            _print_viewport_text(console, text)
         else:
             assert row.session_id is not None
-            _print_viewport_text(
-                console,
-                _session_row(
-                    prefix=prefix,
-                    mark=None,
+            tree.append(
+                _ListRow(
+                    lead=Text.assemble(_cursor_glyph(cursor_here), "      "),
                     title=titles[row.session_id],
                     meta=metas[row.session_id],
-                    meta_width=meta_width,
-                    console_width=console.size.width,
-                    selected=index == cursor,
-                ),
+                    selected=cursor_here,
+                )
             )
+    _print_list_rows(console, tree)
     if hidden_below:
         _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
     console.print()
