@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import tzinfo
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 
 from rich.cells import cell_len
@@ -12,11 +12,13 @@ from rich.text import Text
 
 from agent_worklog.interactive.density import (
     is_subagent,
+    last_activity_at,
     repository_meta,
     session_meta,
 )
 from agent_worklog.interactive.models import ReportDraft
 from agent_worklog.interactive.selection import SelectionMark, SelectionState, noise_reason
+from agent_worklog.models.repository import ResolvedSession
 from agent_worklog.models.session import AgentSession
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.security.redactor import redact_text
@@ -51,6 +53,8 @@ _MARKERS = {
 }
 _ROW_GAP = 3
 _MIN_TITLE_CELLS = 12
+# Aware, so it orders against the aware UTC timestamps the harnesses record.
+_UNDATED = datetime.min.replace(tzinfo=UTC)
 
 
 def main_menu_options() -> list[str]:
@@ -221,12 +225,47 @@ def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) 
     )
 
 
+def _session_recency(session: AgentSession) -> datetime:
+    """Undated sessions sort last, and never reach a ``None`` comparison."""
+
+    timestamp = last_activity_at(session)
+    return _UNDATED if timestamp is None else timestamp
+
+
+def _repository_recency(sessions: list[ResolvedSession]) -> datetime:
+    return max((_session_recency(item.session) for item in sessions), default=_UNDATED)
+
+
+def _ordered_repositories(scan: ScanResult) -> list[tuple[str, list[ResolvedSession]]]:
+    """Order repositories by most recent activity first, then by display name.
+
+    Recency alone is a partial order, so equal timestamps would otherwise settle
+    into whatever order the scan happened to yield. Sorting is stable, so the
+    name pass runs first and the recency pass keeps it as the tie-break. The id
+    joins that key because redaction can map two distinct repositories onto the
+    same display name, which would leave the order arbitrary again.
+    """
+
+    by_name = sorted(
+        scan.sessions_by_repository.items(),
+        key=lambda item: (_repository_display_name(scan, item[0]), item[0]),
+    )
+    return sorted(by_name, key=lambda item: _repository_recency(item[1]), reverse=True)
+
+
+def _ordered_sessions(sessions: list[ResolvedSession]) -> list[ResolvedSession]:
+    """Order a repository's sessions by most recent activity first, then by id."""
+
+    by_id = sorted(sessions, key=lambda item: item.session.session_id)
+    return sorted(by_id, key=lambda item: _session_recency(item.session), reverse=True)
+
+
 def build_visible_rows(
     scan: ScanResult,
     expanded_repositories: set[str],
 ) -> list[VisibleRow]:
     rows: list[VisibleRow] = []
-    for repository_id, sessions in scan.sessions_by_repository.items():
+    for repository_id, sessions in _ordered_repositories(scan):
         rows.append(VisibleRow(kind="repository", repository_id=repository_id))
         if repository_id not in expanded_repositories:
             continue
@@ -236,7 +275,7 @@ def build_visible_rows(
                 repository_id=repository_id,
                 session_id=item.session.session_id,
             )
-            for item in sessions
+            for item in _ordered_sessions(sessions)
         )
     return rows
 
@@ -275,7 +314,7 @@ def build_filtered_rows(
 
     titles = _session_titles(scan)
     rows: list[VisibleRow] = []
-    for repository_id, sessions in scan.sessions_by_repository.items():
+    for repository_id, sessions in _ordered_repositories(scan):
         repository_matches = needle in _repository_display_name(scan, repository_id).casefold()
         matching_sessions = [
             item
@@ -292,7 +331,7 @@ def build_filtered_rows(
                 repository_id=repository_id,
                 session_id=item.session.session_id,
             )
-            for item in visible_sessions
+            for item in _ordered_sessions(visible_sessions)
         )
     return rows
 
