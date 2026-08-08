@@ -973,3 +973,34 @@ def test_report_setup_separates_the_generate_action_from_the_settings() -> None:
     assert action > dry_run
     assert lines[action - 1].strip() == ""
     assert lines[action].startswith("▶")
+
+
+def test_report_setup_describes_the_row_under_the_cursor() -> None:
+    """A name and a value say what a setting is set to, never what it does."""
+
+    console, stream = _console()
+    draft = ReportDraft(harness="opencode", period=_period())
+
+    render_report_setup(console, draft, selected=2)
+    detail_help = stream.getvalue()
+
+    console, stream = _console()
+    render_report_setup(console, draft, selected=7)
+    action_help = stream.getvalue()
+
+    assert "Brief drops files" in detail_help
+    assert "Brief drops files" not in action_help
+    assert "Scan the period and produce the report." in action_help
+
+
+def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
+    """`N/A` states that a setting is off the table without saying why."""
+
+    console, stream = _console()
+    draft = ReportDraft(harness="claude-code", period=_period())
+
+    render_report_setup(console, draft, selected=5)
+
+    text = stream.getvalue()
+    assert "Sanitize     N/A" in text
+    assert "Only OpenCode can redact on export" in text

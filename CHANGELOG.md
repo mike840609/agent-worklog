@@ -25,6 +25,10 @@ All notable changes to this project are documented in this file.
   the settings should not produce one. Dispatch now follows the field under the cursor
   rather than its position in a list, so a reordered or added setting cannot silently
   edit its neighbour.
+  Each row also explains itself: a line under the list says what the setting the cursor
+  is on actually does, since a name and a value only ever said what it was set to.
+  `Sanitize` reading `N/A` on Claude Code or Codex now says why rather than leaving the
+  reader to guess.
 - Session review and browse rows now show density — a dim date and message count
   per session (the conversation actually recorded in the report period), a `[sub]`
   tag for subagent sessions, and a date span plus message total per repository —

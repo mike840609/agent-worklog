@@ -51,7 +51,18 @@ _SETUP_FIELDS = [
 # a blank line. Review stays a key: it is a detour, not the destination.
 _GENERATE_ROW = "Generate report"
 _SETUP_LABEL_CELLS = 13
-_SETUP_SUBTITLE = "Adjust the settings, then generate:"
+# Each row's name and value say what it is set to, never what it does. One line
+# under the cursor's row carries that, rather than seven lines of it at once.
+_SETUP_HELP = {
+    "Harness": "Which coding agent's sessions to read: OpenCode, Claude Code or Codex.",
+    "Period": "The date window the report covers.",
+    "Detail": "Full keeps every section. Brief drops files, sessions and usage.",
+    "Subagents": "Include sessions spawned as subagents, or only the ones you started.",
+    "Narrative": "Write the prose review with the local opencode run, or emit structure only.",
+    "Sanitize": "Ask OpenCode to redact session content on export.",
+    "Dry run": "Print the report instead of writing a file.",
+    "Generate report": "Scan the period and produce the report.",
+}
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
 _DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
 _ERROR_HINTS = [
@@ -376,8 +387,15 @@ def _setup_value(draft: ReportDraft, field: str) -> str:
     return _bool_label(draft.dry_run, "On", "Off")
 
 
+def _setup_help(draft: ReportDraft, row: str) -> str:
+    """The line describing what one row does, not what it is set to."""
+    if row == "Sanitize" and draft.harness != "opencode":
+        return "Only OpenCode can redact on export, so this does nothing here."
+    return _SETUP_HELP[row]
+
+
 def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) -> None:
-    _print_header(console, "Generate Report", subtitle=_SETUP_SUBTITLE)
+    _print_header(console, "Generate Report")
     console.print()
     for index, field in enumerate(_SETUP_FIELDS):
         style = "dim" if field == "Sanitize" and draft.harness != "opencode" else ""
@@ -396,6 +414,9 @@ def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) 
         f"{_CURSOR if action_selected else ' '} {_GENERATE_ROW}",
         style="bold" if action_selected else "",
     )
+    console.print()
+    rows = [*_SETUP_FIELDS, _GENERATE_ROW]
+    _print_viewport_line(console, _setup_help(draft, rows[selected]), style="dim")
     console.print()
     _print_hints(
         console,
