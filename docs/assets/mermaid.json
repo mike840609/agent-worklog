@@ -2,8 +2,8 @@
   "htmlLabels": false,
   "flowchart": {
     "htmlLabels": false,
-    "rankSpacing": 34,
-    "nodeSpacing": 20,
+    "rankSpacing": 30,
+    "nodeSpacing": 14,
     "padding": 8,
     "subGraphTitleMargin": { "top": 4, "bottom": 14 }
   }
