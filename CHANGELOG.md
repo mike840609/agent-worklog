@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- The main menu explains each option with a dim clause in its own column, the
+  way mole's menu does: `Generate Report` says what it will produce, `Settings`
+  says what it edits. On a terminal too narrow for the clauses, the options fall
+  back to bare labels.
+- The Generate Report screen leads with its action. `Generate report` now sits
+  first, above a blank line and a grey `Settings` label, with the settings beneath
+  it — the screen opens on the action, so Enter immediately produces the report
+  and the settings stay one arrow down. The cursor row takes the cursor's own
+  bold-cyan colour on every screen, so where the cursor sits reads as one thing
+  instead of two.
+- Moving the cursor no longer flashes the screen. Every keypress cleared the
+  terminal and then reprinted the whole frame, so between the erase and the last
+  line there was a blank or half-drawn screen to see. Frames are now painted over
+  each other instead: only the rows whose bytes actually changed are rewritten in
+  place, so an up/down move repaints just the two cursor rows, and the cursor is
+  hidden while the frame lands and parked below it afterwards. Nothing is ever
+  cleared. Output to a pipe or a log is unchanged — the cursor control is only
+  emitted to a real terminal.
 - Sessions from a deleted git worktree rejoin their repository. Identity comes from
   running git in the session's working directory, so once a worktree is removed
   there is nothing to ask, and its sessions detached into a separate row named

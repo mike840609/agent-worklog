@@ -129,6 +129,40 @@ def test_main_menu_renders_navigation_and_footer() -> None:
     assert "q Quit" in text
 
 
+def test_main_menu_describes_each_option() -> None:
+    """Each option carries a dim clause saying what it does, like mole's menu."""
+
+    console, stream = _console()
+
+    render_main_menu(console, selected=0)
+
+    lines = stream.getvalue().splitlines()
+    generate = next(line for line in lines if "Generate Report" in line)
+    browse = next(line for line in lines if "Browse Sessions" in line)
+    setup = next(line for line in lines if "Check Setup" in line)
+    settings = next(line for line in lines if "Settings" in line)
+    assert "Scan the period and produce the report" in generate
+    assert "Explore sessions by repository" in browse
+    assert "Diagnose the harness setup" in setup
+    assert "Edit saved settings" in settings
+    column = generate.index("Scan the period")
+    assert browse.index("Explore sessions by repository") == column
+    assert setup.index("Diagnose the harness setup") == column
+    assert settings.index("Edit saved settings") == column
+
+
+def test_main_menu_drops_descriptions_on_a_narrow_terminal() -> None:
+    """Below the width the clauses need, options fall back to bare labels."""
+
+    console, stream = _console(width=30)
+
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert "Generate Report" in text
+    assert "Scan the period and produce the report" not in text
+
+
 def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
@@ -143,7 +177,8 @@ def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     assert "Narrative" in text and "Enabled" in text
     assert "Sanitize" in text and "Off" in text
     assert "Dry run" in text
-    assert "▶ Harness" in text
+    assert "▶ Generate report" in text
+    assert "  Settings" in text
     assert "g Generate" in text
     assert "r Review" in text
     assert "b Back" in text
@@ -960,18 +995,18 @@ def test_review_numbers_repositories_in_display_order() -> None:
 
 
 def test_report_setup_separates_the_generate_action_from_the_settings() -> None:
-    """Generate is the screen's destination, so it sits below the settings, not among them."""
+    """Generate is the screen's destination, so it leads the settings, not sits among them."""
 
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
 
-    render_report_setup(console, draft, selected=7)
+    render_report_setup(console, draft, selected=0)
 
     lines = stream.getvalue().splitlines()
     action = next(i for i, line in enumerate(lines) if "Generate report" in line)
-    dry_run = next(i for i, line in enumerate(lines) if "Dry run" in line)
-    assert action > dry_run
-    assert lines[action - 1].strip() == ""
+    harness = next(i for i, line in enumerate(lines) if "Harness" in line)
+    assert action < harness
+    assert lines[action + 1].strip() == ""
     assert lines[action].startswith("▶")
 
 
@@ -981,11 +1016,11 @@ def test_report_setup_describes_the_row_under_the_cursor() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
 
-    render_report_setup(console, draft, selected=2)
+    render_report_setup(console, draft, selected=3)
     detail_help = stream.getvalue()
 
     console, stream = _console()
-    render_report_setup(console, draft, selected=7)
+    render_report_setup(console, draft, selected=0)
     action_help = stream.getvalue()
 
     assert "Brief drops files" in detail_help
@@ -999,7 +1034,7 @@ def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="claude-code", period=_period())
 
-    render_report_setup(console, draft, selected=5)
+    render_report_setup(console, draft, selected=6)
 
     text = stream.getvalue()
     assert "Sanitize     N/A" in text
@@ -1012,7 +1047,7 @@ def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
     console, stream = _color_console()
     draft = ReportDraft(harness="opencode", period=_period())
 
-    render_report_setup(console, draft, selected=2)
+    render_report_setup(console, draft, selected=3)
 
     text = stream.getvalue()
     action = _row(text, "Generate report")
@@ -1021,7 +1056,7 @@ def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
     assert "36" not in _glyph_style(settings, "D")
 
     console, stream = _color_console()
-    render_report_setup(console, draft, selected=7)
+    render_report_setup(console, draft, selected=0)
 
     selected_action = _row(stream.getvalue(), "Generate report")
     assert _glyph_style(selected_action, "▶") == "1;36"

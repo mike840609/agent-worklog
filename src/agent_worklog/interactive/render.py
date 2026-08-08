@@ -36,6 +36,14 @@ class VisibleRow:
 
 
 _MAIN_OPTIONS = ["Generate Report", "Browse Sessions", "Check Setup", "Settings"]
+# The main menu explains what each option does, the way mole's menu does: one
+# dim clause per row, aligned under the widest label.
+_MAIN_DESCRIPTIONS = {
+    "Generate Report": "Scan the period and produce the report",
+    "Browse Sessions": "Explore sessions by repository",
+    "Check Setup": "Diagnose the harness setup",
+    "Settings": "Edit saved settings",
+}
 # The settings are the list: each value sits under the cursor that changes it,
 # rather than in a read-only block above a second copy of every name.
 _SETUP_FIELDS = [
@@ -47,9 +55,11 @@ _SETUP_FIELDS = [
     "Sanitize",
     "Dry run",
 ]
-# Generate is the screen's one terminal action, so it gets a row of its own below
-# a blank line. Review stays a key: it is a detour, not the destination.
+# Generate is the screen's one terminal action, so it gets the first row, above
+# a blank line and a dim group label. Review stays a key: it is a detour, not
+# the destination.
 _GENERATE_ROW = "Generate report"
+_SETTINGS_LABEL = "Settings"
 _SETUP_LABEL_CELLS = 13
 # Each row's name and value say what it is set to, never what it does. One line
 # under the cursor's row carries that, rather than seven lines of it at once.
@@ -85,9 +95,8 @@ _MARK_STYLES = {
     SelectionMark.PARTIAL: "yellow",
 }
 _CURSOR_STYLE = "bold cyan"
-# Colour marks the role and bold marks the cursor — the same split the row glyphs
-# already use. The action takes the cursor's own colour, so a selected action row
-# and the cursor on it read as one thing rather than two.
+# The cursor row takes the cursor's own colour, so where the cursor sits reads as
+# one thing. The action keeps its role colour when it is not the cursor row.
 _ACTION_STYLE = "cyan"
 # The expansion arrow recedes behind the glyphs that carry a decision.
 _EXPANSION_STYLE = "dim"
@@ -124,9 +133,15 @@ def main_menu_options() -> list[str]:
 
 
 def report_setup_rows() -> list[str]:
-    """Return the navigable rows in display order: settings, then the action."""
+    """Return the navigable rows in display order: the action, then the settings."""
 
-    return [*_SETUP_FIELDS, _GENERATE_ROW]
+    return [_GENERATE_ROW, *_SETUP_FIELDS]
+
+
+def report_generate_row() -> str:
+    """Return the action row's label, so identity checks survive any reordering."""
+
+    return _GENERATE_ROW
 
 
 def _option(label: str, index: int, selected: int) -> str:
@@ -294,7 +309,7 @@ def _list_row(row: _ListRow, *, meta_width: int, console_width: int) -> Text:
     terminal never leaves a row as an ellipsis with no name in it. The lead
     arrives pre-styled, its glyphs already separated by role.
     """
-    row_style = "bold" if row.selected else ""
+    row_style = _CURSOR_STYLE if row.selected else ""
     text = row.lead.copy()
     if not row.meta or cell_len(row.meta) > meta_width:
         text.append(row.title, style=row_style)
@@ -324,7 +339,7 @@ def _print_option_line(console: Console, label: str, index: int, selected: int) 
     _print_viewport_line(
         console,
         _option(label, index, selected),
-        style="bold" if index == selected else "",
+        style=_CURSOR_STYLE if index == selected else "",
     )
 
 
@@ -371,8 +386,18 @@ def render_main_menu(console: Console, *, selected: int) -> None:
         subtitle="Turn coding-agent sessions into engineering reports",
     )
     console.print()
+    label_width = max(cell_len(label) for label in _MAIN_OPTIONS)
     for index, label in enumerate(_MAIN_OPTIONS):
-        _print_option_line(console, label, index, selected)
+        focused = index == selected
+        lead = Text("▶ " if focused else "  ", style=_CURSOR_STYLE if focused else "")
+        title = Text(label, style=_CURSOR_STYLE if focused else "")
+        description = _MAIN_DESCRIPTIONS[label]
+        if cell_len(description) <= console.size.width - lead.cell_len - label_width - _ROW_GAP:
+            title.truncate(label_width, overflow="ellipsis", pad=True)
+            text = Text.assemble(lead, title, " " * _ROW_GAP, (description, "dim"))
+        else:
+            text = Text.assemble(lead, title)
+        _print_viewport_text(console, text)
     console.print()
     _print_hints(
         console,
@@ -409,25 +434,30 @@ def _setup_help(draft: ReportDraft, row: str) -> str:
 def render_report_setup(console: Console, draft: ReportDraft, *, selected: int) -> None:
     _print_header(console, "Generate Report")
     console.print()
-    for index, field in enumerate(_SETUP_FIELDS):
-        style = "dim" if field == "Sanitize" and draft.harness != "opencode" else ""
-        if index == selected:
-            style = f"bold {style}".strip()
-        cursor = _CURSOR if index == selected else " "
-        _print_viewport_line(
-            console,
-            f"{cursor} {field:<{_SETUP_LABEL_CELLS}}{_setup_value(draft, field)}",
-            style=style,
-        )
-    console.print()
-    action_selected = selected == len(_SETUP_FIELDS)
+    action_selected = selected == 0
     _print_viewport_line(
         console,
         f"{_CURSOR if action_selected else ' '} {_GENERATE_ROW}",
         style=_CURSOR_STYLE if action_selected else _ACTION_STYLE,
     )
     console.print()
-    rows = [*_SETUP_FIELDS, _GENERATE_ROW]
+    if console.size.height >= _MIN_SUBTITLE_HEIGHT:
+        _print_viewport_line(console, f"  {_SETTINGS_LABEL}", style="bright_black")
+    for index, field in enumerate(_SETUP_FIELDS):
+        focused = selected == index + 1
+        style = (
+            _CURSOR_STYLE
+            if focused
+            else ("dim" if field == "Sanitize" and draft.harness != "opencode" else "")
+        )
+        cursor = _CURSOR if focused else " "
+        _print_viewport_line(
+            console,
+            f"{cursor} {field:<{_SETUP_LABEL_CELLS}}{_setup_value(draft, field)}",
+            style=style,
+        )
+    console.print()
+    rows = report_setup_rows()
     _print_viewport_line(console, _setup_help(draft, rows[selected]), style="dim")
     console.print()
     _print_hints(
