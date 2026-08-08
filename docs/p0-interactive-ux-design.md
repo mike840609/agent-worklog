@@ -289,19 +289,19 @@ Example:
 ```text
  Review Sessions   15 / 18 selected · 240 / 260 msgs
 
- ▼ ● agent-worklog                         8 / 9   Aug 3–8 · 24 msgs
-      ● Fix sanitize export                        Aug 3 · 4 msgs
-    ❯ ● Add interactive menu                       [sub] Aug 5 · 3 msgs
-      ○ Scratch parser debugging                   Aug 4 · 2 msgs
-      ● Release v0.8.0                             Aug 3 · 1 msg
+ ▼ ● agent-worklog   8 / 9                      Aug 3–8 · 24 msgs
+      ● Fix sanitize export                    Aug 3 · 4 msgs
+ ❯    ● Add interactive menu                   [sub] Aug 5 · 3 msgs
+      ○ Scratch parser debugging               Aug 4 · 2 msgs
+      ● Release v0.8.0                         Aug 3 · 1 msg
 
- ▶ ● assets-tracker                        5 / 5   Aug 4–7 · 96 msgs
+ ▶ ● assets-tracker   5 / 5                    Aug 4–7 · 96 msgs
 
- ▼ ◐ obsidian-wiki                         2 / 4   Jul 30 – Aug 4 · 40 msgs
-      ● Improve wiki synthesis                     [sub] Aug 4 · 3 msgs
-      ○ ses-7f21ac                                 Aug 3 · 2 msgs · No title
-      ● Update docs                                Aug 2 · 3 msgs
-      ○ Scratch session                            [sub] Aug 1 · 1 msg
+ ▼ ◐ obsidian-wiki   2 / 4                     Jul 30 – Aug 4 · 40 msgs
+      ● Improve wiki synthesis                 [sub] Aug 4 · 3 msgs
+      ○ ses-7f21ac                             Aug 3 · 2 msgs · No title
+      ● Update docs                            Aug 2 · 3 msgs
+      ○ Scratch session                        [sub] Aug 1 · 1 msg
 
  ↑↓ Navigate   Space Toggle   Enter Expand
  a All   n None   g Generate   b Back
@@ -312,11 +312,23 @@ them; the dim date and message count (the in-period conversation volume) sit
 in their own column to the right, making a session's activity and recency
 visible without opening it. A `[sub]` tag marks sessions spawned by a parent
 session, and any reason a session starts deselected is appended there too.
-Repository rows append a date span and summed message count.
+Repository rows carry a date span and summed message count in that same
+column, sized across both row kinds — a per-kind width is exactly how the two
+drifted apart — so the repositories can be weighed against each other by
+reading straight down rather than by arithmetic.
 
 When the terminal is too narrow to hold both columns, the title absorbs the
-truncation; below a floor of 12 title cells the metadata is dropped instead,
-so a row never collapses to an ellipsis with no title in it.
+truncation; the shared column is capped so the widest lead still clears a
+floor of 12 title cells, and metadata too wide for that column is dropped for
+its row rather than squeezed. A row never collapses to an ellipsis with no
+title in it.
+
+The three glyphs in the gutter carry three unrelated meanings, so each takes
+its own style rather than inheriting the row's: the cursor `❯` is bold cyan,
+the expansion `▼`/`▶` is dim so it recedes behind what carries decisions, and
+the selection marker is coloured by state — `●` green, `◐` yellow, `○` dim.
+The styles are Rich spans, never baked into the text, so a terminal without
+colour renders the same characters.
 
 The header totals the same message volume across the selection, because the
 question in front of the user is whether the selection covers the period and a

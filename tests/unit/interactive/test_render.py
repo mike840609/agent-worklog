@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from rich.cells import cell_len
 from rich.console import Console
 
 from agent_worklog.interactive.models import ReportDraft
@@ -36,6 +38,31 @@ def _console(width: int = 100) -> tuple[Console, StringIO]:
         Console(file=stream, color_system=None, force_terminal=False, width=width),
         stream,
     )
+
+
+def _color_console(width: int = 100) -> tuple[Console, StringIO]:
+    stream = StringIO()
+    return (
+        Console(
+            file=stream,
+            color_system="truecolor",
+            force_terminal=True,
+            width=width,
+            height=25,
+        ),
+        stream,
+    )
+
+
+def _row(text: str, needle: str) -> str:
+    return next(line for line in text.splitlines() if needle in line)
+
+
+def _glyph_style(line: str, glyph: str) -> str:
+    """The SGR parameters in force where ``glyph`` is drawn on a rendered line."""
+
+    codes = re.findall(r"\x1b\[([0-9;]*)m", line[: line.index(glyph)])
+    return codes[-1] if codes else ""
 
 
 def _period() -> DateRange:
@@ -503,6 +530,158 @@ def test_session_review_drops_metadata_when_too_narrow_for_both_columns() -> Non
     assert "Aug 5" not in row
 
 
+def _meta_columns(text: str) -> list[int]:
+    """Cell column where each row's metadata starts, in render order.
+
+    Cells, not characters: the two row kinds carry different numbers of glyphs,
+    so a character index would compare the wrong thing across them.
+    """
+
+    return [
+        cell_len(line[: line.index("Aug")])
+        for line in text.splitlines()
+        if "Aug" in line
+    ]
+
+
+def _mixed_volume_scan() -> ScanResult:
+    """One expanded repository and one collapsed, so both row kinds carry metadata."""
+
+    expanded = [
+        _dense_resolved("d1", "repo-x", last_day=5, volume=4),
+        _dense_resolved("d2", "repo-x", last_day=4, volume=120),
+    ]
+    collapsed = [_dense_resolved("e1", "repo-y", last_day=6, volume=7)]
+    items = [*expanded, *collapsed]
+    return ScanResult(
+        period=_period(),
+        candidate_session_count=len(items),
+        loaded_session_count=len(items),
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": expanded, "repo-y": collapsed},
+    )
+
+
+def test_session_review_aligns_repository_and_session_metadata_in_one_column() -> None:
+    """One metadata column across both row kinds is what lets volumes be compared by eye."""
+
+    console, stream = _console(width=80)
+    scan = _mixed_volume_scan()
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories={"repo-x"},
+        cursor=0,
+    )
+
+    columns = _meta_columns(stream.getvalue())
+    assert len(columns) == 4
+    assert len(set(columns)) == 1
+
+
+def test_session_browser_aligns_repository_and_session_metadata_in_one_column() -> None:
+    """Browse shares Review's grid, so a screen switch keeps the same reading line."""
+
+    console, stream = _console(width=80)
+
+    render_session_browser(
+        console,
+        _mixed_volume_scan(),
+        expanded_repositories={"repo-x"},
+        cursor=0,
+    )
+
+    columns = _meta_columns(stream.getvalue())
+    assert len(columns) == 4
+    assert len(set(columns)) == 1
+
+
+def test_session_review_drops_repository_metadata_when_too_narrow_for_both_columns() -> None:
+    """A repository row yields its metadata too, rather than clipping mid-count."""
+
+    console, stream = _console(width=24)
+    items = [_dense_resolved("d1", "repo-x", last_day=5, volume=2)]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={"repo-x": items},
+    )
+
+    render_session_review(
+        console,
+        SelectionState.from_scan(scan),
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    row = next(line for line in stream.getvalue().splitlines() if "repo-x" in line)
+    assert "Aug 5" not in row
+    assert row.rstrip().endswith("1 / 1")
+
+
+def test_session_review_gives_the_three_repository_glyphs_three_styles() -> None:
+    """Cursor, expansion and selection mean different things; one style reads as soup."""
+
+    console, stream = _color_console()
+
+    render_session_review(console, _selection(), expanded_repositories={"repo-a"}, cursor=0)
+
+    line = _row(stream.getvalue(), "repo-a")
+    assert _glyph_style(line, "❯") == "1;36"
+    assert _glyph_style(line, "▼") == "2"
+    assert _glyph_style(line, "◐") == "33"
+
+
+def _marker_palette() -> SelectionState:
+    """One repository per selection state, so every marker appears on one screen."""
+
+    everything = [_resolved("all-1", "repo-all")]
+    some = [_resolved("some-1", "repo-some"), _resolved("some-2", "repo-some")]
+    nothing = [_resolved("none-1", "repo-none")]
+    items = [*everything, *some, *nothing]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=len(items),
+        loaded_session_count=len(items),
+        failed_session_count=0,
+        resolved_sessions=items,
+        sessions_by_repository={
+            "repo-all": everything,
+            "repo-some": some,
+            "repo-none": nothing,
+        },
+    )
+    state = SelectionState.from_scan(scan)
+    state.toggle_session("some-2")
+    state.toggle_repository("repo-none")
+    return state
+
+
+def test_session_review_colors_selection_markers_by_state() -> None:
+    """The marker answers "is this in the report?", so its colour must answer it too."""
+
+    console, stream = _color_console()
+
+    render_session_review(
+        console,
+        _marker_palette(),
+        expanded_repositories={"repo-some"},
+        cursor=0,
+    )
+
+    text = stream.getvalue()
+    assert _glyph_style(_row(text, "repo-all"), "●") == "32"
+    assert _glyph_style(_row(text, "repo-some"), "◐") == "33"
+    assert _glyph_style(_row(text, "repo-none"), "○") == "2"
+    assert _glyph_style(_row(text, "Work on some-1"), "●") == "32"
+    assert _glyph_style(_row(text, "Work on some-2"), "○") == "2"
+
+
 def test_session_browser_lists_repositories_most_recent_first() -> None:
     """Harness order is arbitrary, so the freshest work would otherwise hide mid-list."""
 
@@ -522,6 +701,23 @@ def test_session_browser_lists_repositories_most_recent_first() -> None:
 
     text = stream.getvalue()
     assert text.index("repo-fresh") < text.index("repo-stale")
+
+
+def test_session_browser_separates_the_cursor_from_the_expansion_glyph() -> None:
+    """Browse carries no markers, but its cursor and arrow still mean different things."""
+
+    console, stream = _color_console()
+
+    render_session_browser(
+        console,
+        _mixed_volume_scan(),
+        expanded_repositories={"repo-x"},
+        cursor=0,
+    )
+
+    line = _row(stream.getvalue(), "repo-y")
+    assert _glyph_style(line, "❯") == "1;36"
+    assert _glyph_style(line, "▶") == "2"
 
 
 def test_undated_repositories_sort_last_without_comparing_none() -> None:
