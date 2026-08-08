@@ -1,6 +1,6 @@
 """Per-row information density for the interactive session lists."""
 
-from datetime import datetime
+from datetime import datetime, tzinfo
 
 from agent_worklog.models.session import ActivityType, AgentSession
 from agent_worklog.services.scan import ScanResult
@@ -31,12 +31,17 @@ def is_subagent(session: AgentSession) -> bool:
     return session.parent_session_id is not None
 
 
-def session_meta(session: AgentSession) -> str:
-    """Render density for one session row, e.g. ``Aug 5 · 12 msgs``."""
+def session_meta(session: AgentSession, tz: tzinfo | None) -> str:
+    """Render density for one session row, e.g. ``Aug 5 · 12 msgs``.
+
+    Harnesses record activity timestamps in UTC, so the day is resolved in the
+    report's own timezone: a session worked at 2am local is otherwise labelled
+    with the previous day, and would not match the dates in the report it feeds.
+    """
     parts: list[str] = []
     timestamp = last_activity_at(session)
     if timestamp is not None:
-        parts.append(_day_label(timestamp))
+        parts.append(_day_label(timestamp, tz))
     volume = message_volume(session)
     if volume:
         parts.append(_volume_label(volume))
@@ -52,12 +57,13 @@ def repository_meta(repository_id: str, scan: ScanResult) -> str:
     surviving activity after period filtering, so ``""`` is unreachable for a
     volume-bearing repository."""
     sessions = scan.sessions_by_repository[repository_id]
+    tz = scan.period.since.tzinfo
     dates = [
         timestamp for item in sessions if (timestamp := last_activity_at(item.session)) is not None
     ]
     if not dates:
         return ""
-    parts = [_span_label(min(dates), max(dates))]
+    parts = [_span_label(min(dates), max(dates), tz)]
     volume = sum(message_volume(item.session) for item in sessions)
     if volume:
         parts.append(_volume_label(volume))
@@ -68,13 +74,20 @@ def _volume_label(volume: int) -> str:
     return f"{volume} msg" if volume == 1 else f"{volume} msgs"
 
 
-def _day_label(timestamp: datetime) -> str:
-    return f"{timestamp:%b} {timestamp.day}"
+def _local(timestamp: datetime, tz: tzinfo | None) -> datetime:
+    return timestamp if tz is None else timestamp.astimezone(tz)
 
 
-def _span_label(first: datetime, last: datetime) -> str:
+def _day_label(timestamp: datetime, tz: tzinfo | None) -> str:
+    local = _local(timestamp, tz)
+    return f"{local:%b} {local.day}"
+
+
+def _span_label(first: datetime, last: datetime, tz: tzinfo | None) -> str:
+    first = _local(first, tz)
+    last = _local(last, tz)
     if first.date() == last.date():
-        return _day_label(first)
+        return _day_label(first, None)
     if first.year == last.year and first.month == last.month:
         return f"{first:%b} {first.day}–{last.day}"
-    return f"{_day_label(first)} – {_day_label(last)}"
+    return f"{_day_label(first, None)} – {_day_label(last, None)}"

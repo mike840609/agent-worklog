@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import tzinfo
 from pathlib import Path
 
 from rich.cells import cell_len
@@ -88,9 +89,13 @@ def _print_viewport_text(console: Console, text: Text) -> None:
     console.print(text, no_wrap=True, overflow="ellipsis")
 
 
-def session_row_meta(session: AgentSession, reason: str | None = None) -> str:
+def session_row_meta(
+    session: AgentSession,
+    tz: tzinfo | None,
+    reason: str | None = None,
+) -> str:
     """Compose the dim right-hand metadata for one session row."""
-    facts = " · ".join(fact for fact in (session_meta(session), reason) if fact)
+    facts = " · ".join(fact for fact in (session_meta(session, tz), reason) if fact)
     if not is_subagent(session):
         return facts
     return f"[sub] {facts}" if facts else "[sub]"
@@ -369,6 +374,7 @@ def render_session_review(
     metas = {
         row.session_id: session_row_meta(
             sessions[row.session_id],
+            selection.scan.period.since.tzinfo,
             noise_reason(sessions[row.session_id]),
         )
         for _, row in visible
@@ -456,7 +462,10 @@ def render_session_browser(
     titles = _session_titles(scan)
     sessions = _sessions_by_id(scan)
     metas = {
-        row.session_id: session_row_meta(sessions[row.session_id])
+        row.session_id: session_row_meta(
+            sessions[row.session_id],
+            scan.period.since.tzinfo,
+        )
         for _, row in visible
         if row.session_id is not None
     }

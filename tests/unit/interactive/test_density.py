@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from agent_worklog.interactive.density import (
@@ -118,7 +118,7 @@ def test_last_activity_at_none_when_activities_lack_timestamps() -> None:
         ],
     )
     assert last_activity_at(session) is None
-    assert session_meta(session) == "1 msg"
+    assert session_meta(session, TZ) == "1 msg"
 
 
 def test_is_subagent() -> None:
@@ -135,7 +135,7 @@ def test_session_meta_renders_date_and_volume() -> None:
             _activity(ActivityType.TOOL_CALL, datetime(2026, 8, 5, 9, 2, tzinfo=TZ)),
         ],
     )
-    assert session_meta(session) == "Aug 5 · 2 msgs"
+    assert session_meta(session, TZ) == "Aug 5 · 2 msgs"
 
 
 def test_session_meta_omits_volume_when_zero() -> None:
@@ -143,11 +143,11 @@ def test_session_meta_omits_volume_when_zero() -> None:
         updated_at=datetime(2026, 8, 5, 9, 0, tzinfo=TZ),
         activities=[_activity(ActivityType.TOOL_CALL, datetime(2026, 8, 5, 9, 2, tzinfo=TZ))],
     )
-    assert session_meta(session) == "Aug 5"
+    assert session_meta(session, TZ) == "Aug 5"
 
 
 def test_session_meta_empty_without_date_or_volume() -> None:
-    assert session_meta(_session()) == ""
+    assert session_meta(_session(), TZ) == ""
 
 
 def test_repository_meta_spans_dates_and_sums_volume() -> None:
@@ -214,3 +214,27 @@ def test_repository_meta_single_date() -> None:
         )
     ]
     assert repository_meta("repo", _scan(items)) == "Aug 5 · 1 msg"
+
+
+def test_session_meta_renders_the_day_in_the_report_timezone() -> None:
+    """Harnesses store UTC; a late-night local session must not read as the day before."""
+
+    session = _session(
+        activities=[_activity(ActivityType.USER_MESSAGE, datetime(2026, 8, 5, 18, tzinfo=UTC))]
+    )
+
+    assert session_meta(session, TZ) == "Aug 6 · 1 msg"
+
+
+def test_repository_meta_spans_days_in_the_report_timezone() -> None:
+    items = [
+        _resolved(
+            _session(
+                activities=[
+                    _activity(ActivityType.USER_MESSAGE, datetime(2026, 8, 5, 18, tzinfo=UTC))
+                ]
+            )
+        )
+    ]
+
+    assert repository_meta("repo", _scan(items)) == "Aug 6 · 1 msg"
