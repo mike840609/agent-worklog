@@ -18,7 +18,7 @@ from agent_worklog.services.scan import ScanResult
 TZ = ZoneInfo("Asia/Taipei")
 
 
-def _resolved(session_id: str, repository_id: str) -> ResolvedSession:
+def _resolved(session_id: str, repository_id: str, *, volume: int = 0) -> ResolvedSession:
     repository = RepositoryIdentity(
         repository_id=repository_id,
         display_name=repository_id,
@@ -31,6 +31,15 @@ def _resolved(session_id: str, repository_id: str) -> ResolvedSession:
         session_id=session_id,
         title=session_id,
         working_directory=f"/tmp/{repository_id}",
+        activities=[
+            SessionActivity(
+                activity_id=f"{session_id}:m{index}",
+                activity_type=ActivityType.ASSISTANT_MESSAGE,
+                timestamp=datetime(2026, 7, 20, tzinfo=TZ),
+                content="hi",
+            )
+            for index in range(volume)
+        ],
     )
     return ResolvedSession(session=session, repository=repository)
 
@@ -65,6 +74,31 @@ def test_selection_starts_with_every_session_selected() -> None:
     assert state.total_count == 3
     assert state.repository_mark("repo-a") is SelectionMark.ALL
     assert state.repository_mark("repo-b") is SelectionMark.ALL
+
+
+def test_selection_reports_message_volume_for_the_selected_subset() -> None:
+    sessions = [
+        _resolved("ses-a1", "repo-a", volume=12),
+        _resolved("ses-a2", "repo-a", volume=3),
+        _resolved("ses-b1", "repo-b", volume=5),
+    ]
+    scan = ScanResult(
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 21, tzinfo=TZ),
+        ),
+        candidate_session_count=3,
+        loaded_session_count=3,
+        failed_session_count=0,
+        resolved_sessions=sessions,
+        sessions_by_repository={"repo-a": sessions[:2], "repo-b": sessions[2:]},
+    )
+    state = SelectionState.from_scan(scan)
+
+    state.toggle_session("ses-a2")
+
+    assert state.selected_volume == 17
+    assert state.total_volume == 20
 
 
 def test_individual_toggle_derives_partial_repository_state() -> None:
