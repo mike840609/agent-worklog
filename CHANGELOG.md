@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 0.16.1 - 2026-09-09
+
+- Security redaction now catches prefixed/suffixed env-style secret
+  assignments (`OPENAI_API_KEY_PROD=...`, `DATABASE_PASSWORD_BACKUP=...`,
+  `SLACK_BOT_TOKEN=...`, and similar), YAML-style `token:` keys at the start
+  of a line, and quoted JSON `"token": "..."` keys, without flagging ordinary
+  prose like "the token: refresh flow"; recognizes a few more provider key
+  formats (Stripe-style `sk_live_`/`sk_test_`, Slack `xox*-`, Google
+  `AIza...`, npm tokens); treats `pwd` as a secret only when assigned with
+  `=`, so `pwd: /home/user/project` is left alone; and tightens JWT
+  detection to require both the header and payload segments start with the
+  `eyJ` marker of base64url-encoded JSON, cutting false positives on other
+  dot-separated tokens.
+
 ## 0.16.0 - 2026-08-27
 
 - Past Reports now previews a report in place: **Enter**/**p** opens the
